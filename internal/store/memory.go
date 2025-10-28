@@ -12,10 +12,11 @@ import (
 )
 
 var (
-	errNodeNotFound   = errors.New("node not found")
-	errConfigNotFound = errors.New("config not found")
-	errGeoNotFound    = errors.New("geo resource not found")
-	errRuleNotFound   = errors.New("traffic rule not found")
+	errNodeNotFound      = errors.New("node not found")
+	errConfigNotFound    = errors.New("config not found")
+	errGeoNotFound       = errors.New("geo resource not found")
+	errRuleNotFound      = errors.New("traffic rule not found")
+	errComponentNotFound = errors.New("core component not found")
 )
 
 type MemoryStore struct {
@@ -24,20 +25,26 @@ type MemoryStore struct {
 	configs        map[string]domain.Config
 	geo            map[string]domain.GeoResource
 	rules          map[string]domain.TrafficRule
+	components     map[string]domain.CoreComponent
 	trafficProfile domain.TrafficProfile
+	systemProxy    domain.SystemProxySettings
+	afterMu        sync.RWMutex
+	afterWrite     func()
 }
 
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		nodes:   make(map[string]domain.Node),
-		configs: make(map[string]domain.Config),
-		geo:     make(map[string]domain.GeoResource),
-		rules:   make(map[string]domain.TrafficRule),
+		nodes:      make(map[string]domain.Node),
+		configs:    make(map[string]domain.Config),
+		geo:        make(map[string]domain.GeoResource),
+		rules:      make(map[string]domain.TrafficRule),
+		components: make(map[string]domain.CoreComponent),
 		trafficProfile: domain.TrafficProfile{
 			DNS:       domain.DNSSetting{Strategy: "ipv4-only", Servers: []string{"8.8.8.8"}},
 			Rules:     []domain.TrafficRule{},
 			UpdatedAt: time.Now(),
 		},
+		systemProxy: defaultSystemProxySettings(),
 	}
 }
 
@@ -48,7 +55,12 @@ func (s *MemoryStore) ListNodes() []domain.Node {
 	for _, node := range s.nodes {
 		items = append(items, node)
 	}
-	sort.Slice(items, func(i, j int) bool { return items[i].CreatedAt.Before(items[j].CreatedAt) })
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Name == items[j].Name {
+			return items[i].CreatedAt.Before(items[j].CreatedAt)
+		}
+		return items[i].Name < items[j].Name
+	})
 	return items
 }
 
@@ -61,7 +73,18 @@ func (s *MemoryStore) CreateNode(node domain.Node) domain.Node {
 	node.CreatedAt = time.Now()
 	node.UpdatedAt = node.CreatedAt
 	s.nodes[node.ID] = node
+	s.fireAfterWrite()
 	return node
+}
+
+func (s *MemoryStore) GetNode(id string) (domain.Node, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	node, ok := s.nodes[id]
+	if !ok {
+		return domain.Node{}, errNodeNotFound
+	}
+	return node, nil
 }
 
 func (s *MemoryStore) UpdateNode(id string, updateFn func(domain.Node) (domain.Node, error)) (domain.Node, error) {
@@ -78,7 +101,11 @@ func (s *MemoryStore) UpdateNode(id string, updateFn func(domain.Node) (domain.N
 	updated.ID = id
 	updated.CreatedAt = node.CreatedAt
 	updated.UpdatedAt = time.Now()
+	if updated.SourceConfigID == "" {
+		updated.SourceConfigID = node.SourceConfigID
+	}
 	s.nodes[id] = updated
+	s.fireAfterWrite()
 	return updated, nil
 }
 
@@ -92,6 +119,7 @@ func (s *MemoryStore) DeleteNode(id string) error {
 	if s.trafficProfile.DefaultNodeID == id {
 		s.trafficProfile.DefaultNodeID = ""
 	}
+	s.fireAfterWrite()
 	return nil
 }
 
@@ -111,6 +139,48 @@ func (s *MemoryStore) ResetNodeTraffic(id string) (domain.Node, error) {
 	})
 }
 
+func (s *MemoryStore) ListNodesByConfig(configID string) []domain.Node {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	items := make([]domain.Node, 0)
+	for _, node := range s.nodes {
+		if node.SourceConfigID == configID {
+			items = append(items, node)
+		}
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Name == items[j].Name {
+			return items[i].CreatedAt.Before(items[j].CreatedAt)
+		}
+		return items[i].Name < items[j].Name
+	})
+	return items
+}
+
+func (s *MemoryStore) ReplaceNodesForConfig(configID string, nodes []domain.Node) []domain.Node {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, node := range s.nodes {
+		if node.SourceConfigID == configID {
+			delete(s.nodes, id)
+		}
+	}
+	created := make([]domain.Node, 0, len(nodes))
+	now := time.Now()
+	for _, node := range nodes {
+		if node.ID == "" {
+			node.ID = uuid.NewString()
+		}
+		node.SourceConfigID = configID
+		node.CreatedAt = now
+		node.UpdatedAt = now
+		s.nodes[node.ID] = node
+		created = append(created, node)
+	}
+	s.fireAfterWrite()
+	return created
+}
+
 func (s *MemoryStore) ListConfigs() []domain.Config {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -120,6 +190,16 @@ func (s *MemoryStore) ListConfigs() []domain.Config {
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].CreatedAt.Before(items[j].CreatedAt) })
 	return items
+}
+
+func (s *MemoryStore) GetConfig(id string) (domain.Config, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	cfg, ok := s.configs[id]
+	if !ok {
+		return domain.Config{}, errConfigNotFound
+	}
+	return cfg, nil
 }
 
 func (s *MemoryStore) CreateConfig(cfg domain.Config) domain.Config {
@@ -133,6 +213,7 @@ func (s *MemoryStore) CreateConfig(cfg domain.Config) domain.Config {
 	cfg.UpdatedAt = now
 	cfg.LastSyncedAt = now
 	s.configs[cfg.ID] = cfg
+	s.fireAfterWrite()
 	return cfg
 }
 
@@ -154,6 +235,7 @@ func (s *MemoryStore) UpdateConfig(id string, updateFn func(domain.Config) (doma
 		updated.LastSyncedAt = cfg.LastSyncedAt
 	}
 	s.configs[id] = updated
+	s.fireAfterWrite()
 	return updated, nil
 }
 
@@ -164,6 +246,7 @@ func (s *MemoryStore) DeleteConfig(id string) error {
 		return errConfigNotFound
 	}
 	delete(s.configs, id)
+	s.fireAfterWrite()
 	return nil
 }
 
@@ -213,6 +296,7 @@ func (s *MemoryStore) UpsertGeo(res domain.GeoResource) domain.GeoResource {
 	}
 	res.UpdatedAt = now
 	s.geo[res.ID] = res
+	s.fireAfterWrite()
 	return res
 }
 
@@ -223,6 +307,101 @@ func (s *MemoryStore) DeleteGeo(id string) error {
 		return errGeoNotFound
 	}
 	delete(s.geo, id)
+	s.fireAfterWrite()
+	return nil
+}
+
+func (s *MemoryStore) ListComponents() []domain.CoreComponent {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	items := make([]domain.CoreComponent, 0, len(s.components))
+	for _, comp := range s.components {
+		items = append(items, comp)
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].CreatedAt.Before(items[j].CreatedAt) })
+	return items
+}
+
+func (s *MemoryStore) GetComponent(id string) (domain.CoreComponent, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	comp, ok := s.components[id]
+	if !ok {
+		return domain.CoreComponent{}, errComponentNotFound
+	}
+	return comp, nil
+}
+
+func (s *MemoryStore) CreateComponent(comp domain.CoreComponent) domain.CoreComponent {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if comp.ID == "" {
+		comp.ID = uuid.NewString()
+	}
+	now := time.Now()
+	comp.CreatedAt = now
+	comp.UpdatedAt = now
+	s.components[comp.ID] = comp
+	return comp
+}
+
+func (s *MemoryStore) UpdateComponent(id string, updateFn func(domain.CoreComponent) (domain.CoreComponent, error)) (domain.CoreComponent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	comp, ok := s.components[id]
+	if !ok {
+		return domain.CoreComponent{}, errComponentNotFound
+	}
+	updated, err := updateFn(comp)
+	if err != nil {
+		return domain.CoreComponent{}, err
+	}
+	updated.ID = id
+	updated.CreatedAt = comp.CreatedAt
+	updated.UpdatedAt = time.Now()
+	if updated.LastInstalledAt.IsZero() {
+		updated.LastInstalledAt = comp.LastInstalledAt
+	}
+	if updated.Checksum == "" {
+		updated.Checksum = comp.Checksum
+	}
+	if updated.InstallDir == "" {
+		updated.InstallDir = comp.InstallDir
+	}
+	if updated.Meta == nil && comp.Meta != nil {
+		metaCopy := make(map[string]string, len(comp.Meta))
+		for k, v := range comp.Meta {
+			metaCopy[k] = v
+		}
+		updated.Meta = metaCopy
+	}
+	clearLastSync := false
+	if updated.Meta != nil {
+		if updated.Meta["_clearLastSyncError"] != "" {
+			clearLastSync = true
+			delete(updated.Meta, "_clearLastSyncError")
+		}
+	}
+	if clearLastSync {
+		updated.LastSyncError = ""
+	}
+	if updated.LastVersion == "" {
+		updated.LastVersion = comp.LastVersion
+	}
+	if updated.LastSyncError == "" && comp.LastSyncError != "" && !clearLastSync {
+		updated.LastSyncError = comp.LastSyncError
+	}
+	s.components[id] = updated
+	return updated, nil
+}
+
+func (s *MemoryStore) DeleteComponent(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.components[id]; !ok {
+		return errComponentNotFound
+	}
+	delete(s.components, id)
 	return nil
 }
 
@@ -243,6 +422,7 @@ func (s *MemoryStore) CreateTrafficRule(rule domain.TrafficRule) domain.TrafficR
 	rule.UpdatedAt = now
 	s.rules[rule.ID] = rule
 	s.rebuildTrafficProfileLocked()
+	s.fireAfterWrite()
 	return rule
 }
 
@@ -262,6 +442,7 @@ func (s *MemoryStore) UpdateTrafficRule(id string, updateFn func(domain.TrafficR
 	updated.UpdatedAt = time.Now()
 	s.rules[id] = updated
 	s.rebuildTrafficProfileLocked()
+	s.fireAfterWrite()
 	return updated, nil
 }
 
@@ -273,6 +454,7 @@ func (s *MemoryStore) DeleteTrafficRule(id string) error {
 	}
 	delete(s.rules, id)
 	s.rebuildTrafficProfileLocked()
+	s.fireAfterWrite()
 	return nil
 }
 
@@ -286,6 +468,7 @@ func (s *MemoryStore) UpdateTrafficProfile(mutator func(domain.TrafficProfile) (
 	profile.UpdatedAt = time.Now()
 	s.trafficProfile = profile
 	s.rebuildTrafficProfileLocked()
+	s.fireAfterWrite()
 	return s.trafficProfile, nil
 }
 
@@ -295,6 +478,31 @@ func (s *MemoryStore) GetTrafficProfile() domain.TrafficProfile {
 	profile := s.trafficProfile
 	profile.Rules = append([]domain.TrafficRule(nil), s.collectRulesLocked()...)
 	return profile
+}
+
+func (s *MemoryStore) GetSystemProxySettings() domain.SystemProxySettings {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.systemProxy
+}
+
+func (s *MemoryStore) UpdateSystemProxySettings(updateFn func(domain.SystemProxySettings) (domain.SystemProxySettings, error)) (domain.SystemProxySettings, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	updated, err := updateFn(s.systemProxy)
+	if err != nil {
+		return domain.SystemProxySettings{}, err
+	}
+	if updated.UpdatedAt.IsZero() {
+		updated.UpdatedAt = time.Now()
+	}
+	if updated.IgnoreHosts == nil {
+		updated.IgnoreHosts = []string{}
+	}
+	updated.IgnoreHosts = append([]string(nil), updated.IgnoreHosts...)
+	s.systemProxy = updated
+	s.fireAfterWrite()
+	return s.systemProxy, nil
 }
 
 func (s *MemoryStore) rebuildTrafficProfileLocked() {
@@ -325,6 +533,12 @@ func (s *MemoryStore) Snapshot() domain.ServiceState {
 	}
 	sort.Slice(geo, func(i, j int) bool { return geo[i].CreatedAt.Before(geo[j].CreatedAt) })
 
+	components := make([]domain.CoreComponent, 0, len(s.components))
+	for _, comp := range s.components {
+		components = append(components, comp)
+	}
+	sort.Slice(components, func(i, j int) bool { return components[i].CreatedAt.Before(components[j].CreatedAt) })
+
 	profile := s.trafficProfile
 	profile.Rules = append([]domain.TrafficRule(nil), profile.Rules...)
 
@@ -332,7 +546,9 @@ func (s *MemoryStore) Snapshot() domain.ServiceState {
 		Nodes:          nodes,
 		Configs:        configs,
 		GeoResources:   geo,
+		Components:     components,
 		TrafficProfile: profile,
+		SystemProxy:    s.systemProxy,
 		GeneratedAt:    time.Now(),
 	}
 }
@@ -346,6 +562,130 @@ func (s *MemoryStore) collectRulesLocked() []domain.TrafficRule {
 	return rules
 }
 
-func (s *MemoryStore) Errors() (error, error, error, error) {
-	return errNodeNotFound, errConfigNotFound, errGeoNotFound, errRuleNotFound
+func (s *MemoryStore) LoadState(state domain.ServiceState) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now()
+
+	s.nodes = make(map[string]domain.Node)
+	for _, node := range state.Nodes {
+		if node.ID == "" {
+			node.ID = uuid.NewString()
+		}
+		if node.CreatedAt.IsZero() {
+			node.CreatedAt = now
+		}
+		if node.UpdatedAt.IsZero() {
+			node.UpdatedAt = node.CreatedAt
+		}
+		s.nodes[node.ID] = node
+	}
+
+	s.configs = make(map[string]domain.Config)
+	for _, cfg := range state.Configs {
+		if cfg.ID == "" {
+			cfg.ID = uuid.NewString()
+		}
+		if cfg.CreatedAt.IsZero() {
+			cfg.CreatedAt = now
+		}
+		if cfg.UpdatedAt.IsZero() {
+			cfg.UpdatedAt = cfg.CreatedAt
+		}
+		if cfg.LastSyncedAt.IsZero() {
+			cfg.LastSyncedAt = cfg.UpdatedAt
+		}
+		s.configs[cfg.ID] = cfg
+	}
+
+	s.geo = make(map[string]domain.GeoResource)
+	for _, res := range state.GeoResources {
+		if res.ID == "" {
+			res.ID = uuid.NewString()
+		}
+		if res.CreatedAt.IsZero() {
+			res.CreatedAt = now
+		}
+		if res.UpdatedAt.IsZero() {
+			res.UpdatedAt = res.CreatedAt
+		}
+		if res.LastSynced.IsZero() {
+			res.LastSynced = res.UpdatedAt
+		}
+		s.geo[res.ID] = res
+	}
+
+	s.components = make(map[string]domain.CoreComponent)
+	for _, comp := range state.Components {
+		if comp.ID == "" {
+			comp.ID = uuid.NewString()
+		}
+		if comp.CreatedAt.IsZero() {
+			comp.CreatedAt = now
+		}
+		if comp.UpdatedAt.IsZero() {
+			comp.UpdatedAt = comp.CreatedAt
+		}
+		s.components[comp.ID] = comp
+	}
+
+	if state.TrafficProfile.UpdatedAt.IsZero() {
+		state.TrafficProfile.UpdatedAt = now
+	}
+	s.trafficProfile = state.TrafficProfile
+	defaults := defaultSystemProxySettings()
+	if len(state.SystemProxy.IgnoreHosts) == 0 {
+		state.SystemProxy.IgnoreHosts = append([]string{}, defaults.IgnoreHosts...)
+	}
+	if state.SystemProxy.UpdatedAt.IsZero() {
+		state.SystemProxy.UpdatedAt = now
+	}
+	state.SystemProxy.IgnoreHosts = append([]string(nil), state.SystemProxy.IgnoreHosts...)
+	if !state.SystemProxy.Enabled && equalStringSlices(state.SystemProxy.IgnoreHosts, defaults.IgnoreHosts) {
+		s.systemProxy = defaults
+	} else {
+		s.systemProxy = state.SystemProxy
+	}
+}
+
+func defaultSystemProxySettings() domain.SystemProxySettings {
+	defaults := []string{"127.0.0.0/8", "::1", "localhost"}
+	sort.Strings(defaults)
+	return domain.SystemProxySettings{
+		Enabled:     false,
+		IgnoreHosts: defaults,
+		UpdatedAt:   time.Now(),
+	}
+}
+
+func equalStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *MemoryStore) Errors() (error, error, error, error, error) {
+	return errNodeNotFound, errConfigNotFound, errGeoNotFound, errRuleNotFound, errComponentNotFound
+}
+
+func (s *MemoryStore) SetAfterWrite(cb func()) {
+	s.afterMu.Lock()
+	s.afterWrite = cb
+	s.afterMu.Unlock()
+}
+
+func (s *MemoryStore) fireAfterWrite() {
+	s.afterMu.RLock()
+	cb := s.afterWrite
+	s.afterMu.RUnlock()
+	if cb != nil {
+		cb()
+	}
 }

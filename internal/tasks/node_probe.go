@@ -2,6 +2,7 @@ package tasks
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"vea/internal/service"
@@ -29,7 +30,9 @@ func (t *NodeProbe) Start(ctx context.Context) {
 			return
 		case <-ticker.C:
 			for _, node := range t.Service.ListNodes() {
-				_, _ = t.Service.ProbeLatency(node.ID)
+				if _, err := t.Service.ProbeLatency(node.ID); err != nil {
+					log.Printf("node probe latency failed for %s: %v", node.ID, err)
+				}
 			}
 		}
 	}

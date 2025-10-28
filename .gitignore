@@ -23,3 +23,5 @@ bin/
 .vscode/
 *.db
 *.sqlite3
+data/
+artifacts/
