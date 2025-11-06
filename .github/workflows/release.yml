@@ -145,6 +145,5 @@ jobs:
           tag_name: ${{ github.event.inputs.version }}
           name: ${{ github.event.inputs.version }}
           body: ${{ github.event.inputs.release_notes }}
+          token: ${{ secrets.RELEASE_TOKEN }}
           files: dist/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
