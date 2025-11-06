@@ -24,7 +24,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -100,17 +99,6 @@ func componentDefaultFor(component domain.CoreComponent) (*componentDefault, err
 			assetCandidates: assets,
 			archiveType:     inferArchiveTypeFromName(assets[0]),
 		}, nil
-	case domain.ComponentSingBox:
-		assets, err := singboxAssetCandidates()
-		if err != nil {
-			return nil, err
-		}
-		return &componentDefault{
-			name:            "sing-box",
-			repo:            "SagerNet/sing-box",
-			assetCandidates: assets,
-			archiveType:     inferArchiveTypeFromName(assets[0]),
-		}, nil
 	case domain.ComponentGeo:
 		slug := strings.ToLower(component.Name)
 		asset := "geoip.dat"
@@ -149,11 +137,6 @@ func resolveComponentAssetFallback(kind domain.CoreComponentKind, repo string, c
 			continue
 		}
 		assetOptions := []string{candidate}
-		if kind == domain.ComponentSingBox {
-			if alt := buildSingBoxVersionedAsset(candidate, version); alt != "" && alt != candidate {
-				assetOptions = append([]string{alt}, assetOptions...)
-			}
-		}
 		for _, asset := range assetOptions {
 			ok, size, probeErr := probeReleaseAsset(repo, tag, asset)
 			if probeErr != nil {
@@ -168,27 +151,10 @@ func resolveComponentAssetFallback(kind domain.CoreComponentKind, repo string, c
 	return releaseAssetInfo{}, errReleaseAssetNotFound
 }
 
-func buildSingBoxVersionedAsset(candidate, version string) string {
-	if candidate == "" || version == "" {
-		return ""
-	}
-	if !strings.HasPrefix(candidate, "sing-box") {
-		return ""
-	}
-	suffix := strings.TrimPrefix(candidate, "sing-box")
-	suffix = strings.TrimPrefix(suffix, "-")
-	if suffix == "" {
-		return ""
-	}
-	return fmt.Sprintf("sing-box-%s-%s", version, suffix)
-}
-
 func defaultArchiveForKind(kind domain.CoreComponentKind) string {
 	switch kind {
 	case domain.ComponentXray:
 		return "zip"
-	case domain.ComponentSingBox:
-		return "tar.gz"
 	case domain.ComponentGeo:
 		return "raw"
 	default:
@@ -217,30 +183,6 @@ func xrayAssetCandidates() ([]string, error) {
 		return []string{"Xray-macos-arm64.zip"}, nil
 	default:
 		return nil, fmt.Errorf("unsupported platform %s for xray release asset", key)
-	}
-}
-
-func singboxAssetCandidates() ([]string, error) {
-	key := runtime.GOOS + "/" + runtime.GOARCH
-	switch key {
-	case "linux/amd64":
-		return []string{"sing-box-linux-amd64.tar.gz"}, nil
-	case "linux/386":
-		return []string{"sing-box-linux-386.tar.gz"}, nil
-	case "linux/arm64":
-		return []string{"sing-box-linux-arm64.tar.gz"}, nil
-	case "linux/arm":
-		return []string{"sing-box-linux-armv7.tar.gz"}, nil
-	case "windows/amd64":
-		return []string{"sing-box-windows-amd64.zip"}, nil
-	case "windows/386":
-		return []string{"sing-box-windows-386.zip"}, nil
-	case "darwin/amd64":
-		return []string{"sing-box-darwin-amd64.tar.gz"}, nil
-	case "darwin/arm64":
-		return []string{"sing-box-darwin-arm64.tar.gz"}, nil
-	default:
-		return nil, fmt.Errorf("unsupported platform %s for sing-box release asset", key)
 	}
 }
 
@@ -818,16 +760,9 @@ func (s *Service) ListComponents() []domain.CoreComponent {
 			invalid := false
 			if info, err := os.Stat(comp.InstallDir); err != nil || !info.IsDir() {
 				invalid = true
-			} else {
-				switch comp.Kind {
-				case domain.ComponentXray:
-					if _, err := findXrayBinary(comp.InstallDir); err != nil {
-						invalid = true
-					}
-				case domain.ComponentSingBox:
-					if _, err := findSingBoxBinary(comp.InstallDir); err != nil {
-						invalid = true
-					}
+			} else if comp.Kind == domain.ComponentXray {
+				if _, err := findXrayBinary(comp.InstallDir); err != nil {
+					invalid = true
 				}
 			}
 			if invalid {
@@ -854,7 +789,18 @@ func (s *Service) ListComponents() []domain.CoreComponent {
 			})
 		}
 		if sanitized.Meta != nil {
-			delete(sanitized.Meta, "_clearLastSyncError")
+			metaCopy := make(map[string]string, len(sanitized.Meta))
+			for k, v := range sanitized.Meta {
+				if k == "_clearLastSyncError" {
+					continue
+				}
+				metaCopy[k] = v
+			}
+			if len(metaCopy) > 0 {
+				sanitized.Meta = metaCopy
+			} else {
+				sanitized.Meta = nil
+			}
 		}
 		snapshot = append(snapshot, sanitized)
 	}
@@ -864,23 +810,17 @@ func (s *Service) ListComponents() []domain.CoreComponent {
 func (s *Service) ensureCoreComponents() {
 	components := s.store.ListComponents()
 	hasXray := false
-	hasSingBox := false
 	for _, comp := range components {
 		switch comp.Kind {
 		case domain.ComponentXray:
 			hasXray = true
-		case domain.ComponentSingBox:
-			hasSingBox = true
 		}
-		if hasXray && hasSingBox {
+		if hasXray {
 			return
 		}
 	}
 	if !hasXray {
 		s.ensureCoreComponentRecord(domain.ComponentXray)
-	}
-	if !hasSingBox {
-		s.ensureCoreComponentRecord(domain.ComponentSingBox)
 	}
 }
 
@@ -907,10 +847,6 @@ func detectExistingComponentInstall(kind domain.CoreComponentKind) (componentIns
 	switch kind {
 	case domain.ComponentXray:
 		if _, err := findXrayBinary(dir); err != nil {
-			return componentInstallInfo{}, false
-		}
-	case domain.ComponentSingBox:
-		if _, err := findSingBoxBinary(dir); err != nil {
 			return componentInstallInfo{}, false
 		}
 	}
@@ -1024,8 +960,6 @@ func resolveInstallDir(component domain.CoreComponent) string {
 	switch component.Kind {
 	case domain.ComponentXray:
 		return filepath.Join(base, "xray")
-	case domain.ComponentSingBox:
-		return filepath.Join(base, "singbox")
 	case domain.ComponentGeo:
 		return filepath.Join(base, "geo")
 	default:
@@ -1141,12 +1075,7 @@ func (s *Service) InstallComponent(id string) (domain.CoreComponent, error) {
 		return updated, installErr
 	}
 
-	switch component.Kind {
-	case domain.ComponentSingBox:
-		if err := flattenSingBoxInstall(installDir); err != nil {
-			log.Printf("flatten sing-box install failed: %v", err)
-		}
-	case domain.ComponentXray:
+	if component.Kind == domain.ComponentXray {
 		if err := cleanupXrayInstall(installDir); err != nil {
 			log.Printf("cleanup xray install failed: %v", err)
 		}
@@ -1326,6 +1255,21 @@ func (s *Service) ActiveXrayNodeID() string {
 		return comp.Meta["activeNodeId"]
 	}
 	return ""
+}
+
+func (s *Service) LastSelectedNodeID() string {
+	var latest time.Time
+	var latestID string
+	for _, node := range s.ListNodes() {
+		if node.ID == "" {
+			continue
+		}
+		if node.LastSelectedAt.After(latest) {
+			latest = node.LastSelectedAt
+			latestID = node.ID
+		}
+	}
+	return latestID
 }
 
 func (s *Service) XrayStatus() XrayStatus {
@@ -1904,72 +1848,6 @@ func sanitizeID(id string) string {
 	return replacer.Replace(id)
 }
 
-func flattenSingBoxInstall(dir string) error {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return err
-	}
-	var (
-		childDir string
-	)
-	for _, entry := range entries {
-		if entry.IsDir() {
-			if childDir != "" {
-				// more than one directory at top level, keep structure
-				return nil
-			}
-			childDir = entry.Name()
-		} else {
-			// files already at root, nothing to flatten
-			return nil
-		}
-	}
-	if childDir == "" {
-		return nil
-	}
-	src := filepath.Join(dir, childDir)
-	childEntries, err := os.ReadDir(src)
-	if err != nil {
-		return err
-	}
-	for _, entry := range childEntries {
-		oldPath := filepath.Join(src, entry.Name())
-		newPath := filepath.Join(dir, entry.Name())
-		if err := os.Rename(oldPath, newPath); err != nil {
-			return err
-		}
-	}
-	return os.RemoveAll(src)
-}
-
-func findSingBoxBinary(dir string) (string, error) {
-	candidates := []string{"sing-box", "sing-box.exe"}
-	for _, name := range candidates {
-		candidate := filepath.Join(dir, name)
-		info, err := os.Stat(candidate)
-		if err == nil && !info.IsDir() {
-			return candidate, nil
-		}
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return "", err
-	}
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		if strings.Contains(strings.ToLower(entry.Name()), "sing-box") {
-			path := filepath.Join(dir, entry.Name())
-			info, err := os.Stat(path)
-			if err == nil && !info.IsDir() {
-				return path, nil
-			}
-		}
-	}
-	return "", fmt.Errorf("sing-box binary not found in %s", dir)
-}
-
 func cleanupXrayInstall(dir string) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -2053,12 +1931,12 @@ func (s *Service) startMeasurementXray(node domain.Node) (func(), error) {
 		return nil, err
 	}
 
-    preparedNode, err := s.prepareNodeForXray(node)
-    if err != nil {
-        release()
-        return nil, err
-    }
-    // 插件路径已废弃：不再构建或确保任何插件二进制。
+	preparedNode, err := s.prepareNodeForXray(node)
+	if err != nil {
+		release()
+		return nil, err
+	}
+	// 插件路径已废弃：不再构建或确保任何插件二进制。
 	cfgBytes, _, err := buildMeasurementXrayConfig(preparedNode, measurementPort)
 	if err != nil {
 		release()
@@ -2163,7 +2041,7 @@ func (s *Service) prepareNodeForXray(node domain.Node) (domain.Node, error) {
 		copySec := cloneNodeSecurity(node.Security)
 		prepared.Security = copySec
 	}
-	applyShadowsocksHTTPObfs(&prepared)
+	ensureShadowsocksHTTPHeaders(&prepared)
 	return prepared, nil
 }
 
@@ -2187,25 +2065,31 @@ const (
 	defaultHTTPObfsHTTPVersion = "1.1"
 )
 
-func applyShadowsocksHTTPObfs(node *domain.Node) {
-    if node.Protocol != domain.ProtocolShadowsocks {
-        return
-    }
+func ensureShadowsocksHTTPHeaders(node *domain.Node) {
+	if node.Protocol != domain.ProtocolShadowsocks {
+		return
+	}
 
 	if node.Security == nil {
 		node.Security = &domain.NodeSecurity{}
 	}
 
-    name, options := parseShadowsocksPluginOptions(node.Security.Plugin, node.Security.PluginOpts)
-    _ = strings.ToLower(strings.TrimSpace(name))
-
-	hostFromOpts := strings.TrimSpace(options["obfs-host"])
-	pathFromOpts := strings.TrimSpace(options["obfs-uri"])
+	var hostFromOpts, pathFromOpts string
+	if node.Security != nil {
+		_, options := parseShadowsocksPluginOptions(node.Security.Plugin, node.Security.PluginOpts)
+		if len(options) > 0 {
+			hostFromOpts = firstNonEmpty(options["obfs-host"], options["host"])
+			pathFromOpts = firstNonEmpty(options["obfs-uri"], options["path"])
+		}
+		node.Security.Plugin = ""
+		node.Security.PluginOpts = ""
+	}
 
 	if node.Transport == nil {
 		node.Transport = &domain.NodeTransport{}
 	}
-    host := hostFromOpts
+
+	host := strings.TrimSpace(hostFromOpts)
 	if host == "" {
 		host = strings.TrimSpace(node.Transport.Host)
 	}
@@ -2216,7 +2100,7 @@ func applyShadowsocksHTTPObfs(node *domain.Node) {
 		return
 	}
 
-    path := pathFromOpts
+	path := strings.TrimSpace(pathFromOpts)
 	if path == "" {
 		path = strings.TrimSpace(node.Transport.Path)
 	}
@@ -2224,37 +2108,33 @@ func applyShadowsocksHTTPObfs(node *domain.Node) {
 		path = "/"
 	}
 
-    node.Transport.Type = "tcp"
-    node.Transport.Host = host
-    node.Transport.Path = path
-    // 设置默认 HTTP 伪装头，尽量与常见样例一致
-    if node.Transport.Headers == nil {
-        node.Transport.Headers = map[string]string{}
-    }
-    // Method/Version
-    if strings.TrimSpace(node.Transport.Headers[shadowsocksHTTPMethodKey]) == "" {
-        node.Transport.Headers[shadowsocksHTTPMethodKey] = "GET"
-    }
-    if strings.TrimSpace(node.Transport.Headers[shadowsocksHTTPVersionKey]) == "" {
-        node.Transport.Headers[shadowsocksHTTPVersionKey] = defaultHTTPObfsHTTPVersion
-    }
-    // Common headers: Host is injected via transport.Host; add UA/Accept-Encoding/Connection/Pragma
-    if _, ok := node.Transport.Headers["User-Agent"]; !ok {
-        node.Transport.Headers["User-Agent"] = defaultHTTPObfsUserAgent
-    }
-    if _, ok := node.Transport.Headers["Accept-Encoding"]; !ok {
-        node.Transport.Headers["Accept-Encoding"] = defaultHTTPObfsAcceptEnc
-    }
-    if _, ok := node.Transport.Headers["Connection"]; !ok {
-        node.Transport.Headers["Connection"] = defaultHTTPObfsConnection
-    }
-    if _, ok := node.Transport.Headers["Pragma"]; !ok {
-        node.Transport.Headers["Pragma"] = "no-cache"
-    }
-    // 仅使用内置 http 头，不使用任何插件；清空插件相关字段
-    node.Security.Plugin = ""
-    node.Security.PluginOpts = ""
-    node.Security.PluginBinary = ""
+	node.Transport.Type = "tcp"
+	node.Transport.Host = host
+	node.Transport.Path = path
+	// 设置默认 HTTP 请求头，兼容常见 obfs 配置
+	if node.Transport.Headers == nil {
+		node.Transport.Headers = map[string]string{}
+	}
+	// Method/Version
+	if strings.TrimSpace(node.Transport.Headers[shadowsocksHTTPMethodKey]) == "" {
+		node.Transport.Headers[shadowsocksHTTPMethodKey] = "GET"
+	}
+	if strings.TrimSpace(node.Transport.Headers[shadowsocksHTTPVersionKey]) == "" {
+		node.Transport.Headers[shadowsocksHTTPVersionKey] = defaultHTTPObfsHTTPVersion
+	}
+	// Common headers: Host is injected via transport.Host; add UA/Accept-Encoding/Connection/Pragma
+	if _, ok := node.Transport.Headers["User-Agent"]; !ok {
+		node.Transport.Headers["User-Agent"] = defaultHTTPObfsUserAgent
+	}
+	if _, ok := node.Transport.Headers["Accept-Encoding"]; !ok {
+		node.Transport.Headers["Accept-Encoding"] = defaultHTTPObfsAcceptEnc
+	}
+	if _, ok := node.Transport.Headers["Connection"]; !ok {
+		node.Transport.Headers["Connection"] = defaultHTTPObfsConnection
+	}
+	if _, ok := node.Transport.Headers["Pragma"]; !ok {
+		node.Transport.Headers["Pragma"] = "no-cache"
+	}
 }
 
 func parseShadowsocksPluginOptions(plugin, extra string) (string, map[string]string) {
@@ -2263,25 +2143,23 @@ func parseShadowsocksPluginOptions(plugin, extra string) (string, map[string]str
 	if plugin == "" && extra == "" {
 		return "", nil
 	}
-
-	opts := make(map[string]string)
+	options := make(map[string]string)
 	var name string
-
 	if plugin != "" {
 		parts := strings.Split(plugin, ";")
 		name = strings.ToLower(strings.TrimSpace(parts[0]))
 		if len(parts) > 1 {
 			for _, part := range parts[1:] {
-				addPluginOption(opts, part)
+				addPluginOption(options, part)
 			}
 		}
 	}
 	if extra != "" {
 		for _, token := range strings.Split(extra, ";") {
-			addPluginOption(opts, token)
+			addPluginOption(options, token)
 		}
 	}
-	return name, opts
+	return name, options
 }
 
 func addPluginOption(opts map[string]string, token string) {
@@ -2300,27 +2178,6 @@ func addPluginOption(opts map[string]string, token string) {
 	if key != "" {
 		opts[key] = val
 	}
-}
-
-func encodePluginOptions(opts map[string]string) string {
-	if len(opts) == 0 {
-		return ""
-	}
-	keys := make([]string, 0, len(opts))
-	for k := range opts {
-		keys = append(keys, strings.TrimSpace(k))
-	}
-	sort.Strings(keys)
-	parts := make([]string, 0, len(keys))
-	for _, k := range keys {
-		v := strings.TrimSpace(opts[k])
-		if v == "" {
-			parts = append(parts, k)
-		} else {
-			parts = append(parts, fmt.Sprintf("%s=%s", k, v))
-		}
-	}
-	return strings.Join(parts, ";")
 }
 
 func prependPath(env []string, dir string) []string {
@@ -2478,64 +2335,64 @@ func latencyViaSocksOnce(ctx context.Context, proxyHost string, proxyPort int, t
 // measureDownloadThroughSocks5 downloads bytes from several public test endpoints
 // through a SOCKS5 proxy on host:port and returns measured Mbps.
 func measureDownloadThroughSocks5(ctx context.Context, proxyHost string, proxyPort int, progress func(float64)) (float64, error) {
-    // 多目标回落，避免单一域名被策略或对端封禁导致误判
-    sizes := []int64{50 * 1024 * 1024, 20 * 1024 * 1024}
-    candidates := func(size int64) []socksTarget {
-        return []socksTarget{
-            {"speed.cloudflare.com", 443, fmt.Sprintf("/__down?bytes=%d", size), true, size},
-            {"speed.hetzner.de", 443, "/100MB.bin", true, 100 * 1024 * 1024},
-            {"cachefly.cachefly.net", 80, "/100mb.test", false, 100 * 1024 * 1024},
-        }
-    }
-    var (
-        totalBytes   int64
-        totalSeconds float64
-        lastErr      error
-    )
-    for _, size := range sizes {
-        for _, t := range candidates(size) {
-            subCtx, cancel := context.WithTimeout(ctx, speedTestTimeout)
-            bytesRead, seconds, err := downloadViaSocks5Once(subCtx, proxyHost, proxyPort, t, func(bytes int64, elapsed float64) {
-                if progress == nil {
-                    return
-                }
-                if elapsed < 0.5 {
-                    return
-                }
-                aggBytes := totalBytes + bytes
-                aggSeconds := totalSeconds + elapsed
-                if aggSeconds < 0.5 {
-                    return
-                }
-                progress((float64(aggBytes) / aggSeconds) / (1024 * 1024))
-            })
-            cancel()
-            if err != nil {
-                lastErr = fmt.Errorf("%s:%d %s: %w", t.host, t.port, t.path, err)
-                continue
-            }
-            if seconds <= 0 {
-                continue
-            }
-            totalBytes += bytesRead
-            totalSeconds += seconds
-            if progress != nil && totalSeconds >= 0.5 {
-                progress((float64(totalBytes) / totalSeconds) / (1024 * 1024))
-            }
-            // 成功一个就足够
-            if totalBytes >= 5*1024*1024 && totalSeconds >= 0.5 {
-                mbps := (float64(totalBytes) / totalSeconds) / (1024 * 1024)
-                if progress != nil {
-                    progress(mbps)
-                }
-                return mbps, nil
-            }
-        }
-    }
-    if lastErr != nil {
-        return 0, lastErr
-    }
-    return 0, errors.New("no throughput data collected")
+	// 多目标回落，避免单一域名被策略或对端封禁导致误判
+	sizes := []int64{50 * 1024 * 1024, 20 * 1024 * 1024}
+	candidates := func(size int64) []socksTarget {
+		return []socksTarget{
+			{"speed.cloudflare.com", 443, fmt.Sprintf("/__down?bytes=%d", size), true, size},
+			{"speed.hetzner.de", 443, "/100MB.bin", true, 100 * 1024 * 1024},
+			{"cachefly.cachefly.net", 80, "/100mb.test", false, 100 * 1024 * 1024},
+		}
+	}
+	var (
+		totalBytes   int64
+		totalSeconds float64
+		lastErr      error
+	)
+	for _, size := range sizes {
+		for _, t := range candidates(size) {
+			subCtx, cancel := context.WithTimeout(ctx, speedTestTimeout)
+			bytesRead, seconds, err := downloadViaSocks5Once(subCtx, proxyHost, proxyPort, t, func(bytes int64, elapsed float64) {
+				if progress == nil {
+					return
+				}
+				if elapsed < 0.5 {
+					return
+				}
+				aggBytes := totalBytes + bytes
+				aggSeconds := totalSeconds + elapsed
+				if aggSeconds < 0.5 {
+					return
+				}
+				progress((float64(aggBytes) / aggSeconds) / (1024 * 1024))
+			})
+			cancel()
+			if err != nil {
+				lastErr = fmt.Errorf("%s:%d %s: %w", t.host, t.port, t.path, err)
+				continue
+			}
+			if seconds <= 0 {
+				continue
+			}
+			totalBytes += bytesRead
+			totalSeconds += seconds
+			if progress != nil && totalSeconds >= 0.5 {
+				progress((float64(totalBytes) / totalSeconds) / (1024 * 1024))
+			}
+			// 成功一个就足够
+			if totalBytes >= 5*1024*1024 && totalSeconds >= 0.5 {
+				mbps := (float64(totalBytes) / totalSeconds) / (1024 * 1024)
+				if progress != nil {
+					progress(mbps)
+				}
+				return mbps, nil
+			}
+		}
+	}
+	if lastErr != nil {
+		return 0, lastErr
+	}
+	return 0, errors.New("no throughput data collected")
 }
 
 func downloadViaSocks5Once(ctx context.Context, proxyHost string, proxyPort int, t socksTarget, progress func(int64, float64)) (int64, float64, error) {
@@ -2901,7 +2758,7 @@ func parseGenericURLLink(link string, protocol domain.NodeProtocol) (domain.Node
 		Transport: transport,
 		TLS:       tls,
 	}
-	applyShadowsocksHTTPObfs(&node)
+	ensureShadowsocksHTTPHeaders(&node)
 	return node, nil
 }
 
@@ -2948,7 +2805,9 @@ func parseShadowsocksLink(link string) (domain.Node, error) {
 	if plugin := u.Query().Get("plugin"); plugin != "" {
 		security.Plugin = plugin
 	}
-	security.PluginOpts = u.Query().Get("plugin-opts")
+	if pluginOpts := u.Query().Get("plugin-opts"); pluginOpts != "" {
+		security.PluginOpts = pluginOpts
+	}
 	node := domain.Node{
 		Name:     name,
 		Address:  host,
@@ -2956,7 +2815,7 @@ func parseShadowsocksLink(link string) (domain.Node, error) {
 		Protocol: domain.ProtocolShadowsocks,
 		Security: security,
 	}
-	applyShadowsocksHTTPObfs(&node)
+	ensureShadowsocksHTTPHeaders(&node)
 	return node, nil
 }
 
@@ -3099,13 +2958,10 @@ func isLikelyURL(val string) bool {
 
 func inferFormatFromPayload(payload string) (domain.ConfigFormat, bool) {
 	switch {
-	case strings.HasPrefix(payload, "vmess://"):
-		return domain.ConfigFormatV2RayN, true
-	case strings.HasPrefix(payload, "vless://"):
-		return domain.ConfigFormatXray, true
-	case strings.HasPrefix(payload, "trojan://"):
-		return domain.ConfigFormatXray, true
-	case strings.HasPrefix(payload, "ss://"):
+	case strings.HasPrefix(payload, "vmess://"),
+		strings.HasPrefix(payload, "vless://"),
+		strings.HasPrefix(payload, "trojan://"),
+		strings.HasPrefix(payload, "ss://"):
 		return domain.ConfigFormatXray, true
 	default:
 		return "", false

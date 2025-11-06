@@ -37,16 +37,15 @@ type Node struct {
 }
 
 type NodeSecurity struct {
-	UUID         string   `json:"uuid,omitempty"`
-	Password     string   `json:"password,omitempty"`
-	Method       string   `json:"method,omitempty"`
-	Flow         string   `json:"flow,omitempty"`
-	Encryption   string   `json:"encryption,omitempty"`
-	AlterID      int      `json:"alterId,omitempty"`
-	Plugin       string   `json:"plugin,omitempty"`
-	PluginOpts   string   `json:"pluginOpts,omitempty"`
-	PluginBinary string   `json:"pluginBinary,omitempty"`
-	ALPN         []string `json:"alpn,omitempty"`
+	UUID       string   `json:"uuid,omitempty"`
+	Password   string   `json:"password,omitempty"`
+	Method     string   `json:"method,omitempty"`
+	Flow       string   `json:"flow,omitempty"`
+	Encryption string   `json:"encryption,omitempty"`
+	AlterID    int      `json:"alterId,omitempty"`
+	Plugin     string   `json:"plugin,omitempty"`
+	PluginOpts string   `json:"pluginOpts,omitempty"`
+	ALPN       []string `json:"alpn,omitempty"`
 }
 
 type NodeTransport struct {
@@ -71,10 +70,7 @@ type NodeTLS struct {
 type ConfigFormat string
 
 const (
-	ConfigFormatXray    ConfigFormat = "xray-json"
-	ConfigFormatSingbox ConfigFormat = "singbox-json"
-	ConfigFormatV2RayN  ConfigFormat = "v2rayn"
-	ConfigFormatClash   ConfigFormat = "clash"
+	ConfigFormatXray ConfigFormat = "xray-json"
 )
 
 type Config struct {
@@ -120,7 +116,6 @@ type CoreComponentKind string
 
 const (
 	ComponentXray    CoreComponentKind = "xray"
-	ComponentSingBox CoreComponentKind = "singbox"
 	ComponentGeo     CoreComponentKind = "geo"
 	ComponentGeneric CoreComponentKind = "generic"
 )
@@ -171,11 +166,11 @@ type SystemProxySettings struct {
 }
 
 type ServiceState struct {
-	Nodes          []Node               `json:"nodes"`
-	Configs        []Config             `json:"configs"`
-	GeoResources   []GeoResource        `json:"geoResources"`
-	Components     []CoreComponent      `json:"components"`
-	TrafficProfile TrafficProfile       `json:"trafficProfile"`
-	SystemProxy    SystemProxySettings  `json:"systemProxy"`
-	GeneratedAt    time.Time            `json:"generatedAt"`
+	Nodes          []Node              `json:"nodes"`
+	Configs        []Config            `json:"configs"`
+	GeoResources   []GeoResource       `json:"geoResources"`
+	Components     []CoreComponent     `json:"components"`
+	TrafficProfile TrafficProfile      `json:"trafficProfile"`
+	SystemProxy    SystemProxySettings `json:"systemProxy"`
+	GeneratedAt    time.Time           `json:"generatedAt"`
 }

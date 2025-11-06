@@ -864,7 +864,7 @@
         <header class="panel-header">
           <div>
             <h2>配置中心</h2>
-            <p>导入 xray / sing-box 等配置，支持直接粘贴 payload 或提供 sourceUrl 自动抓取；后台会按 `autoUpdateIntervalMinutes` 定期刷新。</p>
+            <p>导入 xray 等配置，支持直接粘贴 payload 或提供 sourceUrl 自动抓取；后台会按 `autoUpdateIntervalMinutes` 定期刷新。</p>
           </div>
           <div class="panel-actions">
             <button type="button" id="config-refresh" class="ghost">刷新</button>
@@ -877,20 +877,16 @@
             名称
             <input name="name" type="text" placeholder="如：东京入口" required />
           </label>
-          <label>
-            sourceUrl（可选）
-            <input name="sourceUrl" type="url" placeholder="https://example.com/config.json" />
-          </label>
           <label style="grid-column: 1 / -1">
-            订阅/远程链接
-            <input name="subscriptionUrl" type="url" placeholder="https://example.com/subscription" />
+            源/订阅链接
+            <input name="sourceUrl" type="url" placeholder="https://example.com/config.json 或订阅地址" required />
           </label>
           <label>
             自动更新间隔（分钟）
             <input name="autoUpdateInterval" type="number" min="0" value="60" />
           </label>
           <label style="grid-column: 1 / -1">
-            Payload（未提供 sourceUrl 时必填）
+            Payload（可选，用于粘贴本地配置）
             <textarea name="payload" placeholder="{ &quot;outbounds&quot;: [] }"></textarea>
           </label>
           <div class="form-actions">
@@ -922,7 +918,7 @@
         <header class="panel-header">
           <div>
             <h2>核心组件</h2>
-            <p>管理 Xray / sing-box 内核的下载与更新，所有内容解压到 <code>artifacts/core</code>，安装时会自动覆盖旧版本。</p>
+            <p>管理 Xray 内核的下载与更新，所有内容解压到 <code>artifacts/core</code>，安装时会自动覆盖旧版本。</p>
           </div>
         </header>
 
@@ -931,7 +927,6 @@
           <div class="component-buttons">
             <div class="button-group">
               <button type="button" class="primary ensure-component" data-kind="xray">安装 / 更新 Xray</button>
-              <button type="button" class="ghost ensure-component" data-kind="singbox">安装 / 更新 sing-box</button>
               <button type="button" id="component-refresh" class="ghost">刷新列表</button>
             </div>
             <span class="muted">按钮会自动补齐缺失的组件记录，并从 GitHub Release 拉取最新版本。</span>
@@ -1216,6 +1211,8 @@ let xrayStatus = {
 };
 let nodesCache = [];
 let componentsCache = [];
+let lastSelectedNodeId = "";
+let preferredNodeId = "";
         let nodesPollHandle = null;
         const NODES_POLL_INTERVAL = 1000;
 
@@ -1247,6 +1244,15 @@ let componentsCache = [];
               config: (status && status.config) || "",
             };
             xrayStatus = normalized;
+            if (normalized.activeNodeId) {
+              const exists = Array.isArray(nodesCache)
+                ? nodesCache.find((item) => item && item.id === normalized.activeNodeId)
+                : null;
+              if (exists) {
+                preferredNodeId = normalized.activeNodeId;
+                activeNodeId = normalized.activeNodeId;
+              }
+            }
             updateXrayUI(normalized);
             updateHomeNodeStatus();
             if (notify) {
@@ -1313,7 +1319,7 @@ let componentsCache = [];
               proxyStatus.textContent = "未安装";
             }
             if (proxyDesc) {
-              proxyDesc.textContent = "尚未检测到可用核心，请先安装 Xray 或 sing-box。";
+              proxyDesc.textContent = "尚未检测到可用核心，请先安装 Xray。";
             }
             if (proxyToggle) {
               proxyToggle.disabled = true;
@@ -1375,8 +1381,23 @@ let componentsCache = [];
           try {
             const payload = await api.get("/nodes");
             const nodes = Array.isArray(payload.nodes) ? payload.nodes : [];
-            activeNodeId = typeof payload.activeNodeId === "string" ? payload.activeNodeId : "";
+            const serverActiveNodeId = typeof payload.activeNodeId === "string" ? payload.activeNodeId : "";
+            const recentSelectedId = typeof payload.lastSelectedNodeId === "string" ? payload.lastSelectedNodeId : "";
             nodesCache = nodes;
+            lastSelectedNodeId = recentSelectedId;
+
+            const hasNode = (id) => !!id && nodes.some((node) => node && node.id === id);
+            if (hasNode(recentSelectedId)) {
+              preferredNodeId = recentSelectedId;
+            } else if (hasNode(serverActiveNodeId)) {
+              preferredNodeId = serverActiveNodeId;
+            } else if (nodes.length > 0 && nodes[0] && nodes[0].id) {
+              preferredNodeId = nodes[0].id;
+            } else {
+              preferredNodeId = "";
+            }
+
+            activeNodeId = serverActiveNodeId || preferredNodeId;
             updateNodeTabs(nodes);
             renderNodes(nodes, activeNodeId);
             updateHomeNodeStatus();
@@ -1561,8 +1582,9 @@ let componentsCache = [];
           if (!homeNodeName || !homeNodeAddress || !homeNodeLatency || !homeNodeSpeed || !homeNodeUpdated) return;
           let node = null;
           if (Array.isArray(nodesCache) && nodesCache.length > 0) {
-            if (xrayStatus.activeNodeId) {
-              node = nodesCache.find((item) => item.id === xrayStatus.activeNodeId) || null;
+            const targetId = resolveHomeNodeId();
+            if (targetId) {
+              node = nodesCache.find((item) => item.id === targetId) || null;
             }
             if (!node) {
               node = nodesCache[0];
@@ -1607,7 +1629,14 @@ let componentsCache = [];
             return active.id;
           }
         }
-        return nodesCache[0].id || "";
+        if (preferredNodeId) {
+          const preferred = nodesCache.find((item) => item.id === preferredNodeId);
+          if (preferred && preferred.id) {
+            return preferred.id;
+          }
+        }
+        const first = nodesCache[0];
+        return (first && first.id) || "";
       }
 
       async function autoPingCurrentNode(targetId, { force = false } = {}) {
@@ -1680,22 +1709,22 @@ let componentsCache = [];
         }
       }
 
-      async function autoMeasureCurrentNode() {
+      async function autoMeasureCurrentNode({ force = false } = {}) {
         const targetId = resolveHomeNodeId();
         if (!targetId) {
           return;
         }
-        const pingTriggered = await autoPingCurrentNode(targetId);
+        const pingTriggered = await autoPingCurrentNode(targetId, { force });
         if (pingTriggered) {
           await sleep(200);
         }
-        await autoSpeedtestCurrentNode(targetId);
+        await autoSpeedtestCurrentNode(targetId, { force });
       }
 
-       async function loadHomePanel({ notify = false } = {}) {
+        async function loadHomePanel({ notify = false } = {}) {
           await Promise.all([loadComponents(), refreshXrayStatus({ notify }), loadSystemProxySettings({ notify })]);
           updateHomeNodeStatus();
-          await autoMeasureCurrentNode();
+          await autoMeasureCurrentNode({ force: true });
         }
 
         async function handleProxyToggle() {
@@ -1769,7 +1798,6 @@ let componentsCache = [];
                   <td>${installedAt}</td>
                   <td>${statusText}<br /><span class="muted">自动更新：${interval}</span></td>
                   <td>
-                    <button class="primary" data-action="install-component">安装 / 更新</button>
                     <button class="danger" data-action="delete-component">删除</button>
                   </td>
                 </tr>
@@ -1798,8 +1826,6 @@ let componentsCache = [];
           switch (kind) {
             case "xray":
               return "Xray";
-            case "singbox":
-              return "sing-box";
             default:
               return kind || "组件";
           }
@@ -2042,20 +2068,13 @@ let componentsCache = [];
         document.getElementById("config-form").addEventListener("submit", async (event) => {
           event.preventDefault();
           const form = event.target;
-          const subscriptionUrl = form.subscriptionUrl.value.trim();
           let inferredFormat = "";
           const typedPayload = (form.payload.value || "").trim();
           const sourceUrl = form.sourceUrl.value.trim();
-          const detectSample = typedPayload || sourceUrl || subscriptionUrl;
+          const detectSample = typedPayload || sourceUrl;
           if (detectSample) {
             const lower = detectSample.toLowerCase();
-            if (lower.startsWith("http") && lower.includes("clash")) {
-              inferredFormat = "clash";
-            } else if (lower.includes("sing-box") || lower.includes("singbox")) {
-              inferredFormat = "singbox-json";
-            } else if (/vmess|trojan|vless|ss:/.test(lower)) {
-              inferredFormat = "v2rayn";
-            } else if (/\"outbounds\"/.test(detectSample) || /\"inbounds\"/.test(detectSample)) {
+            if (/\"outbounds\"/.test(detectSample) || /\"inbounds\"/.test(detectSample) || /vmess|trojan|vless|ss:/.test(lower)) {
               inferredFormat = "xray-json";
             }
           }
@@ -2066,11 +2085,8 @@ let componentsCache = [];
             payload: typedPayload,
             autoUpdateIntervalMinutes: parseNumber(form.autoUpdateInterval.value),
           };
-          if (subscriptionUrl) {
-            payload.sourceUrl = subscriptionUrl;
-          }
-          if (!payload.sourceUrl && !payload.payload.trim()) {
-            showStatus("未提供 sourceUrl 时必须填写 payload", "error", 5000);
+          if (!payload.sourceUrl) {
+            showStatus("请填写源/订阅链接", "error", 5000);
             return;
           }
           try {
@@ -2201,12 +2217,7 @@ let componentsCache = [];
             const id = tr.dataset.id;
             const action = button.dataset.action;
             try {
-              if (action === "install-component") {
-                await api.post(`/components/${id}/install`);
-                showStatus("组件更新任务已触发", "info");
-                await loadComponents();
-                await refreshXrayStatus();
-              } else if (action === "delete-component") {
+              if (action === "delete-component") {
                 if (!confirm("确认删除该组件？")) return;
                 await api.delete(`/components/${id}`);
                 showStatus("组件已删除", "success");

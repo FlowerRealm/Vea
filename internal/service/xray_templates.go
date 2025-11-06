@@ -125,10 +125,10 @@ func buildXrayOutbound(node domain.Node) (map[string]any, string, error) {
 		streamSettings map[string]any
 	)
 
-    sec := node.Security
-    if sec == nil {
-        sec = &domain.NodeSecurity{}
-    }
+	sec := node.Security
+	if sec == nil {
+		sec = &domain.NodeSecurity{}
+	}
 
 	switch node.Protocol {
 	case domain.ProtocolVMess:
@@ -186,9 +186,6 @@ func buildXrayOutbound(node domain.Node) (map[string]any, string, error) {
 		if sec.Plugin != "" {
 			server["plugin"] = sec.Plugin
 		}
-		if sec.PluginOpts != "" {
-			server["pluginOpts"] = sec.PluginOpts
-		}
 		settings = map[string]any{
 			"servers": []map[string]any{server},
 		}
@@ -201,7 +198,7 @@ func buildXrayOutbound(node domain.Node) (map[string]any, string, error) {
 		streamSettings = buildXrayStreamSettings(transport, node.TLS)
 	}
 
-    // 插件路径已废弃，统一使用内置 tcp/http 头。保留此处为空以简化逻辑。
+	// 插件路径已废弃，统一使用内置 tcp/http 头。保留此处为空以简化逻辑。
 
 	if streamSettings != nil {
 		outbound["streamSettings"] = streamSettings
@@ -263,13 +260,13 @@ func buildMeasurementXrayConfig(node domain.Node, inboundPort int) ([]byte, stri
 		method = "GET"
 	}
 
-    requestHeaders := map[string]any{
-        "Host":            []string{host},
-        "User-Agent":      []string{userAgent},
-        "Accept-Encoding": []string{acceptEncoding},
-        "Connection":      []string{connection},
-        "Pragma":          "no-cache",
-    }
+	requestHeaders := map[string]any{
+		"Host":            []string{host},
+		"User-Agent":      []string{userAgent},
+		"Accept-Encoding": []string{acceptEncoding},
+		"Connection":      []string{connection},
+		"Pragma":          "no-cache",
+	}
 
 	request := map[string]any{
 		"version": version,
@@ -278,27 +275,27 @@ func buildMeasurementXrayConfig(node domain.Node, inboundPort int) ([]byte, stri
 		"headers": requestHeaders,
 	}
 
-    // 统一使用内置 tcp/http 头，不再使用任何插件
-    var stream map[string]any
-    stream = map[string]any{
-        "network":  "tcp",
-        "tcpSettings": map[string]any{
-            "header": map[string]any{
-                "type":    "http",
-                "request": request,
-            },
-        },
-    }
+	// 统一使用内置 tcp/http 头，不再使用任何插件
+	var stream map[string]any
+	stream = map[string]any{
+		"network": "tcp",
+		"tcpSettings": map[string]any{
+			"header": map[string]any{
+				"type":    "http",
+				"request": request,
+			},
+		},
+	}
 
-    shadowsocksServer := map[string]any{
-        "address":  node.Address,
-        "port":     node.Port,
-        "method":   node.Security.Method,
-        "password": node.Security.Password,
-        "ota":      false,
-        "level":    1,
-    }
-    // 插件字段移除
+	shadowsocksServer := map[string]any{
+		"address":  node.Address,
+		"port":     node.Port,
+		"method":   node.Security.Method,
+		"password": node.Security.Password,
+		"ota":      false,
+		"level":    1,
+	}
+	// 插件字段移除
 
 	outbound := map[string]any{
 		"tag":      fmt.Sprintf("node-%s", shortenID(node.ID)),
@@ -311,15 +308,15 @@ func buildMeasurementXrayConfig(node domain.Node, inboundPort int) ([]byte, stri
 		outbound["streamSettings"] = stream
 	}
 
-    config := map[string]any{
-        "log": map[string]any{
-            "loglevel": "debug",
-        },
-        "inbounds": []map[string]any{
-            {
-                "listen":   xrayDefaultListenAddr,
-                "port":     inboundPort,
-                "protocol": "socks",
+	config := map[string]any{
+		"log": map[string]any{
+			"loglevel": "debug",
+		},
+		"inbounds": []map[string]any{
+			{
+				"listen":   xrayDefaultListenAddr,
+				"port":     inboundPort,
+				"protocol": "socks",
 				"settings": map[string]any{
 					"auth": "noauth",
 					"udp":  true,
@@ -396,9 +393,9 @@ func buildXrayStreamSettings(transport *domain.NodeTransport, tls *domain.NodeTL
 		if path == "" {
 			path = "/"
 		}
-        if transport.Host != "" || len(transport.Headers) > 0 || path != "" {
-            request := map[string]any{}
-            headerMap := map[string]any{}
+		if transport.Host != "" || len(transport.Headers) > 0 || path != "" {
+			request := map[string]any{}
+			headerMap := map[string]any{}
 
 			if transport.Host != "" {
 				headerMap["Host"] = []string{transport.Host}
@@ -416,34 +413,34 @@ func buildXrayStreamSettings(transport *domain.NodeTransport, tls *domain.NodeTL
 			request["method"] = method
 			request["version"] = version
 
-            for k, v := range transport.Headers {
-                key := strings.TrimSpace(k)
-                if key == "" || key == shadowsocksHTTPMethodKey || key == shadowsocksHTTPVersionKey {
-                    continue
-                }
-                value := strings.TrimSpace(v)
-                if value == "" {
-                    continue
-                }
-                if strings.EqualFold(key, "Pragma") {
-                    // 与常见示例一致：Pragma 使用字符串而非数组
-                    headerMap[key] = value
-                } else {
-                    headerMap[key] = []string{value}
-                }
-            }
-            if len(headerMap) > 0 {
-                request["headers"] = headerMap
-            }
-            header := map[string]any{
-                "type":    "http",
-                "request": request,
-            }
-            stream["tcpSettings"] = map[string]any{
-                "header": header,
-            }
-        }
-        // 当未启用 TLS 时不显式写 security，默认即为 none，避免冗余字段。
+			for k, v := range transport.Headers {
+				key := strings.TrimSpace(k)
+				if key == "" || key == shadowsocksHTTPMethodKey || key == shadowsocksHTTPVersionKey {
+					continue
+				}
+				value := strings.TrimSpace(v)
+				if value == "" {
+					continue
+				}
+				if strings.EqualFold(key, "Pragma") {
+					// 与常见示例一致：Pragma 使用字符串而非数组
+					headerMap[key] = value
+				} else {
+					headerMap[key] = []string{value}
+				}
+			}
+			if len(headerMap) > 0 {
+				request["headers"] = headerMap
+			}
+			header := map[string]any{
+				"type":    "http",
+				"request": request,
+			}
+			stream["tcpSettings"] = map[string]any{
+				"header": header,
+			}
+		}
+		// 当未启用 TLS 时不显式写 security，默认即为 none，避免冗余字段。
 	}
 
 	if tlsEnabled {

@@ -13,6 +13,8 @@ bin/
 *.dylib
 *.test
 *.out
+dist/
+vea-package.tar.gz
 
 # Env / tooling
 .env
@@ -25,3 +27,6 @@ bin/
 *.sqlite3
 data/
 artifacts/
+
+# data
+data/

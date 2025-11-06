@@ -162,9 +162,11 @@ type nodeTrafficRequest struct {
 }
 
 func (r *Router) listNodes(c *gin.Context) {
+	nodes := r.service.ListNodes()
 	c.JSON(http.StatusOK, gin.H{
-		"nodes":        r.service.ListNodes(),
-		"activeNodeId": r.service.ActiveXrayNodeID(),
+		"nodes":              nodes,
+		"activeNodeId":       r.service.ActiveXrayNodeID(),
+		"lastSelectedNodeId": r.service.LastSelectedNodeID(),
 	})
 }
 
@@ -329,6 +331,10 @@ func (r *Router) importConfig(c *gin.Context) {
 		badRequest(c, err)
 		return
 	}
+	if strings.TrimSpace(req.SourceURL) == "" {
+		badRequest(c, errors.New("sourceUrl is required"))
+		return
+	}
 	now := time.Duration(req.AutoUpdateInterval) * time.Minute
 	cfg := domain.Config{
 		Name:               req.Name,
@@ -350,6 +356,10 @@ func (r *Router) updateConfig(c *gin.Context) {
 	var req configRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		badRequest(c, err)
+		return
+	}
+	if strings.TrimSpace(req.SourceURL) == "" {
+		badRequest(c, errors.New("sourceUrl is required"))
 		return
 	}
 	id := c.Param("id")

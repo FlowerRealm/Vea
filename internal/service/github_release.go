@@ -179,17 +179,6 @@ func releaseAssetNameMatches(assetName, candidate string) bool {
 			}
 		}
 	}
-	if strings.HasPrefix(candidateLower, "sing-box-") && strings.HasPrefix(assetLower, "sing-box-") {
-		suffix := strings.TrimPrefix(candidateLower, "sing-box-")
-		if strings.HasSuffix(assetLower, suffix) {
-			rest := strings.TrimSuffix(strings.TrimPrefix(assetLower, "sing-box-"), suffix)
-			rest = strings.Trim(rest, "-")
-			if rest == "" {
-				return true
-			}
-			return looksLikeVersion(rest)
-		}
-	}
 	return false
 }
 
