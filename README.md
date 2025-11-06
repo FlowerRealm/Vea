@@ -1,64 +1,85 @@
 # Vea Backend
 
-Go 实现的 xray/sing-box 管理服务，聚焦节点与配置生命周期、流量策略以及 Geo 资源的集中管控。服务通过 REST API 暴露给前端，内置定时任务完成自动同步与节点探测。
+Vea 是一个用 Go 编写的 Xray 管理服务，提供节点、配置、Geo 资源、流量策略的统一运维入口，同时内置简单的 Web 控制台，方便在浏览器中完成日常维护。
 
-## 功能概览
+## 功能亮点
 
-- **节点管理**：增删改查、上传/下载流量上报、延迟与速度测试、一键清零流量，支持直接粘贴 vmess/vless/trojan 分享链接快速录入。
-- **配置文件管理**：支持 xray、sing-box、V2RayN、Clash 等格式的导入，维护自动更新周期、流量统计与到期时间。
-- **核心组件更新**：内置 xray/sing-box/Geo 官方发布源，后台定时拉取更新并记录校验值与错误状态；控制台提供一键下载、自动解压安装按钮。
-- **Geo 资源**：下载与刷新 GeoIP/GeoSite 等分流资源，跟踪版本、校验值与更新时间。
-- **前端控制台**：内置极简静态页面，通过浏览器直接增删节点、配置、Geo 资源并维护流量策略。
-- **分流与 DNS**：维护默认节点、DNS 策略、按优先级匹配的分流规则，支持为特定流量绑定节点。
-- **后台任务**：自动同步配置、周期刷新 Geo 资源、轮询节点延迟，保障前端展示的实时性。
+- 节点中心：新增/编辑/删除节点，粘贴 vmess/vless/trojan/ss 分享链接即可导入，支持测速、延迟测试、流量清零。
+- 配置管理：导入 Xray JSON 或订阅链接，跟踪自动刷新周期、流量统计与到期时间。
+- Geo 与核心组件：定时刷新 GeoIP/GeoSite，按需下载/安装 Xray 核心并记录校验值。
+- 流量策略：配置默认出口、DNS、分流规则；选择当前使用节点，支持手动切换 Xray。
+- 前端控制台：`/` 提供极简 UI，可快速操作节点、配置、Geo、分流策略。
 
-## 技术栈
+## 环境要求
 
-- 语言：Go 1.22
-- HTTP 框架：Gin
-- 存储：并发安全的内存存储（可替换为数据库实现）
-- 定时任务：基于 `context` + `time.Ticker`
+- Go 1.22+
+- Git（克隆项目）
+- 可联网环境用于拉取依赖与 Geo 资源（如需）
 
-## 快速开始
+## 快速上手
 
-1. 安装 Go 1.22：参阅 [Go 官方下载页面](https://go.dev/dl/)。
-2. 拉取依赖并构建：
-
+1. 克隆仓库并进入目录：
+   ```bash
+   git clone https://github.com/<your-org>/Vea.git
+   cd Vea
+   ```
+2. 安装依赖并确认可以构建：
    ```bash
    go mod tidy
    go build ./...
    ```
-
-3. 启动服务：
-
+3. 启动服务（默认监听 `:8080`）：
    ```bash
-   go run ./cmd/server --addr :8080
+   go run ./cmd/server --addr :8080 --state ./data/state.json
    ```
+   常用参数：
+   - `--addr`：HTTP 服务监听地址，例如 `--addr 0.0.0.0:9000`
+   - `--state`：快照文件路径，默认 `data/state.json`
+4. 验证运行状态：
+   - `GET http://127.0.0.1:8080/health`：健康检查
+   - 浏览器打开 `http://127.0.0.1:8080/`：访问内置控制台
 
-4. 服务监听地址通过启动参数 `--addr` 指定，未提供时默认 `:8080`。运行后打开对应地址的 `/health` 端点验证状态。
+## 目录与数据
 
-配置导入时如需自动更新，可额外提供 `sourceUrl` 字段，服务会在首次导入及后续后台任务中从该链接抓取内容，存储最新 payload 与 checksum；也支持直接粘贴订阅链接（HTTP/HTTPS、Base64 订阅或 vmess/vless/trojan/ss 分享地址），系统会自动归档。Geo 资源同理，并会把下载文件写入 `artifacts/geo/<id>.bin`。访问 `http://127.0.0.1:8080/` 打开内置控制台，可直接管理节点、配置、Geo 资源与流量策略。默认会将运行时状态快照保存到 `data/state.json`，重新启动时会自动恢复。
+- `data/state.json`：内存状态快照，服务每次写操作后自动刷盘；下次启动会恢复。
+- `artifacts/geo/`：存放 Geo 资源二进制文件，例如 `artifacts/geo/<id>.bin`。
+- `dist/`：存放手动或 CI 打包生成的发布归档。
+- `scripts/`：平台化打包脚本（`package-linux.sh`、`package-macos.sh`、`package-windows.ps1`）。
 
-## API 大纲
+## 发布与打包
 
-- `GET /health`：健康检查。
-- `GET /snapshot`：一次性获取节点、配置、Geo 资源及分流策略快照。
-- `/nodes`：节点的 CRUD、流量上报、延迟/速度测试、流量清零。
-- `/configs`：配置导入、更新、删除、手动刷新、流量统计。
-- `POST /configs/:id/pull-nodes`：从订阅/SourceURL 拉取节点并写入节点列表。
-- `/components`：核心组件（xray/sing-box/Geo 等）增删改查与安装触发。
-- `/geo`：Geo 资源新增/更新、删除、刷新。
-- `/traffic/profile`：查询与更新默认节点、DNS 配置。
-- `/traffic/rules`：管理分流规则（优先级控制节点与目标的绑定）。
+### 本地打包
 
-所有接口返回 JSON，错误时提供 `error` 字段描述。可基于此结构快速对接前端。
+根据目标平台执行对应脚本，示例（Linux amd64）：
+```bash
+./scripts/package-linux.sh v1.0.0 amd64 dist
+```
+macOS 与 Windows：
+```bash
+./scripts/package-macos.sh v1.0.0 arm64 dist
+powershell ./scripts/package-windows.ps1 -Version v1.0.0 -GoOS windows -GoArch amd64
+```
+生成的归档名为 `vea-<version>-<goos>-<goarch>.<tar.gz|zip>`，内部包含可执行文件、`web/` 前端与 `LICENSE`。
 
-## 任务与扩展建议
+若需要对 macOS 可执行文件进行签名，在运行脚本前设置：
+```bash
+export MACOS_CODESIGN_IDENTITY="Developer ID Application: ..."
+export MACOS_CODESIGN_ENTITLEMENTS="entitlements.plist" # 可选
+```
 
-- 现有存储为内存实现，便于原型验证；生产环境可实现 `store` 接口以接入数据库。
-- 节点延迟、速度测试当前为模拟值，可集成真实探测脚本或对接底层内核的统计信息。
-- Geo 资源刷新任务留有扩展点，可接入自定义下载与校验逻辑。
+### GitHub Actions
+
+仓库提供 `.github/workflows/release.yml`，通过 `workflow_dispatch` 触发手动发布：
+1. 在 GitHub Actions 面板选择 **Build and Release**。
+2. 输入版本号（例如 `v1.2.3`）和 Release Notes，点击运行。
+3. CI 分别在 Linux/macOS/Windows 构建产物，生成 `vea-<version>-SHA256SUMS` 校验文件，并把所有归档上传到 GitHub Release。
+
+## 进一步扩展
+
+- 将内存存储实现替换为数据库，满足多实例部署需求。
+- 接入真实的节点探测脚本，替换当前模拟的延迟/速度数据。
+- 自定义 Geo 资源下载与校验策略，以适配内网或镜像源。
 
 ## 许可证
 
-本项目遵循 [MIT](LICENSE) 开源协议。
+项目采用 [MIT](LICENSE) 许可证，欢迎在该协议下使用与贡献。
