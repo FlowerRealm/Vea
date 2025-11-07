@@ -53,23 +53,25 @@ var httpClient = &http.Client{
 	Timeout: downloadTimeout,
 }
 
-var httpClientHTTP11 = newHTTP11Client(false)
-var httpClientHTTP11NoProxy = newHTTP11Client(true)
+var httpClientDirect = newHTTPClient(true, false)
+var httpClientDirectHTTP11 = newHTTPClient(true, true)
 
-func newHTTP11Client(bypassProxy bool) *http.Client {
+func newHTTPClient(bypassProxy, forceHTTP11 bool) *http.Client {
 	tr := &http.Transport{
 		Proxy:               http.ProxyFromEnvironment,
 		DialContext:         (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
-		ForceAttemptHTTP2:   false,
+		ForceAttemptHTTP2:   !forceHTTP11,
 		DisableKeepAlives:   true,
 		TLSHandshakeTimeout: 10 * time.Second,
-		TLSClientConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			NextProtos: []string{"http/1.1"},
-		},
 	}
 	if bypassProxy {
 		tr.Proxy = nil
+	}
+	if forceHTTP11 {
+		tr.TLSClientConfig = &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			NextProtos: []string{"http/1.1"},
+		}
 	}
 	return &http.Client{
 		Timeout:   downloadTimeout,
@@ -1590,7 +1592,7 @@ func (s *Service) refreshGeoResource(res domain.GeoResource) (domain.GeoResource
 	return s.store.UpsertGeo(res), nil
 }
 
-func shouldRetryHTTP11(err error) bool {
+func shouldRetryDownload(err error) bool {
 	if err == nil {
 		return false
 	}
@@ -1603,11 +1605,11 @@ func shouldRetryHTTP11(err error) bool {
 	}
 	var urlErr *url.Error
 	if errors.As(err, &urlErr) && urlErr != nil {
-		return shouldRetryHTTP11(urlErr.Err)
+		return shouldRetryDownload(urlErr.Err)
 	}
 	var opErr *net.OpError
 	if errors.As(err, &opErr) && opErr != nil {
-		return shouldRetryHTTP11(opErr.Err)
+		return shouldRetryDownload(opErr.Err)
 	}
 	return false
 }
@@ -1627,11 +1629,11 @@ func downloadResource(source string) ([]byte, string, error) {
 	}
 
 	resp, err := doRequest(httpClient)
-	if err != nil && shouldRetryHTTP11(err) {
-		resp, err = doRequest(httpClientHTTP11)
+	if err != nil && shouldRetryDownload(err) {
+		resp, err = doRequest(httpClientDirect)
 	}
-	if err != nil && shouldRetryHTTP11(err) {
-		resp, err = doRequest(httpClientHTTP11NoProxy)
+	if err != nil && shouldRetryDownload(err) {
+		resp, err = doRequest(httpClientDirectHTTP11)
 	}
 	if err != nil {
 		return nil, "", err
