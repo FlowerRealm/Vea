@@ -53,8 +53,11 @@ var httpClient = &http.Client{
 	Timeout: downloadTimeout,
 }
 
-var httpClientDirect = newHTTPClient(true, false)
-var httpClientDirectHTTP11 = newHTTPClient(true, true)
+var (
+	httpClientDirect       = newHTTPClient(true, false)
+	httpClientHTTP11       = newHTTPClient(false, true)
+	httpClientDirectHTTP11 = newHTTPClient(true, true)
+)
 
 func newHTTPClient(bypassProxy, forceHTTP11 bool) *http.Client {
 	tr := &http.Transport{
@@ -1614,6 +1617,28 @@ func shouldRetryDownload(err error) bool {
 	return false
 }
 
+func shouldRetryHTTP11(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) && urlErr != nil {
+		return shouldRetryHTTP11(urlErr.Err)
+	}
+	var opErr *net.OpError
+	if errors.As(err, &opErr) && opErr != nil {
+		return shouldRetryHTTP11(opErr.Err)
+	}
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "http2:") || strings.Contains(msg, "protocol error") {
+		return true
+	}
+	return false
+}
+
 func downloadResource(source string) ([]byte, string, error) {
 	if source == "" {
 		return nil, "", errors.New("empty source url")
@@ -1632,7 +1657,10 @@ func downloadResource(source string) ([]byte, string, error) {
 	if err != nil && shouldRetryDownload(err) {
 		resp, err = doRequest(httpClientDirect)
 	}
-	if err != nil && shouldRetryDownload(err) {
+	if err != nil && shouldRetryHTTP11(err) {
+		resp, err = doRequest(httpClientHTTP11)
+	}
+	if err != nil && shouldRetryHTTP11(err) {
 		resp, err = doRequest(httpClientDirectHTTP11)
 	}
 	if err != nil {
