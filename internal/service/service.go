@@ -53,30 +53,6 @@ var httpClient = &http.Client{
 	Timeout: downloadTimeout,
 }
 
-var httpClientHTTP11 = newHTTP11Client(false)
-var httpClientHTTP11NoProxy = newHTTP11Client(true)
-
-func newHTTP11Client(bypassProxy bool) *http.Client {
-	tr := &http.Transport{
-		Proxy:               http.ProxyFromEnvironment,
-		DialContext:         (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
-		ForceAttemptHTTP2:   false,
-		DisableKeepAlives:   true,
-		TLSHandshakeTimeout: 10 * time.Second,
-		TLSClientConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			NextProtos: []string{"http/1.1"},
-		},
-	}
-	if bypassProxy {
-		tr.Proxy = nil
-	}
-	return &http.Client{
-		Timeout:   downloadTimeout,
-		Transport: tr,
-	}
-}
-
 // ErrXrayNotInstalled is returned when xray-related operations are invoked without installing the component.
 var ErrXrayNotInstalled = errXrayComponentNotInstalled
 
@@ -1590,49 +1566,18 @@ func (s *Service) refreshGeoResource(res domain.GeoResource) (domain.GeoResource
 	return s.store.UpsertGeo(res), nil
 }
 
-func shouldRetryHTTP11(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-		return true
-	}
-	msg := err.Error()
-	if strings.Contains(msg, "EOF") || strings.Contains(msg, "http2:") || strings.Contains(msg, "protocol error") {
-		return true
-	}
-	var urlErr *url.Error
-	if errors.As(err, &urlErr) && urlErr != nil {
-		return shouldRetryHTTP11(urlErr.Err)
-	}
-	var opErr *net.OpError
-	if errors.As(err, &opErr) && opErr != nil {
-		return shouldRetryHTTP11(opErr.Err)
-	}
-	return false
-}
-
 func downloadResource(source string) ([]byte, string, error) {
 	if source == "" {
 		return nil, "", errors.New("empty source url")
 	}
 
-	doRequest := func(client *http.Client) (*http.Response, error) {
-		req, reqErr := http.NewRequest(http.MethodGet, source, nil)
-		if reqErr != nil {
-			return nil, reqErr
-		}
-		req.Header.Set("User-Agent", githubUserAgent())
-		return client.Do(req)
+	req, err := http.NewRequest(http.MethodGet, source, nil)
+	if err != nil {
+		return nil, "", err
 	}
-
-	resp, err := doRequest(httpClient)
-	if err != nil && shouldRetryHTTP11(err) {
-		resp, err = doRequest(httpClientHTTP11)
-	}
-	if err != nil && shouldRetryHTTP11(err) {
-		resp, err = doRequest(httpClientHTTP11NoProxy)
-	}
+	// Be a good citizen for GitHub and other CDNs.
+	req.Header.Set("User-Agent", githubUserAgent())
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, "", err
 	}
