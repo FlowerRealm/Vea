@@ -64,6 +64,18 @@ func TestShouldRetryHTTP11(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "error message contains EOF",
+			err:  errors.New("server response EOF while reading body"),
+			want: true,
+		},
+		{
+			name: "nested error message contains EOF",
+			err: &net.OpError{Err: &url.Error{Err: errors.New(
+				"proxy tunnel failure: unexpected EOF",
+			)}},
+			want: true,
+		},
+		{
 			name: "non retryable",
 			err:  errors.New("connection refused"),
 			want: false,

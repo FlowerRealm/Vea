@@ -1635,7 +1635,7 @@ func shouldRetryHTTP11(err error) bool {
 		return shouldRetryHTTP11(opErr.Err)
 	}
 	msg := strings.ToLower(err.Error())
-	if strings.Contains(msg, "http2:") || strings.Contains(msg, "protocol error") {
+	if strings.Contains(msg, "http2:") || strings.Contains(msg, "protocol error") || strings.Contains(msg, "eof") {
 		return true
 	}
 	return false
