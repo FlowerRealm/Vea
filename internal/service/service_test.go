@@ -1,6 +1,7 @@
 package service
 
 import (
+	"crypto/tls"
 	"errors"
 	"io"
 	"net"
@@ -73,6 +74,11 @@ func TestShouldRetryHTTP11(t *testing.T) {
 			err: &net.OpError{Err: &url.Error{Err: errors.New(
 				"proxy tunnel failure: unexpected EOF",
 			)}},
+			want: true,
+		},
+		{
+			name: "tls record header error",
+			err:  &tls.RecordHeaderError{Msg: "first record does not look like TLS"},
 			want: true,
 		},
 		{

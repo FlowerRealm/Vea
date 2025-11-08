@@ -1627,6 +1627,10 @@ func shouldRetryHTTP11(err error) bool {
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 		return true
 	}
+	var recordErr *tls.RecordHeaderError
+	if errors.As(err, &recordErr) && recordErr != nil {
+		return true
+	}
 	var urlErr *url.Error
 	if errors.As(err, &urlErr) && urlErr != nil {
 		return shouldRetryHTTP11(urlErr.Err)
