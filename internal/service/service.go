@@ -55,6 +55,7 @@ var httpClient = &http.Client{
 
 var (
 	httpClientDirect       = newHTTPClient(true, false)
+	httpClientHTTP11       = newHTTPClient(false, true)
 	httpClientDirectHTTP11 = newHTTPClient(true, true)
 )
 
@@ -1656,9 +1657,13 @@ func downloadResource(source string) ([]byte, string, error) {
 	}
 
 	resp, err := doRequest(httpClientDirect)
+	if err != nil && shouldRetryHTTP11(err) {
+		resp, err = doRequest(httpClientDirectHTTP11)
+	}
 	if err != nil {
-		if shouldRetryHTTP11(err) || shouldRetryDownload(err) {
-			resp, err = doRequest(httpClientDirectHTTP11)
+		resp, err = doRequest(httpClient)
+		if err != nil && shouldRetryHTTP11(err) {
+			resp, err = doRequest(httpClientHTTP11)
 		}
 	}
 	if err != nil {
