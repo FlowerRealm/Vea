@@ -257,6 +257,9 @@ func NewService(store *store.MemoryStore, tasks ...Task) *Service {
 		speedJobs:    make(map[string]struct{}),
 		latencyJobs:  make(map[string]struct{}),
 	}
+	if removed := svc.store.CleanupOrphanNodes(); removed > 0 {
+		log.Printf("purged %d orphan nodes referencing deleted configs", removed)
+	}
 	svc.restoreXrayState()
 	svc.resetNodeProbeStats()
 	go svc.speedWorker()
