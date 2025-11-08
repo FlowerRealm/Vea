@@ -53,6 +53,38 @@ var httpClient = &http.Client{
 	Timeout: downloadTimeout,
 }
 
+var (
+	// httpClientDirect attempts HTTP/2 downloads without honoring proxy settings.
+	httpClientDirect = newHTTPClient(true, false)
+	// httpClientHTTP11 forces HTTP/1.1 while still allowing environment proxies.
+	httpClientHTTP11 = newHTTPClient(false, true)
+	// httpClientDirectHTTP11 downgrades to HTTP/1.1 without using proxies.
+	httpClientDirectHTTP11 = newHTTPClient(true, true)
+)
+
+func newHTTPClient(bypassProxy, forceHTTP11 bool) *http.Client {
+	tr := &http.Transport{
+		Proxy:               http.ProxyFromEnvironment,
+		DialContext:         (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		ForceAttemptHTTP2:   !forceHTTP11,
+		DisableKeepAlives:   true,
+		TLSHandshakeTimeout: 10 * time.Second,
+	}
+	if bypassProxy {
+		tr.Proxy = nil
+	}
+	if forceHTTP11 {
+		tr.TLSClientConfig = &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			NextProtos: []string{"http/1.1"},
+		}
+	}
+	return &http.Client{
+		Timeout:   downloadTimeout,
+		Transport: tr,
+	}
+}
+
 // ErrXrayNotInstalled is returned when xray-related operations are invoked without installing the component.
 var ErrXrayNotInstalled = errXrayComponentNotInstalled
 
@@ -228,6 +260,9 @@ func NewService(store *store.MemoryStore, tasks ...Task) *Service {
 		latencyQueue: make(chan string, 32),
 		speedJobs:    make(map[string]struct{}),
 		latencyJobs:  make(map[string]struct{}),
+	}
+	if removed := svc.store.CleanupOrphanNodes(); removed > 0 {
+		log.Printf("purged %d orphan nodes referencing deleted configs", removed)
 	}
 	svc.restoreXrayState()
 	svc.resetNodeProbeStats()
@@ -1566,18 +1601,78 @@ func (s *Service) refreshGeoResource(res domain.GeoResource) (domain.GeoResource
 	return s.store.UpsertGeo(res), nil
 }
 
+func shouldRetryDownload(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "EOF") || strings.Contains(msg, "http2:") || strings.Contains(msg, "protocol error") {
+		return true
+	}
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) && urlErr != nil {
+		return shouldRetryDownload(urlErr.Err)
+	}
+	var opErr *net.OpError
+	if errors.As(err, &opErr) && opErr != nil {
+		return shouldRetryDownload(opErr.Err)
+	}
+	return false
+}
+
+func shouldRetryHTTP11(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	var recordErr *tls.RecordHeaderError
+	if errors.As(err, &recordErr) && recordErr != nil {
+		return true
+	}
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) && urlErr != nil {
+		return shouldRetryHTTP11(urlErr.Err)
+	}
+	var opErr *net.OpError
+	if errors.As(err, &opErr) && opErr != nil {
+		return shouldRetryHTTP11(opErr.Err)
+	}
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "http2:") || strings.Contains(msg, "protocol error") || strings.Contains(msg, "eof") {
+		return true
+	}
+	return false
+}
+
 func downloadResource(source string) ([]byte, string, error) {
 	if source == "" {
 		return nil, "", errors.New("empty source url")
 	}
 
-	req, err := http.NewRequest(http.MethodGet, source, nil)
-	if err != nil {
-		return nil, "", err
+	doRequest := func(client *http.Client) (*http.Response, error) {
+		req, reqErr := http.NewRequest(http.MethodGet, source, nil)
+		if reqErr != nil {
+			return nil, reqErr
+		}
+		req.Header.Set("User-Agent", githubUserAgent())
+		return client.Do(req)
 	}
-	// Be a good citizen for GitHub and other CDNs.
-	req.Header.Set("User-Agent", githubUserAgent())
-	resp, err := httpClient.Do(req)
+
+	resp, err := doRequest(httpClientDirect)
+	if err != nil && shouldRetryHTTP11(err) {
+		resp, err = doRequest(httpClientDirectHTTP11)
+	}
+	if err != nil {
+		resp, err = doRequest(httpClient)
+		if err != nil && shouldRetryHTTP11(err) {
+			resp, err = doRequest(httpClientHTTP11)
+		}
+	}
 	if err != nil {
 		return nil, "", err
 	}

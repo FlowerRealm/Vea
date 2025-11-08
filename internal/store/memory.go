@@ -160,11 +160,7 @@ func (s *MemoryStore) ListNodesByConfig(configID string) []domain.Node {
 func (s *MemoryStore) ReplaceNodesForConfig(configID string, nodes []domain.Node) []domain.Node {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for id, node := range s.nodes {
-		if node.SourceConfigID == configID {
-			delete(s.nodes, id)
-		}
-	}
+	s.removeNodesForConfigLocked(configID)
 	created := make([]domain.Node, 0, len(nodes))
 	now := time.Now()
 	for _, node := range nodes {
@@ -245,9 +241,53 @@ func (s *MemoryStore) DeleteConfig(id string) error {
 	if _, ok := s.configs[id]; !ok {
 		return errConfigNotFound
 	}
+	s.removeNodesForConfigLocked(id)
 	delete(s.configs, id)
 	s.fireAfterWrite()
 	return nil
+}
+
+func (s *MemoryStore) CleanupOrphanNodes() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	removed := s.cleanupOrphanNodesLocked()
+	if removed > 0 {
+		s.fireAfterWrite()
+	}
+	return removed
+}
+
+func (s *MemoryStore) removeNodesForConfigLocked(configID string) {
+	if configID == "" {
+		return
+	}
+	for id, node := range s.nodes {
+		if node.SourceConfigID != configID {
+			continue
+		}
+		delete(s.nodes, id)
+		if s.trafficProfile.DefaultNodeID == id {
+			s.trafficProfile.DefaultNodeID = ""
+		}
+	}
+}
+
+func (s *MemoryStore) cleanupOrphanNodesLocked() int {
+	removed := 0
+	for id, node := range s.nodes {
+		if node.SourceConfigID == "" {
+			continue
+		}
+		if _, ok := s.configs[node.SourceConfigID]; ok {
+			continue
+		}
+		delete(s.nodes, id)
+		if s.trafficProfile.DefaultNodeID == id {
+			s.trafficProfile.DefaultNodeID = ""
+		}
+		removed++
+	}
+	return removed
 }
 
 func (s *MemoryStore) IncrementConfigTraffic(id string, up, down int64) (domain.Config, error) {
@@ -647,6 +687,8 @@ func (s *MemoryStore) LoadState(state domain.ServiceState) {
 	} else {
 		s.systemProxy = state.SystemProxy
 	}
+
+	s.cleanupOrphanNodesLocked()
 }
 
 func defaultSystemProxySettings() domain.SystemProxySettings {
