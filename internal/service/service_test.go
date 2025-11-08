@@ -82,6 +82,13 @@ func TestShouldRetryHTTP11(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "nested tls record header error",
+			err: &url.Error{Err: &net.OpError{Err: &tls.RecordHeaderError{
+				Msg: "tls: handshake record header",
+			}}},
+			want: true,
+		},
+		{
 			name: "non retryable",
 			err:  errors.New("connection refused"),
 			want: false,

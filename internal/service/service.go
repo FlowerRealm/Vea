@@ -54,8 +54,11 @@ var httpClient = &http.Client{
 }
 
 var (
-	httpClientDirect       = newHTTPClient(true, false)
-	httpClientHTTP11       = newHTTPClient(false, true)
+	// httpClientDirect attempts HTTP/2 downloads without honoring proxy settings.
+	httpClientDirect = newHTTPClient(true, false)
+	// httpClientHTTP11 forces HTTP/1.1 while still allowing environment proxies.
+	httpClientHTTP11 = newHTTPClient(false, true)
+	// httpClientDirectHTTP11 downgrades to HTTP/1.1 without using proxies.
 	httpClientDirectHTTP11 = newHTTPClient(true, true)
 )
 
