@@ -34,7 +34,11 @@ prepare: ## 准备构建环境
 	@mkdir -p cmd/server/web/sdk/dist
 	@echo "==> 复制 web 资源..."
 	@cp web/index.html cmd/server/web/index.html
-	@cp -r sdk/dist/* cmd/server/web/sdk/dist/
+	@if [ -d sdk/dist ]; then \
+		cp -r sdk/dist/. cmd/server/web/sdk/dist/; \
+	else \
+		echo "==> 跳过 SDK 资源复制（sdk/dist 不存在）"; \
+	fi
 
 build: prepare ## 编译可执行文件（快速开发模式）
 	@echo "==> 编译 Vea $(VERSION) for $(GOOS)/$(GOARCH)..."
@@ -56,7 +60,11 @@ dev: ## 开发模式（使用 go run）
 	@echo "==> 准备开发环境..."
 	@mkdir -p cmd/server/web/sdk/dist
 	@cp web/index.html cmd/server/web/index.html
-	@cp -r sdk/dist/* cmd/server/web/sdk/dist/
+	@if [ -d sdk/dist ]; then \
+		cp -r sdk/dist/. cmd/server/web/sdk/dist/; \
+	else \
+		echo "==> 跳过 SDK 资源复制（sdk/dist 不存在）"; \
+	fi
 	@echo "==> 启动开发服务器（详细日志模式）..."
 	@go run ./cmd/server --dev
 
