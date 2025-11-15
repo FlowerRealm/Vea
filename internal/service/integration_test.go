@@ -44,10 +44,10 @@ func TestE2E_ProxyToCloudflare(t *testing.T) {
 		t.Fatalf("创建组件目录失败: %v", err)
 	}
 
-	// 复制 xray 二进制到组件目录（保留 Windows .exe 后缀）
-	xrayFilename := "xray"
-	if runtime.GOOS == "windows" {
-		xrayFilename = "xray.exe"
+	// 复制 xray 二进制到组件目录（保留原始文件名，确保 Windows 支持 .exe 后缀）
+	xrayFilename := filepath.Base(xrayBin)
+	if runtime.GOOS == "windows" && filepath.Ext(xrayFilename) == "" {
+		xrayFilename += ".exe"
 	}
 	xrayDest := filepath.Join(componentInstallDir, xrayFilename)
 	if err := copyFileForTest(xrayBin, xrayDest); err != nil {
