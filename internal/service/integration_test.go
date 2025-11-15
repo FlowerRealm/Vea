@@ -43,13 +43,19 @@ func TestE2E_ProxyToCloudflare(t *testing.T) {
 		t.Fatalf("创建组件目录失败: %v", err)
 	}
 
-	// 复制 xray 二进制到组件目录
-	xrayDest := filepath.Join(componentInstallDir, "xray")
+	// 复制 xray 二进制到组件目录（保留 Windows .exe 后缀）
+	xrayFilename := "xray"
+	if runtime.GOOS == "windows" {
+		xrayFilename = "xray.exe"
+	}
+	xrayDest := filepath.Join(componentInstallDir, xrayFilename)
 	if err := copyFileForTest(xrayBin, xrayDest); err != nil {
 		t.Fatalf("复制 xray 二进制失败: %v", err)
 	}
-	if err := os.Chmod(xrayDest, 0o755); err != nil {
-		t.Fatalf("设置 xray 权限失败: %v", err)
+	if runtime.GOOS != "windows" {
+		if err := os.Chmod(xrayDest, 0o755); err != nil {
+			t.Fatalf("设置 xray 权限失败: %v", err)
+		}
 	}
 
 	// 下载真实的 Geo 文件
@@ -272,17 +278,27 @@ func downloadViaSocks5(ctx context.Context, proxyHost string, proxyPort int, url
 func findXrayBinaryForTest(t *testing.T) string {
 	t.Helper()
 
+	xrayName := "xray"
+	if runtime.GOOS == "windows" {
+		xrayName = "xray.exe"
+	}
+
 	candidates := []string{
 		// 1. 项目中的 xray（最优先）
-		"artifacts/core/xray/xray",
-		"../../../artifacts/core/xray/xray",
+		filepath.Join("artifacts/core/xray", xrayName),
+		filepath.Join("../../../artifacts/core/xray", xrayName),
 		// 2. 环境变量
 		os.Getenv("XRAY_BINARY"),
 		// 3. 系统 PATH
 		func() string { path, _ := exec.LookPath("xray"); return path }(),
-		// 4. 常见位置
-		"/usr/local/bin/xray",
-		"/usr/bin/xray",
+	}
+
+	// 4. Unix 常见位置
+	if runtime.GOOS != "windows" {
+		candidates = append(candidates,
+			"/usr/local/bin/xray",
+			"/usr/bin/xray",
+		)
 	}
 
 	for _, path := range candidates {
@@ -306,7 +322,7 @@ func findXrayBinaryForTest(t *testing.T) string {
 	}
 
 	// 再次查找
-	installPath := "artifacts/core/xray/xray"
+	installPath := filepath.Join("artifacts/core/xray", xrayName)
 	if absPath, err := filepath.Abs(installPath); err == nil {
 		if _, err := os.Stat(absPath); err == nil {
 			return absPath
