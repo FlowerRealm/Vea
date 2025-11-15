@@ -190,10 +190,7 @@ npm install
 ```
 
 SDK 构建输出：
-- `sdk/dist/vea-sdk.esm.js` - ES Module 格式
-- `sdk/dist/vea-sdk.cjs.js` - CommonJS 格式
-- `sdk/dist/vea-sdk.umd.js` - UMD 格式
-- `sdk/dist/vea-sdk.umd.min.js` - 压缩版本（7.8 KB）
+- `sdk/dist/vea-sdk.esm.js` - ES Module 格式（唯一输出，适用于现代浏览器、Electron 和打包工具）
 
 ## 测试
 

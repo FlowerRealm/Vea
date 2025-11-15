@@ -7,7 +7,7 @@ Vea 后端 API 的官方 JavaScript SDK，支持浏览器、Node.js、Electron/T
 - ✅ **零依赖** - 使用原生 `fetch` API，无需第三方库
 - ✅ **TypeScript 支持** - 完整的类型定义
 - ✅ **跨平台** - 浏览器、Node.js、Electron、Tauri 全兼容
-- ✅ **轻量级** - 压缩后约 15KB
+- ✅ **轻量级** - 约 24KB（ES Module 格式）
 - ✅ **Promise 异步** - 现代化异步 API
 - ✅ **完整封装** - 覆盖所有 Vea Backend API 端点
 - ✅ **错误处理** - 统一的错误类型和处理
@@ -15,35 +15,21 @@ Vea 后端 API 的官方 JavaScript SDK，支持浏览器、Node.js、Electron/T
 
 ## 安装
 
-### npm/yarn/pnpm
+### 本地开发
 
-```bash
-npm install @vea/sdk
+SDK 已内置在 Vea 项目中，位于 `sdk/dist/vea-sdk.esm.js`。
 
-# 或
-yarn add @vea/sdk
+### Electron / 打包工具
 
-# 或
-pnpm add @vea/sdk
+如果你在 Electron 或使用打包工具（Vite、Webpack等），可以直接导入：
+
+```javascript
+import { VeaClient } from './path/to/sdk/dist/vea-sdk.esm.js'
 ```
-
-### CDN（浏览器）
-
-```html
-<!-- UMD 格式 -->
-<script src="https://unpkg.com/@vea/sdk/dist/vea-sdk.umd.js"></script>
-
-<!-- 或使用压缩版 -->
-<script src="https://unpkg.com/@vea/sdk/dist/vea-sdk.umd.min.js"></script>
-```
-
-### 直接下载
-
-从 [GitHub Releases](https://github.com/FlowerRealm/Vea/releases) 下载对应版本的文件。
 
 ## 快速开始
 
-### 浏览器
+### 浏览器（ES Module）
 
 ```html
 <!DOCTYPE html>
@@ -52,31 +38,32 @@ pnpm add @vea/sdk
   <title>Vea SDK 示例</title>
 </head>
 <body>
-  <button onclick="loadNodes()">加载节点列表</button>
+  <button id="loadBtn">加载节点列表</button>
   <pre id="output"></pre>
 
-  <script src="https://unpkg.com/@vea/sdk/dist/vea-sdk.umd.min.js"></script>
-  <script>
-    // 创建客户端实例
-    const vea = new VeaSDK.VeaClient({ baseURL: 'http://localhost:8080' })
+  <script type="module">
+    import { VeaClient } from '/ui/sdk/dist/vea-sdk.esm.js'
 
-    async function loadNodes() {
+    // 创建客户端实例
+    const vea = new VeaClient({ baseURL: 'http://localhost:8080' })
+
+    document.getElementById('loadBtn').addEventListener('click', async () => {
       try {
         const result = await vea.nodes.list()
         document.getElementById('output').textContent = JSON.stringify(result, null, 2)
       } catch (error) {
         console.error('加载失败:', error)
       }
-    }
+    })
   </script>
 </body>
 </html>
 ```
 
-### Node.js
+### Electron / Node.js (ESM)
 
 ```javascript
-const { VeaClient } = require('@vea/sdk')
+import { VeaClient } from './sdk/dist/vea-sdk.esm.js'
 
 // 创建客户端实例
 const vea = new VeaClient({
@@ -669,10 +656,7 @@ npm run build
 ```
 
 输出文件：
-- `dist/vea-sdk.umd.js` - UMD 格式（浏览器 + Node.js）
-- `dist/vea-sdk.umd.min.js` - 压缩版
-- `dist/vea-sdk.esm.js` - ES Module 格式
-- `dist/vea-sdk.cjs.js` - CommonJS 格式
+- `dist/vea-sdk.esm.js` - ES Module 格式（适用于现代浏览器、Electron 和打包工具）
 
 ### 开发模式
 

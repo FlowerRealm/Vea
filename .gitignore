@@ -15,7 +15,7 @@ bin/
 *.out
 dist/
 !sdk/dist/
-!sdk/dist/**
+!sdk/dist/vea-sdk.esm.js
 vea-package.tar.gz
 
 # Node.js / SDK
