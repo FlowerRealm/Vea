@@ -1,4 +1,4 @@
-.PHONY: all build clean run dev package help
+.PHONY: all build clean run dev package help copy-web-assets
 
 # 默认版本号
 VERSION ?= dev
@@ -28,12 +28,16 @@ help: ## 显示帮助信息
 
 all: build ## 构建项目（默认）
 
-prepare: ## 准备构建环境
+prepare: copy-web-assets ## 准备构建环境
 	@echo "==> 准备构建环境..."
 	@mkdir -p $(OUTPUT_DIR)
-	@mkdir -p cmd/server/web/sdk/dist
-	@echo "==> 复制 web 资源..."
+
+copy-web-assets: ## 同步前端与 SDK 资源
+	@echo "==> 同步 web 资源..."
+	@mkdir -p cmd/server/web
 	@cp web/index.html cmd/server/web/index.html
+	@rm -rf cmd/server/web/sdk/dist
+	@mkdir -p cmd/server/web/sdk/dist
 	@if [ -d sdk/dist ]; then \
 		cp -r sdk/dist/. cmd/server/web/sdk/dist/; \
 	else \
@@ -57,16 +61,8 @@ run: build ## 编译并运行
 	@echo "==> 运行 Vea..."
 	@$(OUTPUT_DIR)/$(BINARY_NAME)
 
-dev: ## 开发模式（使用 go run）
+dev: copy-web-assets ## 开发模式（使用 go run）
 	@echo "==> 准备开发环境..."
-	@mkdir -p cmd/server/web/sdk/dist
-	@cp web/index.html cmd/server/web/index.html
-	@if [ -d sdk/dist ]; then \
-		cp -r sdk/dist/. cmd/server/web/sdk/dist/; \
-	else \
-		echo "警告: sdk/dist/ 不存在，将使用空 SDK 目录"; \
-		echo "提示: 如需完整功能，请先运行 'make build-sdk'"; \
-	fi
 	@echo "==> 启动开发服务器（详细日志模式）..."
 	@go run ./cmd/server --dev
 
