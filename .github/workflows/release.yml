@@ -36,6 +36,10 @@ jobs:
         run: mkdir -p dist
         shell: bash
 
+      - name: Copy web assets for embed
+        run: cp -r web cmd/server/
+        shell: bash
+
       - name: Build & package
         run: ./scripts/package-linux.sh "${{ env.VERSION }}" "${{ matrix.goarch }}" dist
         shell: bash
@@ -66,6 +70,10 @@ jobs:
 
       - name: Prepare workspace
         run: mkdir -p dist
+        shell: bash
+
+      - name: Copy web assets for embed
+        run: cp -r web cmd/server/
         shell: bash
 
       - name: Build & package
@@ -100,6 +108,11 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path dist -Force | Out-Null
+
+      - name: Copy web assets for embed
+        shell: pwsh
+        run: |
+          Copy-Item -Path web -Destination cmd/server/web -Recurse
 
       - name: Build & package
         shell: pwsh

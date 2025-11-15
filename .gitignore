@@ -30,3 +30,6 @@ artifacts/
 
 # data
 data/
+
+# Embedded web assets (copied from /web for embed)
+cmd/server/web/

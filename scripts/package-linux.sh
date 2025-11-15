@@ -25,10 +25,6 @@ export CGO_ENABLED=0
 
 go build -trimpath -ldflags "-s -w" -o "${BUILD_DIR}/vea" ./cmd/server
 
-if [[ -d web ]]; then
-  cp -R web "${BUILD_DIR}/"
-fi
-
 if [[ -f LICENSE ]]; then
   cp LICENSE "${BUILD_DIR}/"
 fi

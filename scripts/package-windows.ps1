@@ -23,10 +23,6 @@ $env:CGO_ENABLED = "0"
 
 go build -trimpath -ldflags "-s -w" -o (Join-Path $buildDir "vea.exe") ./cmd/server
 
-if (Test-Path "web") {
-    Copy-Item "web" (Join-Path $buildDir "web") -Recurse
-}
-
 if (Test-Path "LICENSE") {
     Copy-Item "LICENSE" (Join-Path $buildDir "LICENSE")
 }

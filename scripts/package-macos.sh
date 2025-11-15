@@ -33,10 +33,6 @@ if [[ -n "${MACOS_CODESIGN_IDENTITY:-}" ]]; then
   codesign "${CODESIGN_ARGS[@]}" "${BUILD_DIR}/vea"
 fi
 
-if [[ -d web ]]; then
-  cp -R web "${BUILD_DIR}/"
-fi
-
 if [[ -f LICENSE ]]; then
   cp LICENSE "${BUILD_DIR}/"
 fi
