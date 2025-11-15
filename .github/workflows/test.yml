@@ -7,7 +7,10 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -15,6 +18,15 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Copy web assets (Unix)
+        if: runner.os != 'Windows'
+        run: cp -r web cmd/server/
+
+      - name: Copy web assets (Windows)
+        if: runner.os == 'Windows'
+        run: Copy-Item -Path web -Destination cmd/server/web -Recurse
+        shell: pwsh
 
       - name: Run tests
         run: go test ./...
