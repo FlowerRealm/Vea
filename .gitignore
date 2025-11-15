@@ -14,7 +14,17 @@ bin/
 *.test
 *.out
 dist/
+!sdk/dist/
+!sdk/dist/vea-sdk.esm.js
 vea-package.tar.gz
+
+# Node.js / SDK
+node_modules/
+sdk/node_modules/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # Env / tooling
 .env

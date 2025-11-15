@@ -1,0 +1,49 @@
+{
+  "name": "@vea/sdk",
+  "version": "1.0.0",
+  "description": "JavaScript SDK for Vea Backend API - Xray management service",
+  "type": "module",
+  "main": "dist/vea-sdk.cjs.js",
+  "module": "dist/vea-sdk.esm.js",
+  "browser": "dist/vea-sdk.umd.js",
+  "types": "src/types.d.ts",
+  "files": [
+    "dist",
+    "src/types.d.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "rollup -c",
+    "dev": "rollup -c -w",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "vea",
+    "xray",
+    "proxy",
+    "v2ray",
+    "vpn",
+    "sdk",
+    "api-client"
+  ],
+  "author": "Vea Project",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FlowerRealm/Vea.git",
+    "directory": "sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/FlowerRealm/Vea/issues"
+  },
+  "homepage": "https://github.com/FlowerRealm/Vea#readme",
+  "devDependencies": {
+    "@rollup/plugin-node-resolve": "^15.2.0",
+    "@rollup/plugin-terser": "^0.4.4",
+    "rollup": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

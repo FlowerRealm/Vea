@@ -37,7 +37,7 @@ const (
 	defaultConfigSyncInterval      = time.Hour
 	defaultComponentUpdateInterval = 12 * time.Hour
 	maxDownloadSize                = 50 << 20 // 50 MiB guard rail
-	downloadTimeout                = 45 * time.Second
+	downloadTimeout                = 5 * time.Minute // 增加到 5 分钟以支持慢速网络
 	measurementPort                = 31346
 
 	artifactsRoot = "artifacts"
@@ -65,10 +65,10 @@ var (
 func newHTTPClient(bypassProxy, forceHTTP11 bool) *http.Client {
 	tr := &http.Transport{
 		Proxy:               http.ProxyFromEnvironment,
-		DialContext:         (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		DialContext:         (&net.Dialer{Timeout: 60 * time.Second, KeepAlive: 60 * time.Second}).DialContext,
 		ForceAttemptHTTP2:   !forceHTTP11,
 		DisableKeepAlives:   true,
-		TLSHandshakeTimeout: 10 * time.Second,
+		TLSHandshakeTimeout: 30 * time.Second, // 增加 TLS 握手超时
 	}
 	if bypassProxy {
 		tr.Proxy = nil

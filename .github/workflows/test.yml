@@ -28,5 +28,45 @@ jobs:
         run: Copy-Item -Path web -Destination cmd/server/web -Recurse
         shell: pwsh
 
+      - name: Download Xray for tests (Unix)
+        if: runner.os != 'Windows'
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          mkdir -p artifacts/core/xray
+          XRAY_VERSION=$(curl -s -H "Authorization: token $RELEASE_TOKEN" https://api.github.com/repos/XTLS/Xray-core/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            XRAY_ASSET="Xray-linux-64.zip"
+          elif [ "${{ runner.os }}" = "macOS" ]; then
+            XRAY_ASSET="Xray-macos-64.zip"
+          fi
+
+          curl -sL -H "Authorization: token $RELEASE_TOKEN" \
+            "https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/${XRAY_ASSET}" \
+            -o /tmp/xray.zip
+
+          unzip -q /tmp/xray.zip -d artifacts/core/xray/
+          chmod +x artifacts/core/xray/xray
+
+      - name: Download Xray for tests (Windows)
+        if: runner.os == 'Windows'
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts/core/xray
+
+          $headers = @{
+            Authorization = "token $env:RELEASE_TOKEN"
+          }
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/XTLS/Xray-core/releases/latest" -Headers $headers
+          $version = $release.tag_name
+
+          $downloadUrl = "https://github.com/XTLS/Xray-core/releases/download/$version/Xray-windows-64.zip"
+          Invoke-WebRequest -Uri $downloadUrl -OutFile "$env:TEMP\xray.zip" -Headers $headers
+
+          Expand-Archive -Path "$env:TEMP\xray.zip" -DestinationPath artifacts/core/xray -Force
+
       - name: Run tests
         run: go test -v ./...

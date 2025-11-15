@@ -1054,7 +1054,10 @@
       </section>
 
     </main>
-    <script>
+    <script type="module">
+      import { createAPI, utils } from '/ui/sdk/dist/vea-sdk.esm.js';
+      const { formatTime, formatBytes, formatInterval, escapeHtml, parseNumber, parseList, sleep } = utils;
+
       (function () {
         const menu = document.getElementById("menu");
         const panels = document.querySelectorAll(".panel");
@@ -1062,52 +1065,7 @@
         let currentPanel = "panel-home";
         let statusTimer = null;
 
-        const api = {
-          async request(path, options = {}) {
-            const opts = {
-              headers: {},
-              ...options,
-            };
-            if (opts.body && !(opts.body instanceof FormData)) {
-              opts.headers["Content-Type"] = "application/json";
-              opts.body = JSON.stringify(opts.body);
-            }
-            const res = await fetch(path, opts);
-            if (!res.ok) {
-              let message = res.statusText;
-              const text = await res.text();
-              try {
-                const parsed = JSON.parse(text);
-                message = parsed.error || JSON.stringify(parsed);
-              } catch {
-                if (text) {
-                  message = text;
-                }
-              }
-              throw new Error(message || "请求失败");
-            }
-            if (res.status === 204) {
-              return null;
-            }
-            const contentType = res.headers.get("content-type") || "";
-            if (contentType.includes("application/json")) {
-              return res.json();
-            }
-            return res.text();
-          },
-          get(path) {
-            return this.request(path);
-          },
-          post(path, body) {
-            return this.request(path, { method: "POST", body });
-          },
-          put(path, body) {
-            return this.request(path, { method: "PUT", body });
-          },
-          delete(path) {
-            return this.request(path, { method: "DELETE" });
-          },
-        };
+        const api = createAPI('');
 
         function showStatus(message, type = "info", delay = 3200) {
           if (!message) {
@@ -1126,61 +1084,6 @@
               statusBar.classList.remove("visible");
             }, delay);
           }
-        }
-
-        function escapeHtml(value) {
-          return String(value ?? "")
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#39;");
-        }
-
-        function formatTime(value) {
-          if (!value) return "-";
-          const date = new Date(value);
-          if (Number.isNaN(date.getTime())) return value;
-          return date.toLocaleString();
-        }
-
-        function formatBytes(bytes) {
-          const size = Number(bytes);
-          if (!size || size <= 0) return "0 B";
-          const units = ["B", "KB", "MB", "GB", "TB"];
-          const index = Math.min(Math.floor(Math.log(size) / Math.log(1024)), units.length - 1);
-          const value = size / Math.pow(1024, index);
-          return `${value.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
-        }
-
-        function formatInterval(duration) {
-          if (!duration) return "未设置";
-          if (typeof duration === "number") {
-            if (duration === 0) return "未设置";
-            const minutes = Math.round(duration / 60000000000);
-            return `${minutes} 分钟`;
-          }
-          if (typeof duration === "string") {
-            if (duration === "0s" || duration === "0") return "未设置";
-            return duration.replace("m0s", "m").replace("h0m0s", "h");
-          }
-          return String(duration);
-        }
-
-        function parseNumber(value) {
-          const num = Number(value);
-          return Number.isFinite(num) ? num : 0;
-        }
-
-        function parseList(input) {
-          return input
-            .split(/[\s,;\n]+/)
-            .map((item) => item.trim())
-            .filter(Boolean);
-        }
-
-        function sleep(ms) {
-          return new Promise((resolve) => setTimeout(resolve, ms));
         }
 
         const SYSTEM_PROXY_DEFAULTS = ["localhost", "127.0.0.0/8", "::1"];
