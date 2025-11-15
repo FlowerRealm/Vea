@@ -13,7 +13,7 @@ bin/
 *.dylib
 *.test
 *.out
-dist/
+/dist/
 vea-package.tar.gz
 
 # Node.js / SDK
