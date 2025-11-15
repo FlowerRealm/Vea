@@ -31,10 +31,10 @@ jobs:
       - name: Download Xray for tests (Unix)
         if: runner.os != 'Windows'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           mkdir -p artifacts/core/xray
-          XRAY_VERSION=$(curl -s -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/XTLS/Xray-core/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+          XRAY_VERSION=$(curl -s -H "Authorization: token $RELEASE_TOKEN" https://api.github.com/repos/XTLS/Xray-core/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
 
           if [ "${{ runner.os }}" = "Linux" ]; then
             XRAY_ASSET="Xray-linux-64.zip"
@@ -42,7 +42,7 @@ jobs:
             XRAY_ASSET="Xray-macos-64.zip"
           fi
 
-          curl -sL -H "Authorization: token $GITHUB_TOKEN" \
+          curl -sL -H "Authorization: token $RELEASE_TOKEN" \
             "https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/${XRAY_ASSET}" \
             -o /tmp/xray.zip
 
@@ -52,13 +52,13 @@ jobs:
       - name: Download Xray for tests (Windows)
         if: runner.os == 'Windows'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts/core/xray
 
           $headers = @{
-            Authorization = "token $env:GITHUB_TOKEN"
+            Authorization = "token $env:RELEASE_TOKEN"
           }
           $release = Invoke-RestMethod -Uri "https://api.github.com/repos/XTLS/Xray-core/releases/latest" -Headers $headers
           $version = $release.tag_name
