@@ -1,0 +1,1450 @@
+openapi: 3.0.3
+info:
+  title: Vea Backend API
+  version: 1.0.0
+  description: |
+    Vea 是一个 Xray 管理服务的 HTTP API，提供节点、配置、Geo 资源、核心组件和流量策略的统一管理。
+
+    ## 特性
+    - 节点管理：导入、测速、延迟测试、流量统计
+    - 配置管理：导入 Xray JSON 或订阅链接，自动刷新
+    - Geo 资源：GeoIP/GeoSite 管理
+    - 核心组件：Xray 核心下载与安装
+    - 流量策略：DNS、分流规则、默认出口配置
+    - 系统代理：系统代理设置管理
+
+    ## 版本兼容性
+    - v1.x.y: 向后兼容，只增不删
+    - 新增端点和可选字段不影响现有客户端
+    - 破坏性变更将发布为 v2.0.0
+  contact:
+    name: Vea Project
+    url: https://github.com/FlowerRealm/Vea
+  license:
+    name: MIT
+    url: https://github.com/FlowerRealm/Vea/blob/main/LICENSE
+
+servers:
+  - url: http://localhost:8080
+    description: 本地开发服务器
+  - url: http://127.0.0.1:8080
+    description: 本地环回地址
+
+tags:
+  - name: health
+    description: 健康检查
+  - name: snapshot
+    description: 全量状态快照
+  - name: nodes
+    description: 节点管理
+  - name: configs
+    description: 配置管理
+  - name: geo
+    description: Geo 资源管理
+  - name: components
+    description: 核心组件管理
+  - name: xray
+    description: Xray 控制
+  - name: traffic
+    description: 流量策略与分流规则
+  - name: settings
+    description: 系统设置
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: 健康检查
+      description: 检查服务运行状态
+      operationId: getHealth
+      responses:
+        '200':
+          description: 服务正常运行
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /snapshot:
+    get:
+      tags: [snapshot]
+      summary: 获取全量状态快照
+      description: 返回所有节点、配置、Geo 资源、组件和流量策略的完整状态
+      operationId: getSnapshot
+      responses:
+        '200':
+          description: 成功返回快照
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceState'
+
+  /nodes:
+    get:
+      tags: [nodes]
+      summary: 列出所有节点
+      description: 获取节点列表及当前激活的节点 ID
+      operationId: listNodes
+      responses:
+        '200':
+          description: 成功返回节点列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nodes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Node'
+                  activeNodeId:
+                    type: string
+                    description: 当前 Xray 使用的节点 ID
+                  lastSelectedNodeId:
+                    type: string
+                    description: 上次用户选择的节点 ID
+
+    post:
+      tags: [nodes]
+      summary: 创建节点
+      description: 通过分享链接或手动输入创建节点
+      operationId: createNode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/NodeShareLinkRequest'
+                - $ref: '#/components/schemas/NodeManualRequest'
+      responses:
+        '201':
+          description: 节点创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Node'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /nodes/{id}:
+    put:
+      tags: [nodes]
+      summary: 更新节点
+      description: 更新节点信息
+      operationId: updateNode
+      parameters:
+        - $ref: '#/components/parameters/NodeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodeUpdateRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Node'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+    delete:
+      tags: [nodes]
+      summary: 删除节点
+      description: 删除指定节点
+      operationId: deleteNode
+      parameters:
+        - $ref: '#/components/parameters/NodeId'
+      responses:
+        '204':
+          description: 删除成功
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /nodes/{id}/reset-traffic:
+    post:
+      tags: [nodes]
+      summary: 重置节点流量
+      description: 将节点的上传和下载流量清零
+      operationId: resetNodeTraffic
+      parameters:
+        - $ref: '#/components/parameters/NodeId'
+      responses:
+        '200':
+          description: 重置成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Node'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /nodes/{id}/traffic:
+    post:
+      tags: [nodes]
+      summary: 增加节点流量
+      description: 增量更新节点的流量统计
+      operationId: incrementNodeTraffic
+      parameters:
+        - $ref: '#/components/parameters/NodeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrafficRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Node'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /nodes/{id}/ping:
+    post:
+      tags: [nodes]
+      summary: 测试节点延迟
+      description: 异步执行延迟测试，结果更新到节点的 lastLatencyMs 字段
+      operationId: pingNode
+      parameters:
+        - $ref: '#/components/parameters/NodeId'
+      responses:
+        '202':
+          description: 延迟测试任务已提交
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /nodes/{id}/speedtest:
+    post:
+      tags: [nodes]
+      summary: 测试节点速度
+      description: 异步执行速度测试，结果更新到节点的 lastSpeedMbps 字段
+      operationId: speedtestNode
+      parameters:
+        - $ref: '#/components/parameters/NodeId'
+      responses:
+        '202':
+          description: 速度测试任务已提交
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /nodes/{id}/select:
+    post:
+      tags: [nodes]
+      summary: 选择节点
+      description: 切换 Xray 使用的节点（如果 Xray 正在运行）
+      operationId: selectNode
+      parameters:
+        - $ref: '#/components/parameters/NodeId'
+      responses:
+        '202':
+          description: 节点切换任务已提交
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /nodes/bulk/ping:
+    post:
+      tags: [nodes]
+      summary: 批量测试延迟
+      description: 批量执行延迟测试，如果 ids 为空则测试所有节点
+      operationId: bulkPingNodes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                  description: 节点 ID 列表，为空则测试所有节点
+      responses:
+        '202':
+          description: 批量测试任务已提交
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /nodes/reset-speed:
+    post:
+      tags: [nodes]
+      summary: 重置节点速度
+      description: 重置指定节点的速度测试结果
+      operationId: resetNodeSpeed
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                  description: 节点 ID 列表
+      responses:
+        '204':
+          description: 重置成功
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /configs:
+    get:
+      tags: [configs]
+      summary: 列出所有配置
+      description: 获取配置列表
+      operationId: listConfigs
+      responses:
+        '200':
+          description: 成功返回配置列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Config'
+
+  /configs/import:
+    post:
+      tags: [configs]
+      summary: 导入配置
+      description: 导入新的 Xray 配置或订阅链接
+      operationId: importConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigImportRequest'
+      responses:
+        '201':
+          description: 配置导入成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Config'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /configs/{id}:
+    put:
+      tags: [configs]
+      summary: 更新配置
+      description: 更新配置信息
+      operationId: updateConfig
+      parameters:
+        - $ref: '#/components/parameters/ConfigId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigUpdateRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Config'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+    delete:
+      tags: [configs]
+      summary: 删除配置
+      description: 删除指定配置
+      operationId: deleteConfig
+      parameters:
+        - $ref: '#/components/parameters/ConfigId'
+      responses:
+        '204':
+          description: 删除成功
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /configs/{id}/refresh:
+    post:
+      tags: [configs]
+      summary: 刷新配置
+      description: 从 sourceUrl 重新拉取配置内容
+      operationId: refreshConfig
+      parameters:
+        - $ref: '#/components/parameters/ConfigId'
+      responses:
+        '200':
+          description: 刷新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Config'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /configs/{id}/pull-nodes:
+    post:
+      tags: [configs]
+      summary: 同步配置节点
+      description: 从配置中提取节点信息并创建节点
+      operationId: pullConfigNodes
+      parameters:
+        - $ref: '#/components/parameters/ConfigId'
+      responses:
+        '200':
+          description: 节点同步成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Node'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /configs/{id}/traffic:
+    post:
+      tags: [configs]
+      summary: 增加配置流量
+      description: 增量更新配置的流量统计
+      operationId: incrementConfigTraffic
+      parameters:
+        - $ref: '#/components/parameters/ConfigId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrafficRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Config'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /geo:
+    get:
+      tags: [geo]
+      summary: 列出所有 Geo 资源
+      description: 获取 GeoIP 和 GeoSite 资源列表
+      operationId: listGeo
+      responses:
+        '200':
+          description: 成功返回 Geo 资源列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GeoResource'
+
+    post:
+      tags: [geo]
+      summary: 创建 Geo 资源
+      description: 创建新的 Geo 资源
+      operationId: createGeo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GeoResourceRequest'
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeoResource'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /geo/{id}:
+    put:
+      tags: [geo]
+      summary: 更新 Geo 资源
+      description: 更新 Geo 资源信息（也可以作为 upsert）
+      operationId: updateGeo
+      parameters:
+        - $ref: '#/components/parameters/GeoId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GeoResourceRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeoResource'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+    delete:
+      tags: [geo]
+      summary: 删除 Geo 资源
+      description: 删除指定 Geo 资源
+      operationId: deleteGeo
+      parameters:
+        - $ref: '#/components/parameters/GeoId'
+      responses:
+        '204':
+          description: 删除成功
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /geo/{id}/refresh:
+    post:
+      tags: [geo]
+      summary: 刷新 Geo 资源
+      description: 从 sourceUrl 重新下载 Geo 资源文件
+      operationId: refreshGeo
+      parameters:
+        - $ref: '#/components/parameters/GeoId'
+      responses:
+        '200':
+          description: 刷新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeoResource'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /components:
+    get:
+      tags: [components]
+      summary: 列出所有核心组件
+      description: 获取核心组件列表（如 Xray）
+      operationId: listComponents
+      responses:
+        '200':
+          description: 成功返回组件列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CoreComponent'
+
+    post:
+      tags: [components]
+      summary: 创建核心组件
+      description: 创建新的核心组件记录
+      operationId: createComponent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComponentRequest'
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoreComponent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /components/{id}:
+    put:
+      tags: [components]
+      summary: 更新核心组件
+      description: 更新核心组件信息
+      operationId: updateComponent
+      parameters:
+        - $ref: '#/components/parameters/ComponentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComponentRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoreComponent'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+    delete:
+      tags: [components]
+      summary: 删除核心组件
+      description: 删除指定核心组件
+      operationId: deleteComponent
+      parameters:
+        - $ref: '#/components/parameters/ComponentId'
+      responses:
+        '204':
+          description: 删除成功
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /components/{id}/install:
+    post:
+      tags: [components]
+      summary: 安装核心组件
+      description: 下载并安装指定核心组件
+      operationId: installComponent
+      parameters:
+        - $ref: '#/components/parameters/ComponentId'
+      responses:
+        '200':
+          description: 安装成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoreComponent'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /xray/status:
+    get:
+      tags: [xray]
+      summary: 获取 Xray 状态
+      description: 获取 Xray 的运行状态和配置信息
+      operationId: getXrayStatus
+      responses:
+        '200':
+          description: 成功返回 Xray 状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/XrayStatus'
+
+  /xray/start:
+    post:
+      tags: [xray]
+      summary: 启动 Xray
+      description: 启动 Xray 服务
+      operationId: startXray
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                activeNodeId:
+                  type: string
+                  description: 启动时使用的节点 ID
+      responses:
+        '202':
+          description: Xray 启动任务已提交
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /xray/stop:
+    post:
+      tags: [xray]
+      summary: 停止 Xray
+      description: 停止 Xray 服务
+      operationId: stopXray
+      responses:
+        '204':
+          description: Xray 已停止
+
+  /traffic/profile:
+    get:
+      tags: [traffic]
+      summary: 获取流量策略
+      description: 获取默认出口、DNS 和分流规则配置
+      operationId: getTrafficProfile
+      responses:
+        '200':
+          description: 成功返回流量策略
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrafficProfile'
+
+    put:
+      tags: [traffic]
+      summary: 更新流量策略
+      description: 更新默认出口和 DNS 配置
+      operationId: updateTrafficProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrafficProfileRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrafficProfile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /traffic/rules:
+    get:
+      tags: [traffic]
+      summary: 列出所有分流规则
+      description: 获取分流规则列表
+      operationId: listTrafficRules
+      responses:
+        '200':
+          description: 成功返回分流规则列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TrafficRule'
+
+    post:
+      tags: [traffic]
+      summary: 创建分流规则
+      description: 创建新的分流规则
+      operationId: createTrafficRule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrafficRuleRequest'
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrafficRule'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /traffic/rules/{id}:
+    put:
+      tags: [traffic]
+      summary: 更新分流规则
+      description: 更新分流规则信息
+      operationId: updateTrafficRule
+      parameters:
+        - $ref: '#/components/parameters/RuleId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrafficRuleRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrafficRule'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+    delete:
+      tags: [traffic]
+      summary: 删除分流规则
+      description: 删除指定分流规则
+      operationId: deleteTrafficRule
+      parameters:
+        - $ref: '#/components/parameters/RuleId'
+      responses:
+        '204':
+          description: 删除成功
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /settings/system-proxy:
+    get:
+      tags: [settings]
+      summary: 获取系统代理设置
+      description: 获取系统代理配置和忽略主机列表
+      operationId: getSystemProxySettings
+      responses:
+        '200':
+          description: 成功返回系统代理设置
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  settings:
+                    $ref: '#/components/schemas/SystemProxySettings'
+                  message:
+                    type: string
+                    description: 附加消息（如不支持系统代理的警告）
+
+    put:
+      tags: [settings]
+      summary: 更新系统代理设置
+      description: 更新系统代理配置
+      operationId: updateSystemProxySettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SystemProxyRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  settings:
+                    $ref: '#/components/schemas/SystemProxySettings'
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+components:
+  parameters:
+    NodeId:
+      name: id
+      in: path
+      required: true
+      description: 节点 ID
+      schema:
+        type: string
+
+    ConfigId:
+      name: id
+      in: path
+      required: true
+      description: 配置 ID
+      schema:
+        type: string
+
+    GeoId:
+      name: id
+      in: path
+      required: true
+      description: Geo 资源 ID
+      schema:
+        type: string
+
+    ComponentId:
+      name: id
+      in: path
+      required: true
+      description: 核心组件 ID
+      schema:
+        type: string
+
+    RuleId:
+      name: id
+      in: path
+      required: true
+      description: 分流规则 ID
+      schema:
+        type: string
+
+  schemas:
+    Node:
+      type: object
+      required: [id, name, address, port, protocol]
+      properties:
+        id:
+          type: string
+          description: 节点唯一标识
+        name:
+          type: string
+          description: 节点名称
+        address:
+          type: string
+          description: 服务器地址
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+          description: 服务器端口
+        protocol:
+          type: string
+          enum: [vless, trojan, shadowsocks, vmess]
+          description: 协议类型
+        tags:
+          type: array
+          items:
+            type: string
+          description: 节点标签
+        security:
+          $ref: '#/components/schemas/NodeSecurity'
+        transport:
+          $ref: '#/components/schemas/NodeTransport'
+        tls:
+          $ref: '#/components/schemas/NodeTLS'
+        sourceConfigId:
+          type: string
+          description: 来源配置 ID
+        uploadBytes:
+          type: integer
+          format: int64
+          description: 上传流量（字节）
+        downloadBytes:
+          type: integer
+          format: int64
+          description: 下载流量（字节）
+        lastLatencyMs:
+          type: integer
+          format: int64
+          description: 最后一次延迟测试结果（毫秒）
+        lastLatencyAt:
+          type: string
+          format: date-time
+          description: 最后一次延迟测试时间
+        lastSpeedMbps:
+          type: number
+          format: double
+          description: 最后一次速度测试结果（MB/s）
+        lastSpeedAt:
+          type: string
+          format: date-time
+          description: 最后一次速度测试时间
+        lastSpeedError:
+          type: string
+          description: 速度测试错误信息
+        lastSelectedAt:
+          type: string
+          format: date-time
+          description: 最后选择时间
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    NodeSecurity:
+      type: object
+      properties:
+        uuid:
+          type: string
+        password:
+          type: string
+        method:
+          type: string
+        flow:
+          type: string
+        encryption:
+          type: string
+        alterId:
+          type: integer
+        plugin:
+          type: string
+        pluginOpts:
+          type: string
+        alpn:
+          type: array
+          items:
+            type: string
+
+    NodeTransport:
+      type: object
+      properties:
+        type:
+          type: string
+        host:
+          type: string
+        path:
+          type: string
+        serviceName:
+          type: string
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+
+    NodeTLS:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        type:
+          type: string
+        serverName:
+          type: string
+        insecure:
+          type: boolean
+        fingerprint:
+          type: string
+        realityPublicKey:
+          type: string
+        realityShortId:
+          type: string
+        alpn:
+          type: array
+          items:
+            type: string
+
+    NodeShareLinkRequest:
+      type: object
+      required: [shareLink]
+      properties:
+        shareLink:
+          type: string
+          description: vmess/vless/trojan/ss 分享链接
+          example: "vmess://eyJhZGQiOiIxLjIuMy40IiwicG9ydCI6NDQzLC4uLn0="
+
+    NodeManualRequest:
+      type: object
+      required: [name, address, port, protocol]
+      properties:
+        name:
+          type: string
+        address:
+          type: string
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        protocol:
+          type: string
+          enum: [vless, trojan, shadowsocks, vmess]
+        tags:
+          type: array
+          items:
+            type: string
+
+    NodeUpdateRequest:
+      type: object
+      required: [name, address, port, protocol]
+      properties:
+        name:
+          type: string
+        address:
+          type: string
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        protocol:
+          type: string
+          enum: [vless, trojan, shadowsocks, vmess]
+        tags:
+          type: array
+          items:
+            type: string
+
+    TrafficRequest:
+      type: object
+      properties:
+        uploadBytes:
+          type: integer
+          format: int64
+        downloadBytes:
+          type: integer
+          format: int64
+
+    Config:
+      type: object
+      required: [id, name, format]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        format:
+          type: string
+          enum: [xray-json]
+        payload:
+          type: string
+          description: 配置内容（JSON 字符串）
+        sourceUrl:
+          type: string
+          description: 配置源地址或订阅链接
+        checksum:
+          type: string
+        lastSyncError:
+          type: string
+        autoUpdateInterval:
+          type: integer
+          format: int64
+          description: 自动更新间隔（纳秒）
+        lastSyncedAt:
+          type: string
+          format: date-time
+        expireAt:
+          type: string
+          format: date-time
+          nullable: true
+        uploadBytes:
+          type: integer
+          format: int64
+        downloadBytes:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ConfigImportRequest:
+      type: object
+      required: [name, format, sourceUrl]
+      properties:
+        name:
+          type: string
+        format:
+          type: string
+          enum: [xray-json]
+        sourceUrl:
+          type: string
+          description: 配置源地址或订阅链接
+        payload:
+          type: string
+          description: 可选，直接提供配置内容
+        autoUpdateIntervalMinutes:
+          type: integer
+          format: int64
+          description: 自动更新间隔（分钟）
+        expireAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    ConfigUpdateRequest:
+      type: object
+      required: [name, format, sourceUrl]
+      properties:
+        name:
+          type: string
+        format:
+          type: string
+          enum: [xray-json]
+        sourceUrl:
+          type: string
+        payload:
+          type: string
+        autoUpdateIntervalMinutes:
+          type: integer
+          format: int64
+        expireAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    GeoResource:
+      type: object
+      required: [id, name, type, sourceUrl]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+          enum: [geoip, geosite]
+        sourceUrl:
+          type: string
+        checksum:
+          type: string
+        version:
+          type: string
+        artifactPath:
+          type: string
+          description: 本地文件路径
+        fileSizeBytes:
+          type: integer
+          format: int64
+        lastSyncError:
+          type: string
+        lastSynced:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    GeoResourceRequest:
+      type: object
+      required: [name, type, sourceUrl]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [geoip, geosite]
+        sourceUrl:
+          type: string
+        checksum:
+          type: string
+        version:
+          type: string
+
+    CoreComponent:
+      type: object
+      required: [id, name, kind]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [xray, geo, generic]
+        sourceUrl:
+          type: string
+        archiveType:
+          type: string
+        autoUpdateInterval:
+          type: integer
+          format: int64
+          description: 自动更新间隔（纳秒）
+        lastInstalledAt:
+          type: string
+          format: date-time
+        installDir:
+          type: string
+        lastVersion:
+          type: string
+        checksum:
+          type: string
+        lastSyncError:
+          type: string
+        meta:
+          type: object
+          additionalProperties:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ComponentRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [xray, geo, generic]
+        sourceUrl:
+          type: string
+        archiveType:
+          type: string
+        autoUpdateIntervalMinutes:
+          type: integer
+          format: int64
+
+    XrayStatus:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          description: Xray 是否启用
+        running:
+          type: boolean
+          description: Xray 是否正在运行
+        activeNodeId:
+          type: string
+          description: 当前使用的节点 ID
+        binary:
+          type: string
+          description: Xray 可执行文件路径
+        config:
+          type: string
+          description: 当前使用的配置内容
+
+    TrafficProfile:
+      type: object
+      properties:
+        defaultNodeId:
+          type: string
+          description: 默认出口节点 ID
+        dns:
+          $ref: '#/components/schemas/DNSSetting'
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrafficRule'
+        updatedAt:
+          type: string
+          format: date-time
+
+    DNSSetting:
+      type: object
+      properties:
+        strategy:
+          type: string
+          description: DNS 策略（如 ipv4-only）
+        servers:
+          type: array
+          items:
+            type: string
+          description: DNS 服务器列表
+
+    TrafficProfileRequest:
+      type: object
+      properties:
+        defaultNodeId:
+          type: string
+        dns:
+          type: object
+          properties:
+            strategy:
+              type: string
+            servers:
+              type: array
+              items:
+                type: string
+
+    TrafficRule:
+      type: object
+      required: [id, name, targets, nodeId]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        targets:
+          type: array
+          items:
+            type: string
+          description: 目标域名或 IP 列表
+        nodeId:
+          type: string
+          description: 使用的节点 ID
+        priority:
+          type: integer
+          description: 优先级（数字越大越优先）
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    TrafficRuleRequest:
+      type: object
+      required: [name, targets, nodeId]
+      properties:
+        name:
+          type: string
+        targets:
+          type: array
+          items:
+            type: string
+        nodeId:
+          type: string
+        priority:
+          type: integer
+
+    SystemProxySettings:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          description: 系统代理是否启用
+        ignoreHosts:
+          type: array
+          items:
+            type: string
+          description: 忽略代理的主机列表
+        updatedAt:
+          type: string
+          format: date-time
+
+    SystemProxyRequest:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        ignoreHosts:
+          type: array
+          items:
+            type: string
+
+    ServiceState:
+      type: object
+      description: 服务的完整状态快照
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Node'
+        configs:
+          type: array
+          items:
+            $ref: '#/components/schemas/Config'
+        geoResources:
+          type: array
+          items:
+            $ref: '#/components/schemas/GeoResource'
+        components:
+          type: array
+          items:
+            $ref: '#/components/schemas/CoreComponent'
+        trafficProfile:
+          $ref: '#/components/schemas/TrafficProfile'
+        systemProxy:
+          $ref: '#/components/schemas/SystemProxySettings'
+        generatedAt:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: 错误信息
+
+  responses:
+    BadRequest:
+      description: 请求参数错误
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
