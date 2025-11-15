@@ -34,10 +34,10 @@ prepare: ## 准备构建环境
 	@mkdir -p cmd/server/web/sdk/dist
 	@echo "==> 复制 web 资源..."
 	@cp web/index.html cmd/server/web/index.html
-	@if [ -d sdk/dist ] && [ -n "$$(ls -A sdk/dist 2>/dev/null)" ]; then \
-		cp -r sdk/dist/* cmd/server/web/sdk/dist/; \
+	@if [ -d sdk/dist ]; then \
+		cp -r sdk/dist/. cmd/server/web/sdk/dist/; \
 	else \
-		echo "警告: sdk/dist/ 不存在或为空，将使用空 SDK 目录"; \
+		echo "警告: sdk/dist/ 不存在，将使用空 SDK 目录"; \
 		echo "提示: 如需完整功能，请先运行 'make build-sdk'"; \
 	fi
 
@@ -61,10 +61,10 @@ dev: ## 开发模式（使用 go run）
 	@echo "==> 准备开发环境..."
 	@mkdir -p cmd/server/web/sdk/dist
 	@cp web/index.html cmd/server/web/index.html
-	@if [ -d sdk/dist ] && [ -n "$$(ls -A sdk/dist 2>/dev/null)" ]; then \
-		cp -r sdk/dist/* cmd/server/web/sdk/dist/; \
+	@if [ -d sdk/dist ]; then \
+		cp -r sdk/dist/. cmd/server/web/sdk/dist/; \
 	else \
-		echo "警告: sdk/dist/ 不存在或为空，将使用空 SDK 目录"; \
+		echo "警告: sdk/dist/ 不存在，将使用空 SDK 目录"; \
 		echo "提示: 如需完整功能，请先运行 'make build-sdk'"; \
 	fi
 	@echo "==> 启动开发服务器（详细日志模式）..."
