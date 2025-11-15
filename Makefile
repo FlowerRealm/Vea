@@ -1,4 +1,4 @@
-.PHONY: all build clean run dev package help copy-web-assets
+.PHONY: all build clean run dev package help copy-web-assets electron-deps electron-dev electron-build electron-build-linux electron-build-mac electron-build-win
 
 # 默认版本号
 VERSION ?= dev
@@ -117,5 +117,38 @@ docker-build: ## 构建 Docker 镜像
 docker-run: docker-build ## 运行 Docker 容器
 	@echo "==> 运行 Docker 容器..."
 	@docker run -p 8080:8080 -v $(PWD)/data:/data vea:$(VERSION)
+
+# Electron 相关
+electron-deps: ## 安装 Electron 依赖
+	@echo "==> 安装 Electron 依赖..."
+	@cd electron && npm install
+	@echo "==> Electron 依赖安装完成"
+
+electron-dev: build electron-deps ## 运行 Electron 开发模式
+	@echo "==> 启动 Electron 开发模式..."
+	@cp $(OUTPUT_DIR)/$(BINARY_NAME) vea
+	@cd electron && npm run dev
+
+electron-build: build electron-deps ## 打包 Electron 应用
+	@echo "==> 打包 Electron 应用..."
+	@cp $(OUTPUT_DIR)/$(BINARY_NAME) vea
+	@cd electron && npm run build
+	@echo "==> Electron 应用打包完成"
+	@ls -lh electron/dist/release/
+
+electron-build-linux: build-linux electron-deps ## 打包 Linux Electron 应用
+	@echo "==> 打包 Linux Electron 应用..."
+	@cp $(OUTPUT_DIR)/$(BINARY_NAME) vea
+	@cd electron && npm run build:linux
+
+electron-build-mac: build-macos electron-deps ## 打包 macOS Electron 应用
+	@echo "==> 打包 macOS Electron 应用..."
+	@cp $(OUTPUT_DIR)/$(BINARY_NAME) vea
+	@cd electron && npm run build:mac
+
+electron-build-win: build-windows electron-deps ## 打包 Windows Electron 应用
+	@echo "==> 打包 Windows Electron 应用..."
+	@cp $(OUTPUT_DIR)/$(BINARY_NAME) vea.exe
+	@cd electron && npm run build:win
 
 .DEFAULT_GOAL := help

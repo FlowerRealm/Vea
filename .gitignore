@@ -18,6 +18,10 @@ dist/
 !sdk/dist/vea-sdk.esm.js
 vea-package.tar.gz
 
+# Electron dev binary (copied from dist/)
+/vea
+/vea.exe
+
 # Node.js / SDK
 node_modules/
 sdk/node_modules/
