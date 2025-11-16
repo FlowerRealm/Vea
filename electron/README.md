@@ -2,32 +2,31 @@
 
 Vea 代理管理器的 Electron 桌面应用封装。
 
+> **⚠️ 环境要求**
+> Electron 应用需要在**有图形界面的环境**中运行（Linux 需要 X11/Wayland，macOS/Windows 原生支持）。
+> 在无头服务器（SSH 命令行）中无法启动 GUI，但可以进行代码验证和打包。
+
 ## 快速开始
 
 ### 开发模式
 
 ```bash
 # 从项目根目录
-make electron-dev
+make dev
 
 # 或者手动执行
-make build              # 编译 Go 后端
-cp dist/vea vea        # 复制二进制到根目录
+make build-backend     # 编译 Go 后端
+cp dist/vea vea       # 复制二进制到根目录
 cd electron
-npm install            # 安装依赖
-npm run dev            # 启动 Electron
+npm install           # 安装依赖
+npm run dev           # 启动 Electron
 ```
 
 ### 打包应用
 
 ```bash
 # 从项目根目录
-make electron-build           # 打包当前平台
-
-# 或者指定平台
-make electron-build-linux     # 打包 Linux
-make electron-build-mac       # 打包 macOS
-make electron-build-win       # 打包 Windows
+make build            # 打包当前平台
 ```
 
 打包后的应用位于 `electron/dist/release/` 目录。
@@ -81,6 +80,35 @@ electron/
    - 2 秒后若未退出则 SIGKILL 强制终止
    - Electron 退出
 
+## 无头环境测试
+
+如果你在**无 GUI 的服务器**（SSH 命令行）中，无法直接运行 Electron，但可以验证核心逻辑：
+
+```bash
+# 1. 测试主进程逻辑（无需 Electron GUI）
+cd /home/flowerrealm/Vea
+node electron/test-main-logic.js
+
+# 预期输出：
+# ✓ Vea 服务进程已启动
+# ✓ 服务就绪（尝试 2 次）
+# ✓ HTTP 访问正常
+# ✓ 服务已停止
+# 测试结果: 通过 4 / 失败 0
+
+# 2. 验证 Go 后端
+make build
+./vea --addr :8080 &
+curl http://localhost:8080/
+pkill vea
+
+# 3. 验证 SDK 路径
+ls -lh sdk/dist/vea-sdk.esm.js
+ls -lh electron/renderer/../../sdk/dist/vea-sdk.esm.js
+```
+
+**在本地开发环境**（有图形界面）才能真正运行 Electron GUI。
+
 ## 开发说明
 
 ### 修改 UI
@@ -97,9 +125,17 @@ electron/
 
 ## 已知问题
 
-1. **首次启动可能较慢**：Go 服务需要初始化，窗口会在服务就绪后才显示。
-2. **端口占用**：如果 8080 端口已被占用，需要手动停止其他服务。
-3. **打包体积**：Electron 本身约 ~150MB，Go 二进制约 10MB。
+1. **无头环境限制**：
+   - 在 SSH 命令行服务器中无法运行 Electron GUI
+   - `npm install electron` 可能失败或警告
+   - 可以使用 `node electron/test-main-logic.js` 验证核心逻辑
+   - 需要在本地开发环境（有图形界面）中运行
+
+2. **首次启动可能较慢**：Go 服务需要初始化，窗口会在服务就绪后才显示。
+
+3. **端口占用**：如果 8080 端口已被占用，需要手动停止其他服务。
+
+4. **打包体积**：Electron 本身约 ~150MB，Go 二进制约 10MB。
 
 ## 依赖版本
 

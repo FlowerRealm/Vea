@@ -3,7 +3,6 @@ package api
 import (
 	"errors"
 	"io"
-	"io/fs"
 	"net/http"
 	"strings"
 	"time"
@@ -15,7 +14,6 @@ import (
 )
 
 type Router struct {
-	webFS fs.FS
 	service              *service.Service
 	nodeNotFoundErr      error
 	configNotFoundErr    error
@@ -24,9 +22,9 @@ type Router struct {
 	componentNotFoundErr error
 }
 
-func NewRouter(service *service.Service, webFS fs.FS) *gin.Engine {
+func NewRouter(service *service.Service) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
-	r := &Router{service: service, webFS: webFS}
+	r := &Router{service: service}
 	r.nodeNotFoundErr, r.configNotFoundErr, r.geoNotFoundErr, r.ruleNotFoundErr, r.componentNotFoundErr = service.Errors()
 	engine := gin.New()
 	engine.Use(gin.Recovery())
@@ -55,16 +53,6 @@ func (r *Router) register(engine *gin.Engine) {
 	engine.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "timestamp": time.Now()})
 	})
-
-	engine.GET("/", func(c *gin.Context) {
-		data, err := fs.ReadFile(r.webFS, "index.html")
-		if err != nil {
-			c.String(http.StatusNotFound, "404 not found: %v", err)
-			return
-		}
-		c.Data(http.StatusOK, "text/html; charset=utf-8", data)
-	})
-	engine.StaticFS("/ui", http.FS(r.webFS))
 
 	engine.GET("/snapshot", func(c *gin.Context) {
 		c.JSON(http.StatusOK, r.service.Snapshot())

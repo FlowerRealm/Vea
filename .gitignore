@@ -39,11 +39,7 @@ yarn-error.log*
 .vscode/
 *.db
 *.sqlite3
+
+# Runtime data
 data/
 artifacts/
-
-# data
-data/
-
-# Embedded web assets (copied from /web for embed)
-cmd/server/web/

@@ -2,10 +2,8 @@ package main
 
 import (
 	"context"
-	"embed"
 	"flag"
 	"io"
-	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -21,9 +19,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
-
-//go:embed web
-var webFS embed.FS
 
 func main() {
 	addr := flag.String("addr", ":8080", "HTTP listen address")
@@ -69,11 +64,7 @@ taskRunner := []service.Task{
 	serviceInstance.AttachTasks(taskRunner...)
 	serviceInstance.Start(ctx)
 
-	webRoot, err := fs.Sub(webFS, "web")
-	if err != nil {
-		log.Fatalf("failed to create web sub filesystem: %v", err)
-	}
-	router := api.NewRouter(serviceInstance, webRoot)
+	router := api.NewRouter(serviceInstance)
 
 	srv := &http.Server{
 		Addr:    *addr,

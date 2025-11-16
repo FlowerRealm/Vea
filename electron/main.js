@@ -13,7 +13,7 @@ function checkService(callback) {
   const options = {
     hostname: '127.0.0.1',
     port: 8080,
-    path: '/api/v1/health',
+    path: '/',
     method: 'GET',
     timeout: 1000
   }

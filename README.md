@@ -1,6 +1,11 @@
-# Vea Backend
+# Vea - Xray 代理管理器
 
-Vea 是一个用 Go 编写的 Xray 管理服务，提供节点、配置、Geo 资源、流量策略的统一运维入口，同时内置简单的 Web 控制台，方便在浏览器中完成日常维护。
+Vea 是一个基于 Electron 的桌面应用，用于管理 Xray 代理节点、配置、Geo 资源和流量策略。
+
+**技术栈**:
+- **前端**: Electron + HTML/CSS/JavaScript
+- **后端**: Go + Gin (内置 HTTP 服务)
+- **通信**: REST API (localhost:8080)
 
 ## 功能亮点
 
@@ -12,73 +17,74 @@ Vea 是一个用 Go 编写的 Xray 管理服务，提供节点、配置、Geo �
 
 ## 环境要求
 
-- Go 1.22+
-- Git（克隆项目）
-- 可联网环境用于拉取依赖与 Geo 资源（如需）
+- **Node.js** 18+
+- **Go** 1.22+
+- **操作系统**: Linux (X11/Wayland) / macOS / Windows
 
-## 快速上手
+## 快速开始
 
-1. 克隆仓库并进入目录：
-   ```bash
-   git clone https://github.com/<your-org>/Vea.git
-   cd Vea
-   ```
-2. 安装依赖并确认可以构建：
-   ```bash
-   go mod tidy
-   go build ./...
-   ```
-3. 启动服务（默认监听 `:8080`）：
-   ```bash
-   go run ./cmd/server --addr :8080 --state ./data/state.json
-   ```
-   常用参数：
-   - `--addr`：HTTP 服务监听地址，例如 `--addr 0.0.0.0:9000`
-   - `--state`：快照文件路径，默认 `data/state.json`
-4. 验证运行状态：
-   - `GET http://127.0.0.1:8080/health`：健康检查
-   - 浏览器打开 `http://127.0.0.1:8080/`：访问内置控制台
+### 开发模式
 
-## 目录与数据
-
-- `data/state.json`：内存状态快照，服务每次写操作后自动刷盘；下次启动会恢复。
-- `artifacts/geo/`：存放 Geo 资源二进制文件，例如 `artifacts/geo/<id>.bin`。
-- `dist/`：存放手动或 CI 打包生成的发布归档。
-- `scripts/`：平台化打包脚本（`package-linux.sh`、`package-macos.sh`、`package-windows.ps1`）。
-
-## 发布与打包
-
-### 本地打包
-
-根据目标平台执行对应脚本，示例（Linux amd64）：
 ```bash
-./scripts/package-linux.sh v1.0.0 amd64 dist
-```
-macOS 与 Windows：
-```bash
-./scripts/package-macos.sh v1.0.0 arm64 dist
-powershell ./scripts/package-windows.ps1 -Version v1.0.0 -GoOS windows -GoArch amd64
-```
-生成的归档名为 `vea-<version>-<goos>-<goarch>.<tar.gz|zip>`，内部包含可执行文件、`web/` 前端与 `LICENSE`。
+# 克隆项目
+git clone <your-repo>
+cd Vea
 
-若需要对 macOS 可执行文件进行签名，在运行脚本前设置：
-```bash
-export MACOS_CODESIGN_IDENTITY="Developer ID Application: ..."
-export MACOS_CODESIGN_ENTITLEMENTS="entitlements.plist" # 可选
+# 启动 Electron 应用（自动编译 Go 后端）
+make dev
 ```
 
-### GitHub Actions
+应用将自动：
+1. 编译 Go 后端服务
+2. 安装 Electron 依赖
+3. 启动 Electron 窗口
 
-仓库提供 `.github/workflows/release.yml`，通过 `workflow_dispatch` 触发手动发布：
-1. 在 GitHub Actions 面板选择 **Build and Release**。
-2. 输入版本号（例如 `v1.2.3`）和 Release Notes，点击运行。
-3. CI 分别在 Linux/macOS/Windows 构建产物，生成 `vea-<version>-SHA256SUMS` 校验文件，并把所有归档上传到 GitHub Release。
+### 打包应用
 
-## 进一步扩展
+```bash
+# 打包当前平台
+make build
 
-- 将内存存储实现替换为数据库，满足多实例部署需求。
-- 接入真实的节点探测脚本，替换当前模拟的延迟/速度数据。
-- 自定义 Geo 资源下载与校验策略，以适配内网或镜像源。
+# 打包后的文件在
+ls electron/dist/release/
+```
+
+## 项目结构
+
+```
+Vea/
+├── electron/          # Electron 桌面应用
+│   ├── main.js       # 主进程（启动 Go 服务）
+│   ├── renderer/     # 渲染进程（UI）
+│   └── package.json
+├── cmd/              # Go 程序入口
+├── internal/         # Go 业务逻辑
+├── sdk/              # JavaScript SDK
+├── docs/             # 所有文档
+│   ├── api/         # API 文档（OpenAPI 规范）
+│   └── *.md
+├── data/             # 运行时数据
+│   └── state.json   # 状态持久化
+└── artifacts/        # Xray 核心、Geo 资源
+```
+
+## 开发文档
+
+- [Electron 客户端说明](./electron/README.md)
+- [SDK 文档](./sdk/README.md)
+- [API 文档](./docs/api/README.md)
+- [构建系统](./docs/SDK_AND_BUILD_SYSTEM.md)
+
+## 常见问题
+
+**Q: 启动失败显示 sandbox 错误？**
+A: 项目已配置 `--no-sandbox` 标志，正常情况不会出现。如遇到问题请查看 [electron/README.md](./electron/README.md)。
+
+**Q: 端口 8080 被占用？**
+A: Go 服务默认使用 8080 端口，请确保该端口未被占用。
+
+**Q: 如何调试？**
+A: 运行 `make electron-dev` 后，在 Electron 窗口中按 F12 打开开发者工具。
 
 ## 许可证
 
