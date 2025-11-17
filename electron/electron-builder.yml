@@ -38,7 +38,7 @@ linux:
         - arm64
   category: Network
   icon: assets/icon.png
-  maintainer: FlowerRealm <flowerrealm@example.com>
+  maintainer: FlowerRealm <flower_realm@outlook.com>
 
 win:
   target:
