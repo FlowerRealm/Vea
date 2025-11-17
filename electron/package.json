@@ -11,13 +11,17 @@
     "build:win": "electron-builder --win",
     "postinstall": "electron-builder install-app-deps"
   },
+  "homepage": "https://github.com/yourusername/vea",
   "keywords": [
     "vea",
     "proxy",
     "xray",
     "electron"
   ],
-  "author": "FlowerRealm",
+  "author": {
+    "name": "FlowerRealm",
+    "email": "flowerrealm@example.com"
+  },
   "license": "MIT",
   "devDependencies": {
     "electron": "^28.3.3",
