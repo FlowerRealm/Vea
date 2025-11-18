@@ -30,8 +30,12 @@ Vea 是一个基于 Electron 的桌面应用，用于管理 Xray 代理节点、
 git clone <your-repo>
 cd Vea
 
-# 一键启动前后端
+# 一键启动前后端（默认深色主题）
 make dev
+
+# 或指定主题启动
+VEA_THEME=dark make dev   # 深色主题
+VEA_THEME=light make dev  # 浅色主题
 ```
 
 **这一个命令会自动完成：**
@@ -41,6 +45,8 @@ make dev
 4. Electron 自动启动 Go 服务进程（监听 `localhost:8080`）
 
 > 💡 **前后端一体化启动**：Electron 的主进程会自动 spawn Go 后端进程，无需手动启动两个服务。
+
+> 🎨 **主题支持**：提供深色和浅色两套现代化主题，通过 `VEA_THEME` 环境变量切换。详见 [electron/renderer/theme/README.md](electron/renderer/theme/README.md)
 
 ### 打包应用
 
