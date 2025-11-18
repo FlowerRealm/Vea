@@ -25,7 +25,6 @@
   "license": "MIT",
   "devDependencies": {
     "electron": "^28.3.3",
-    "electron-builder": "^24.9.1",
-    "vite": "^5.0.0"
+    "electron-builder": "^24.9.1"
   }
 }
