@@ -6,21 +6,31 @@
     <title>Vea 控制面</title>
     <link rel="stylesheet" href="theme-dark.css" id="theme-stylesheet">
     <style>
-      .theme-toggle {
-        margin-top: auto;
-        padding: var(--space-md);
-        border-top: 1px solid var(--border-color);
-      }
-      .theme-toggle button {
-        width: 100%;
+      .theme-option {
+        flex: 1;
+        padding: var(--space-lg);
         display: flex;
         align-items: center;
-        justify-content: center;
-        gap: var(--space-sm);
+        gap: var(--space-md);
+        border: 2px solid var(--border-color);
+        background: var(--bg-secondary);
+        transition: all var(--transition-base);
       }
-      .theme-toggle button svg {
-        width: 16px;
-        height: 16px;
+      .theme-option:hover {
+        border-color: var(--accent-primary);
+        background: var(--bg-tertiary);
+        transform: translateY(-2px);
+      }
+      .theme-option.active {
+        border-color: var(--accent-primary);
+        background: rgba(59, 130, 246, 0.1);
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+      }
+      .theme-option svg {
+        flex-shrink: 0;
+      }
+      .theme-option div {
+        text-align: left;
       }
     </style>
   </head>
@@ -60,25 +70,6 @@
         <button data-target="panel4">流量策略</button>
         <button data-target="panel-settings">设置</button>
       </nav>
-      <div class="theme-toggle">
-        <button id="theme-toggle-btn">
-          <svg id="theme-icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-          </svg>
-          <svg id="theme-icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: none;">
-            <circle cx="12" cy="12" r="5"/>
-            <line x1="12" y1="1" x2="12" y2="3"/>
-            <line x1="12" y1="21" x2="12" y2="23"/>
-            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
-            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-            <line x1="1" y1="12" x2="3" y2="12"/>
-            <line x1="21" y1="12" x2="23" y2="12"/>
-            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
-            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-          </svg>
-          <span id="theme-text">深色模式</span>
-        </button>
-      </div>
     </aside>
     <main>
       <div id="status" class="status-bar"></div>
@@ -374,9 +365,44 @@
         <header class="panel-header">
           <div>
             <h2>设置</h2>
-            <p>管理系统代理及忽略主机列表，如需更多高级选项可编辑配置文件或手动调整系统设置。</p>
+            <p>管理应用主题、系统代理及忽略主机列表。</p>
           </div>
         </header>
+
+        <div class="card" id="theme-settings-card">
+          <h3>外观主题</h3>
+          <p class="muted">选择你喜欢的应用主题，设置会自动保存。</p>
+          <div class="form-grid">
+            <div style="grid-column: 1 / -1; display: flex; gap: var(--space-md); margin-top: var(--space-md);">
+              <button type="button" class="theme-option" id="theme-dark" data-theme="dark">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+                <div>
+                  <div style="font-weight: 500;">深色模式</div>
+                  <div style="font-size: 12px; opacity: 0.7;">适合夜间使用</div>
+                </div>
+              </button>
+              <button type="button" class="theme-option" id="theme-light" data-theme="light">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="5"/>
+                  <line x1="12" y1="1" x2="12" y2="3"/>
+                  <line x1="12" y1="21" x2="12" y2="23"/>
+                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                  <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                  <line x1="1" y1="12" x2="3" y2="12"/>
+                  <line x1="21" y1="12" x2="23" y2="12"/>
+                  <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                  <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                </svg>
+                <div>
+                  <div style="font-weight: 500;">浅色模式</div>
+                  <div style="font-size: 12px; opacity: 0.7;">适合白天使用</div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
 
         <div class="card" id="system-proxy-card">
           <h3>系统代理</h3>
@@ -1571,43 +1597,30 @@ let preferredNodeId = "";
         });
       }
       
-      // Theme toggle
-      const themeToggleBtn = document.getElementById("theme-toggle-btn");
+      // Theme settings
       const themeStylesheet = document.getElementById("theme-stylesheet");
-      const themeMoonIcon = document.getElementById("theme-icon-moon");
-      const themeSunIcon = document.getElementById("theme-icon-sun");
-      const themeText = document.getElementById("theme-text");
-      let isDark = true;
+      const themeDarkBtn = document.getElementById("theme-dark");
+      const themeLightBtn = document.getElementById("theme-light");
 
-      function updateThemeUI() {
-        if (isDark) {
-          themeMoonIcon.style.display = "";
-          themeSunIcon.style.display = "none";
-          themeText.textContent = "深色模式";
-        } else {
-          themeMoonIcon.style.display = "none";
-          themeSunIcon.style.display = "";
-          themeText.textContent = "浅色模式";
-        }
+      function applyTheme(theme) {
+        const css = theme === "dark" ? "theme-dark.css" : "theme-light.css";
+        themeStylesheet.href = css;
+
+        // Update button states
+        themeDarkBtn.classList.toggle("active", theme === "dark");
+        themeLightBtn.classList.toggle("active", theme === "light");
+
+        // Save preference
+        localStorage.setItem("theme", theme);
       }
 
-      themeToggleBtn.addEventListener("click", () => {
-        isDark = !isDark;
-        const newTheme = isDark ? "theme-dark.css" : "theme-light.css";
-        themeStylesheet.href = newTheme;
-        updateThemeUI();
-        localStorage.setItem("theme", isDark ? "dark" : "light");
-      });
+      // Theme button handlers
+      themeDarkBtn.addEventListener("click", () => applyTheme("dark"));
+      themeLightBtn.addEventListener("click", () => applyTheme("light"));
 
-      // Load saved theme
-      const savedTheme = localStorage.getItem("theme");
-      if (savedTheme === "light") {
-        isDark = false;
-        themeStylesheet.href = "theme-light.css";
-        updateThemeUI();
-      } else {
-        updateThemeUI();
-      }
+      // Load saved theme or default to dark
+      const savedTheme = localStorage.getItem("theme") || "dark";
+      applyTheme(savedTheme);
     </script>
     </div><!-- .app-container -->
   </body>
