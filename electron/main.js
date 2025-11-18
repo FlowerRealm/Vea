@@ -112,7 +112,7 @@ function createWindow() {
   mainWindow.webContents.once('did-finish-load', () => {
     mainWindow.webContents.executeJavaScript('localStorage.getItem("theme")').then(theme => {
       const themeFile = theme === 'light' ? 'light.html' : 'dark.html'
-      mainWindow.loadFile(path.join(__dirname, `renderer/theme/${themeFile}`))
+      mainWindow.loadFile(path.join(__dirname, `renderer/${themeFile}`))
     })
   })
 
