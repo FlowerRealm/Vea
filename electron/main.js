@@ -1,4 +1,4 @@
-const { app, BrowserWindow } = require('electron')
+const { app, BrowserWindow, ipcMain } = require('electron')
 const { spawn } = require('child_process')
 const path = require('path')
 const http = require('http')
@@ -98,10 +98,12 @@ function createWindow() {
     height: 800,
     minWidth: 800,
     minHeight: 600,
+    frame: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: true
+      sandbox: true,
+      preload: path.join(__dirname, 'preload.js')
     },
     title: 'Vea Console'
   })
@@ -121,6 +123,27 @@ function createWindow() {
     mainWindow = null
   })
 }
+
+/**
+ * 窗口控制 IPC 处理器
+ */
+ipcMain.on('window-minimize', () => {
+  if (mainWindow) mainWindow.minimize()
+})
+
+ipcMain.on('window-maximize', () => {
+  if (mainWindow) {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize()
+    } else {
+      mainWindow.maximize()
+    }
+  }
+})
+
+ipcMain.on('window-close', () => {
+  if (mainWindow) mainWindow.close()
+})
 
 /**
  * 应用就绪

@@ -15,8 +15,60 @@
       body {
         margin: 0;
         display: flex;
+        flex-direction: column;
         min-height: 100vh;
         background: linear-gradient(180deg, #f9fafb 0%, #e2e8f0 100%);
+      }
+
+      .titlebar {
+        height: 32px;
+        background: #1e293b;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 12px;
+        -webkit-app-region: drag;
+        user-select: none;
+      }
+
+      .titlebar-title {
+        color: #94a3b8;
+        font-size: 12px;
+        font-weight: 500;
+      }
+
+      .titlebar-controls {
+        display: flex;
+        -webkit-app-region: no-drag;
+      }
+
+      .titlebar-button {
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #94a3b8;
+        cursor: pointer;
+        transition: background-color 0.15s;
+      }
+
+      .titlebar-button:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      .titlebar-button:active {
+        background: rgba(255, 255, 255, 0.15);
+      }
+
+      .titlebar-button.close:hover {
+        background: #ef4444;
+        color: white;
+      }
+
+      .app-container {
+        display: flex;
+        flex: 1;
       }
 
       .sidebar {
@@ -725,6 +777,28 @@
     </style>
   </head>
   <body>
+    <div class="titlebar">
+      <div class="titlebar-title">Vea Console</div>
+      <div class="titlebar-controls">
+        <div class="titlebar-button" id="minimize-btn">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+            <rect x="0" y="5" width="12" height="2"/>
+          </svg>
+        </div>
+        <div class="titlebar-button" id="maximize-btn">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1">
+            <rect x="1" y="1" width="10" height="10"/>
+          </svg>
+        </div>
+        <div class="titlebar-button close" id="close-btn">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5">
+            <line x1="1" y1="1" x2="11" y2="11"/>
+            <line x1="11" y1="1" x2="1" y2="11"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+    <div class="app-container">
     <aside class="sidebar">
       <div class="brand">Vea Console</div>
       <nav class="menu" id="menu">
@@ -2211,6 +2285,22 @@ let preferredNodeId = "";
         loaders[currentPanel]?.();
         ensureNodesPolling();
       })();
+
+      // 窗口控制按钮事件
+      if (window.electronAPI) {
+        document.getElementById('minimize-btn').addEventListener('click', () => {
+          window.electronAPI.minimizeWindow();
+        });
+
+        document.getElementById('maximize-btn').addEventListener('click', () => {
+          window.electronAPI.maximizeWindow();
+        });
+
+        document.getElementById('close-btn').addEventListener('click', () => {
+          window.electronAPI.closeWindow();
+        });
+      }
     </script>
+    </div><!-- .app-container -->
   </body>
 </html>

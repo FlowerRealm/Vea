@@ -7,8 +7,8 @@ directories:
 
 files:
   - main.js
+  - preload.js
   - renderer/**/*
-  - "!renderer/index.html"
   - "!**/*.map"
 
 extraResources:
