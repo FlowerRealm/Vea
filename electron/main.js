@@ -108,11 +108,8 @@ function createWindow() {
     title: 'Vea Console'
   })
 
-  // 加载主题：从环境变量 VEA_THEME 读取，默认为 dark
-  const theme = process.env.VEA_THEME || 'dark'
-  const themeFile = path.join(__dirname, `renderer/theme/${theme}.html`)
-
-  mainWindow.loadFile(themeFile)
+  // 加载 UI（支持应用内主题切换）
+  mainWindow.loadFile(path.join(__dirname, 'renderer/index.html'))
 
   // 可选：打开开发者工具
   // mainWindow.webContents.openDevTools()
