@@ -108,16 +108,14 @@ function createWindow() {
     title: 'Vea Console'
   })
 
-  // 开发模式：加载开发服务器
-  // 生产模式：加载打包后的 HTML
-  const isDev = !app.isPackaged
-  if (isDev) {
-    mainWindow.loadFile(path.join(__dirname, 'renderer/index.html'))
-    // 可选：打开开发者工具
-    // mainWindow.webContents.openDevTools()
-  } else {
-    mainWindow.loadFile(path.join(__dirname, 'renderer/index.html'))
-  }
+  // 加载主题：从环境变量 VEA_THEME 读取，默认为 dark
+  const theme = process.env.VEA_THEME || 'dark'
+  const themeFile = path.join(__dirname, `renderer/theme/${theme}.html`)
+
+  mainWindow.loadFile(themeFile)
+
+  // 可选：打开开发者工具
+  // mainWindow.webContents.openDevTools()
 
   mainWindow.on('closed', () => {
     mainWindow = null
