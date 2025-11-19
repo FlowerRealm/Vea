@@ -2431,13 +2431,13 @@ func latencyViaSocksOnce(ctx context.Context, proxyHost string, proxyPort int, t
 // through a SOCKS5 proxy on host:port and returns measured Mbps.
 func measureDownloadThroughSocks5(ctx context.Context, proxyHost string, proxyPort int, progress func(float64)) (float64, error) {
 	// 多目标回落，避免单一域名被策略或对端封禁导致误判
-	// 优化：使用更小的文件进行测速，2MB和5MB足够测出速度
-	sizes := []int64{5 * 1024 * 1024, 2 * 1024 * 1024}
+	// 优化：使用更小的文件进行测速，10MB足够且比原来的50MB/100MB快很多
+	sizes := []int64{10 * 1024 * 1024}
 	candidates := func(size int64) []socksTarget {
 		return []socksTarget{
-			{"speed.cloudflare.com", 443, fmt.Sprintf("/__down?bytes=%d", size), true, size},
-			{"proof.ovh.net", 80, "/files/1Mio.dat", false, 1 * 1024 * 1024},
 			{"cachefly.cachefly.net", 80, "/10mb.test", false, 10 * 1024 * 1024},
+			{"speedtest.tele2.net", 80, "/10MB.zip", false, 10 * 1024 * 1024},
+			{"ipv4.download.thinkbroadband.com", 80, "/10MB.zip", false, 10 * 1024 * 1024},
 		}
 	}
 	var (
