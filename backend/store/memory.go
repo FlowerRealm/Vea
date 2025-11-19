@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"vea/internal/domain"
+	"vea/backend/domain"
 )
 
 var (

@@ -108,18 +108,11 @@ function createWindow() {
     title: 'Vea Console'
   })
 
-  // 根据保存的主题选择加载对应的 HTML 文件
-  mainWindow.webContents.once('did-finish-load', () => {
-    mainWindow.webContents.executeJavaScript('localStorage.getItem("theme")').then(theme => {
-      const themeFile = theme === 'light' ? 'light.html' : 'dark.html'
-      mainWindow.loadFile(path.join(__dirname, `renderer/${themeFile}`))
-    })
-  })
+  // 直接加载默认主题（dark.html）
+  // 主题切换功能在应用内通过重新加载 HTML 文件实现
+  mainWindow.loadFile(path.join(__dirname, 'renderer/dark.html'))
 
-  // 先加载一个临时页面以读取 localStorage
-  mainWindow.loadURL('data:text/html,<html><body></body></html>')
-
-  // 可选：打开开发者工具
+  // 启用开发者工具以调试（在开发时需要时可以取消注释）
   // mainWindow.webContents.openDevTools()
 
   mainWindow.on('closed', () => {

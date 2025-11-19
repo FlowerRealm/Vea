@@ -4,21 +4,21 @@ import (
 	"context"
 	"time"
 
-	"vea/internal/service"
+	"vea/backend/service"
 )
 
-type GeoSync struct {
+type ConfigSync struct {
 	Service  *service.Service
 	Interval time.Duration
 }
 
-func (t *GeoSync) Start(ctx context.Context) {
+func (t *ConfigSync) Start(ctx context.Context) {
 	if t.Service == nil {
 		return
 	}
 	interval := t.Interval
 	if interval <= 0 {
-		interval = 6 * time.Hour
+		interval = time.Minute
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -28,7 +28,7 @@ func (t *GeoSync) Start(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			t.Service.SyncGeoResources()
+			t.Service.AutoUpdateConfigs()
 		}
 	}
 }

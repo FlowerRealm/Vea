@@ -29,8 +29,8 @@ import (
 	"sync"
 	"time"
 
-	"vea/internal/domain"
-	"vea/internal/store"
+	"vea/backend/domain"
+	"vea/backend/store"
 )
 
 const (
@@ -46,7 +46,7 @@ const (
 )
 
 var (
-	speedTestTimeout = 120 * time.Second
+	speedTestTimeout = 30 * time.Second
 )
 
 var httpClient = &http.Client{
@@ -2431,12 +2431,13 @@ func latencyViaSocksOnce(ctx context.Context, proxyHost string, proxyPort int, t
 // through a SOCKS5 proxy on host:port and returns measured Mbps.
 func measureDownloadThroughSocks5(ctx context.Context, proxyHost string, proxyPort int, progress func(float64)) (float64, error) {
 	// 多目标回落，避免单一域名被策略或对端封禁导致误判
-	sizes := []int64{50 * 1024 * 1024, 20 * 1024 * 1024}
+	// 优化：使用更小的文件进行测速，2MB和5MB足够测出速度
+	sizes := []int64{5 * 1024 * 1024, 2 * 1024 * 1024}
 	candidates := func(size int64) []socksTarget {
 		return []socksTarget{
 			{"speed.cloudflare.com", 443, fmt.Sprintf("/__down?bytes=%d", size), true, size},
-			{"speed.hetzner.de", 443, "/100MB.bin", true, 100 * 1024 * 1024},
-			{"cachefly.cachefly.net", 80, "/100mb.test", false, 100 * 1024 * 1024},
+			{"proof.ovh.net", 80, "/files/1Mio.dat", false, 1 * 1024 * 1024},
+			{"cachefly.cachefly.net", 80, "/10mb.test", false, 10 * 1024 * 1024},
 		}
 	}
 	var (

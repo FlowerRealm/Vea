@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"vea/internal/domain"
-	"vea/internal/store"
+	"vea/backend/domain"
+	"vea/backend/store"
 
 	"golang.org/x/net/proxy"
 )

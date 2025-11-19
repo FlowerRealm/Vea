@@ -9,8 +9,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"vea/internal/domain"
-	"vea/internal/service"
+	"vea/backend/domain"
+	"vea/backend/service"
 )
 
 type Router struct {

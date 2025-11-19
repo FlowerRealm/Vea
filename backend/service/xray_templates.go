@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"vea/internal/domain"
+	"vea/backend/domain"
 )
 
 type GeoFiles struct {

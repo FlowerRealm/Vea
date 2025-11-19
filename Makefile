@@ -35,7 +35,7 @@ all: dev ## 默认：启动开发模式
 
 deps: ## 安装 Electron 依赖
 	@echo "==> 安装 Electron 依赖..."
-	@cd electron && npm install
+	@cd frontend && npm install
 	@echo "==> 依赖安装完成"
 
 build-backend: ## 编译 Go 后端
@@ -48,19 +48,19 @@ build-backend: ## 编译 Go 后端
 dev: build-backend deps ## 启动 Electron 开发模式
 	@echo "==> 启动 Electron 开发模式..."
 	@cp $(OUTPUT_DIR)/$(BINARY_NAME) vea
-	@cd electron && npm run dev
+	@cd frontend && npm run dev
 
 build: build-backend deps ## 打包 Electron 应用
 	@echo "==> 打包 Electron 应用..."
 	@cp $(OUTPUT_DIR)/$(BINARY_NAME) vea
-	@cd electron && npm run build
+	@cd frontend && npm run build
 	@echo "==> 应用打包完成"
-	@ls -lh electron/dist/release/
+	@ls -lh frontend/dist/release/
 
 clean: ## 清理构建产物
 	@echo "==> 清理构建产物..."
 	@rm -rf $(OUTPUT_DIR)
-	@rm -rf electron/dist
+	@rm -rf frontend/dist
 	@rm -f vea vea.exe
 	@echo "==> 清理完成"
 

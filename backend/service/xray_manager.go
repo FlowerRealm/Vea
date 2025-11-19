@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"vea/internal/domain"
+	"vea/backend/domain"
 )
 
 var (

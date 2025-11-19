@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"vea/internal/domain"
+	"vea/backend/domain"
 )
 
 var (

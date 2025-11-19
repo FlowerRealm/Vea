@@ -1,4 +1,4 @@
-import { createAPI, utils } from '../../sdk/dist/vea-sdk.esm.js';
+import { createAPI, utils } from '../sdk/dist/vea-sdk.esm.js';
 const { formatTime, formatBytes, formatInterval, escapeHtml, parseNumber, parseList, sleep } = utils;
 
 (function () {
@@ -49,16 +49,16 @@ const { formatTime, formatBytes, formatInterval, escapeHtml, parseNumber, parseL
   let nodeTags = [];
   let currentNodeTab = "全部";
 
-let xrayStatus = {
-  enabled: false,
-  running: false,
-  activeNodeId: "",
-  binary: "",
-};
-let nodesCache = [];
-let componentsCache = [];
-let lastSelectedNodeId = "";
-let preferredNodeId = "";
+  let xrayStatus = {
+    enabled: false,
+    running: false,
+    activeNodeId: "",
+    binary: "",
+  };
+  let nodesCache = [];
+  let componentsCache = [];
+  let lastSelectedNodeId = "";
+  let preferredNodeId = "";
   let nodesPollHandle = null;
   const NODES_POLL_INTERVAL = 1000;
 
@@ -170,9 +170,7 @@ let preferredNodeId = "";
       if (proxyToggle) {
         proxyToggle.disabled = true;
         proxyToggle.dataset.mode = "";
-        proxyToggle.classList.remove("danger");
-        proxyToggle.classList.add("primary");
-        proxyToggle.textContent = "启动代理";
+        proxyToggle.classList.remove("active");
       }
       return;
     }
@@ -207,15 +205,12 @@ let preferredNodeId = "";
 
     if (proxyToggle) {
       proxyToggle.disabled = false;
-      proxyToggle.classList.remove("primary", "danger");
       if (status.enabled && proxyEnabled) {
         proxyToggle.dataset.mode = "stop";
-        proxyToggle.classList.add("danger");
-        proxyToggle.textContent = "停止代理";
+        proxyToggle.classList.add("active");
       } else {
         proxyToggle.dataset.mode = "start";
-        proxyToggle.classList.add("primary");
-        proxyToggle.textContent = "启动代理";
+        proxyToggle.classList.remove("active");
       }
     }
   }
@@ -232,8 +227,15 @@ let preferredNodeId = "";
       nodesCache = nodes;
       lastSelectedNodeId = recentSelectedId;
 
+      // Try to restore from localStorage first
+      const savedNodeId = localStorage.getItem("vea_selected_node_id");
+
       const hasNode = (id) => !!id && nodes.some((node) => node && node.id === id);
-      if (hasNode(recentSelectedId)) {
+
+      // Priority: localStorage > recentSelectedId > serverActiveNodeId > first node
+      if (savedNodeId && hasNode(savedNodeId)) {
+        preferredNodeId = savedNodeId;
+      } else if (hasNode(recentSelectedId)) {
         preferredNodeId = recentSelectedId;
       } else if (hasNode(serverActiveNodeId)) {
         preferredNodeId = serverActiveNodeId;
@@ -244,6 +246,12 @@ let preferredNodeId = "";
       }
 
       activeNodeId = serverActiveNodeId || preferredNodeId;
+
+      // Save to localStorage
+      if (activeNodeId) {
+        localStorage.setItem("vea_selected_node_id", activeNodeId);
+      }
+
       updateNodeTabs(nodes);
       renderNodes(nodes, activeNodeId);
       updateHomeNodeStatus();
@@ -282,10 +290,11 @@ let preferredNodeId = "";
     nodeTabs.innerHTML = nodeTags
       .map((tag) => {
         const active = tag === currentNodeTab ? "active" : "";
-        return `<button type="button" class="node-tab ${active}" data-tag="${escapeHtml(tag)}">${escapeHtml(tag)}</button>`;
       })
       .join("");
   }
+
+  let lastRenderedNodesHash = "";
 
   function renderNodes(nodes, currentId = "") {
     if (!nodeGrid) return;
@@ -295,48 +304,89 @@ let preferredNodeId = "";
     }
     if (!Array.isArray(nodes) || nodes.length === 0) {
       nodeGrid.innerHTML = '<div class="empty-card">暂无节点</div>';
+      lastRenderedNodesHash = "empty";
       return;
     }
 
     if (!Array.isArray(filtered) || filtered.length === 0) {
       nodeGrid.innerHTML = '<div class="empty-card">当前标签下暂无节点</div>';
+      lastRenderedNodesHash = "empty-filtered";
       return;
     }
+
+    // Create a hash of the current state to detect changes
+    const stateHash = JSON.stringify(filtered.map(n => ({
+      id: n.id,
+      name: n.name,
+      address: n.address,
+      port: n.port,
+      protocol: n.protocol,
+      lastLatencyMs: n.lastLatencyMs,
+      lastSpeedMbps: n.lastSpeedMbps,
+      lastSpeedError: n.lastSpeedError
+    }))) + currentId + currentNodeTab;
+
+    // Only re-render if data has changed
+    if (stateHash === lastRenderedNodesHash) {
+      return;
+    }
+    lastRenderedNodesHash = stateHash;
 
     nodeGrid.innerHTML = filtered
       .map((node) => {
         const rowId = escapeHtml(node.id);
         const isActive = currentId && node.id === currentId;
-        const protocolBadges = [`<span class="badge">${escapeHtml(node.protocol)}</span>`]
-          .filter(Boolean)
-          .join(" ");
-        const latencyValue =
-          typeof node.lastLatencyMs === "number" && node.lastLatencyMs > 0 ? `${node.lastLatencyMs} ms` : "测延迟";
-        let speedValue;
-        if (typeof node.lastSpeedError === "string" && node.lastSpeedError) {
-          speedValue = "测速失败";
+        const protocol = escapeHtml(node.protocol || "unknown");
+
+        // Latency formatting
+        let latencyValue = "Ping";
+        let latencyClass = "";
+        if (typeof node.lastLatencyMs === "number" && node.lastLatencyMs > 0) {
+          latencyValue = `${node.lastLatencyMs}ms`;
+          if (node.lastLatencyMs < 100) latencyClass = "good";
+          else if (node.lastLatencyMs < 300) latencyClass = "fair";
+          else latencyClass = "poor";
+        }
+
+        // Speed formatting
+        let speedValue = "Speed";
+        let speedClass = "";
+        if (node.lastSpeedError) {
+          speedValue = "Error";
+          speedClass = "poor";
         } else if (typeof node.lastSpeedMbps === "number" && node.lastSpeedMbps > 0) {
           const fixed = node.lastSpeedMbps >= 10 ? node.lastSpeedMbps.toFixed(1) : node.lastSpeedMbps.toFixed(2);
           speedValue = `${fixed} MB/s`;
-        } else {
-          speedValue = "测速";
+          if (node.lastSpeedMbps > 5) speedClass = "good";
+          else if (node.lastSpeedMbps > 1) speedClass = "fair";
+          else speedClass = "poor";
         }
+
         return `
           <div class="node-card ${isActive ? "active-node" : ""}" data-id="${rowId}">
             <div class="node-card-header">
-              <div>
-                <div class="node-card-title">${escapeHtml(node.name)}</div>
-                <div class="node-card-address">${escapeHtml(node.address)}:${escapeHtml(node.port)}</div>
-                <div class="node-card-badges">${protocolBadges}</div>
+              <div class="node-info">
+                <div class="node-name">${escapeHtml(node.name)}</div>
+                <div class="node-meta">${escapeHtml(node.address)}:${escapeHtml(node.port)}</div>
               </div>
-              <div class="node-card-controls"></div>
+              <div class="node-protocol-badge">${protocol}</div>
             </div>
-            <div class="node-metrics">
-              <span data-action="ping-node">${escapeHtml(latencyValue)}</span>
-              <span data-action="speed-node">${escapeHtml(speedValue)}</span>
+
+            <div class="node-metrics-row">
+              <div class="node-metric" data-action="ping-node" title="Test Latency">
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+                <span class="node-metric-value ${latencyClass}">${latencyValue}</span>
+              </div>
+              <div class="node-metric" data-action="speed-node" title="Test Speed">
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                <span class="node-metric-value ${speedClass}">${speedValue}</span>
+              </div>
             </div>
-            <div class="node-actions">
-              <button class="danger" data-action="delete-node">删除</button>
+
+            <div class="node-actions-overlay">
+              <button class="node-delete-btn" data-action="delete-node" title="Delete Node">
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              </button>
             </div>
           </div>
         `;
@@ -367,7 +417,7 @@ let preferredNodeId = "";
         const syncState = cfg.lastSyncError
           ? `<span class="badge error">失败：${escapeHtml(cfg.lastSyncError)}</span>`
           : '<span class="badge">正常</span>';
-        const source = cfg.sourceUrl ? `<br /><span class="muted text-break">${escapeHtml(cfg.sourceUrl)}</span>` : "";
+        const source = cfg.sourceUrl ? `<br /><div class="muted text-truncate" title="${escapeHtml(cfg.sourceUrl)}">${escapeHtml(cfg.sourceUrl)}</div>` : "";
         return `
           <tr data-id="${escapeHtml(cfg.id)}">
             <td>${escapeHtml(cfg.name)}${source}</td>
@@ -425,7 +475,8 @@ let preferredNodeId = "";
   }
 
   function updateHomeNodeStatus() {
-    if (!homeNodeName || !homeNodeAddress || !homeNodeLatency || !homeNodeSpeed || !homeNodeUpdated) return;
+    if (!homeNodeName || !homeNodeLatency || !homeNodeSpeed) return;
+
     let node = null;
     if (Array.isArray(nodesCache) && nodesCache.length > 0) {
       const targetId = resolveHomeNodeId();
@@ -436,139 +487,149 @@ let preferredNodeId = "";
         node = nodesCache[0];
       }
     }
+
     if (!node) {
-      homeNodeName.textContent = "-";
-      homeNodeAddress.textContent = "-";
-      homeNodeLatency.textContent = "~";
-      homeNodeSpeed.textContent = "~";
-      homeNodeUpdated.textContent = "-";
+      homeNodeName.textContent = "Select a Node";
+      if (homeNodeAddress) homeNodeAddress.textContent = "-";
+      homeNodeLatency.textContent = "--";
+      homeNodeSpeed.textContent = "--";
+      if (homeNodeUpdated) homeNodeUpdated.textContent = "-";
       return;
     }
 
     homeNodeName.textContent = escapeHtml(node.name || "-");
-    homeNodeAddress.textContent = node.address ? `${escapeHtml(node.address)}:${escapeHtml(String(node.port || ""))}` : "-";
+    if (homeNodeAddress) {
+      homeNodeAddress.textContent = node.address ? `${escapeHtml(node.address)}:${escapeHtml(String(node.port || ""))}` : "-";
+    }
 
-    const latency = typeof node.lastLatencyMs === "number" && node.lastLatencyMs > 0 ? `${node.lastLatencyMs} ms` : "~";
+    const latency = typeof node.lastLatencyMs === "number" && node.lastLatencyMs > 0 ? `${node.lastLatencyMs} ms` : "--";
     let speed;
     if (node.lastSpeedError) {
-      speed = `失败 ${escapeHtml(node.lastSpeedError)}`;
+      speed = `Error`;
     } else if (typeof node.lastSpeedMbps === "number" && node.lastSpeedMbps > 0) {
       speed = `${node.lastSpeedMbps >= 10 ? node.lastSpeedMbps.toFixed(1) : node.lastSpeedMbps.toFixed(2)} MB/s`;
     } else {
-      speed = "~";
+      speed = "--";
     }
     homeNodeLatency.textContent = latency;
     homeNodeSpeed.textContent = speed;
 
-  const timestamps = [node.lastLatencyAt, node.lastSpeedAt].filter(Boolean);
-  const updated = timestamps.length > 0 ? timestamps.sort().slice(-1)[0] : null;
-  homeNodeUpdated.textContent = updated ? formatTime(updated) : "-";
-}
+    if (homeNodeUpdated) {
+      const timestamps = [node.lastLatencyAt, node.lastSpeedAt].filter(Boolean);
+      const updated = timestamps.length > 0 ? timestamps.sort().slice(-1)[0] : null;
+      homeNodeUpdated.textContent = updated ? formatTime(updated) : "-";
+    }
+  }
 
-function resolveHomeNodeId() {
-  if (!Array.isArray(nodesCache) || nodesCache.length === 0) {
-    return "";
-  }
-  if (xrayStatus && xrayStatus.activeNodeId) {
-    const active = nodesCache.find((item) => item.id === xrayStatus.activeNodeId);
-    if (active && active.id) {
-      return active.id;
+  function resolveHomeNodeId() {
+    if (!Array.isArray(nodesCache) || nodesCache.length === 0) {
+      return "";
     }
-  }
-  if (preferredNodeId) {
-    const preferred = nodesCache.find((item) => item.id === preferredNodeId);
-    if (preferred && preferred.id) {
-      return preferred.id;
-    }
-  }
-  const first = nodesCache[0];
-  return (first && first.id) || "";
-}
-
-async function autoPingCurrentNode(targetId, { force = false } = {}) {
-  const nodeId = targetId || resolveHomeNodeId();
-  if (!nodeId) {
-    return false;
-  }
-  const now = Date.now();
-  if (!force) {
-    if (homePingState.running && now - homePingState.lastTriggeredAt < HOME_PING_COOLDOWN) {
-      return false;
-    }
-    if (homePingState.lastNodeId === nodeId && now - homePingState.lastTriggeredAt < HOME_PING_COOLDOWN) {
-      return false;
-    }
-    const node = Array.isArray(nodesCache) ? nodesCache.find((item) => item.id === nodeId) : null;
-    if (node) {
-      const lastLatencyAt = node.lastLatencyAt ? Date.parse(node.lastLatencyAt) : NaN;
-      if (!Number.isNaN(lastLatencyAt) && now - lastLatencyAt < HOME_PING_COOLDOWN) {
-        return false;
+    if (xrayStatus && xrayStatus.activeNodeId) {
+      const active = nodesCache.find((item) => item.id === xrayStatus.activeNodeId);
+      if (active && active.id) {
+        return active.id;
       }
     }
-  }
-  homePingState.running = true;
-  homePingState.lastNodeId = nodeId;
-  homePingState.lastTriggeredAt = now;
-  try {
-    await api.post(`/nodes/${nodeId}/ping`);
-    return true;
-  } catch (err) {
-    showStatus(`延迟任务失败：${err.message}`, "error", 6000);
-    return false;
-  } finally {
-    homePingState.running = false;
-  }
-}
-
-async function autoSpeedtestCurrentNode(targetId, { force = false } = {}) {
-  const nodeId = targetId || resolveHomeNodeId();
-  if (!nodeId) {
-    return false;
-  }
-  const now = Date.now();
-  if (!force) {
-    if (homeSpeedtestState.running && now - homeSpeedtestState.lastTriggeredAt < HOME_SPEEDTEST_COOLDOWN) {
-      return false;
-    }
-    if (homeSpeedtestState.lastNodeId === nodeId && now - homeSpeedtestState.lastTriggeredAt < HOME_SPEEDTEST_COOLDOWN) {
-      return false;
-    }
-    const node = Array.isArray(nodesCache) ? nodesCache.find((item) => item.id === nodeId) : null;
-    if (node && (!node.lastSpeedError || node.lastSpeedError.length === 0)) {
-      const lastSpeedAt = node.lastSpeedAt ? Date.parse(node.lastSpeedAt) : NaN;
-      if (!Number.isNaN(lastSpeedAt) && now - lastSpeedAt < HOME_SPEEDTEST_COOLDOWN) {
-        return false;
+    if (preferredNodeId) {
+      const preferred = nodesCache.find((item) => item.id === preferredNodeId);
+      if (preferred && preferred.id) {
+        return preferred.id;
       }
     }
+    const first = nodesCache[0];
+    return (first && first.id) || "";
   }
-  homeSpeedtestState.running = true;
-  homeSpeedtestState.lastNodeId = nodeId;
-  homeSpeedtestState.lastTriggeredAt = now;
-  try {
-    await api.post(`/nodes/${nodeId}/speedtest`);
-    return true;
-  } catch (err) {
-    showStatus(`测速任务失败：${err.message}`, "error", 6000);
-    return false;
-  } finally {
-    homeSpeedtestState.running = false;
-  }
-}
 
-async function autoMeasureCurrentNode({ force = false } = {}) {
-  const targetId = resolveHomeNodeId();
-  if (!targetId) {
-    return;
+  async function autoPingCurrentNode(targetId, { force = false } = {}) {
+    const nodeId = targetId || resolveHomeNodeId();
+    if (!nodeId) {
+      return false;
+    }
+    const now = Date.now();
+    if (!force) {
+      if (homePingState.running && now - homePingState.lastTriggeredAt < HOME_PING_COOLDOWN) {
+        return false;
+      }
+      if (homePingState.lastNodeId === nodeId && now - homePingState.lastTriggeredAt < HOME_PING_COOLDOWN) {
+        return false;
+      }
+      const node = Array.isArray(nodesCache) ? nodesCache.find((item) => item.id === nodeId) : null;
+      if (node) {
+        const lastLatencyAt = node.lastLatencyAt ? Date.parse(node.lastLatencyAt) : NaN;
+        if (!Number.isNaN(lastLatencyAt) && now - lastLatencyAt < HOME_PING_COOLDOWN) {
+          return false;
+        }
+      }
+    }
+    homePingState.running = true;
+    homePingState.lastNodeId = nodeId;
+    homePingState.lastTriggeredAt = now;
+    try {
+      await api.post(`/nodes/${nodeId}/ping`);
+      return true;
+    } catch (err) {
+      showStatus(`延迟任务失败：${err.message}`, "error", 6000);
+      return false;
+    } finally {
+      homePingState.running = false;
+    }
   }
-  const pingTriggered = await autoPingCurrentNode(targetId, { force });
-  if (pingTriggered) {
-    await sleep(200);
+
+  async function autoSpeedtestCurrentNode(targetId, { force = false } = {}) {
+    const nodeId = targetId || resolveHomeNodeId();
+    if (!nodeId) {
+      return false;
+    }
+    const now = Date.now();
+    if (!force) {
+      if (homeSpeedtestState.running && now - homeSpeedtestState.lastTriggeredAt < HOME_SPEEDTEST_COOLDOWN) {
+        return false;
+      }
+      if (homeSpeedtestState.lastNodeId === nodeId && now - homeSpeedtestState.lastTriggeredAt < HOME_SPEEDTEST_COOLDOWN) {
+        return false;
+      }
+      const node = Array.isArray(nodesCache) ? nodesCache.find((item) => item.id === nodeId) : null;
+      if (node && (!node.lastSpeedError || node.lastSpeedError.length === 0)) {
+        const lastSpeedAt = node.lastSpeedAt ? Date.parse(node.lastSpeedAt) : NaN;
+        if (!Number.isNaN(lastSpeedAt) && now - lastSpeedAt < HOME_SPEEDTEST_COOLDOWN) {
+          return false;
+        }
+      }
+    }
+    homeSpeedtestState.running = true;
+    homeSpeedtestState.lastNodeId = nodeId;
+    homeSpeedtestState.lastTriggeredAt = now;
+    try {
+      await api.post(`/nodes/${nodeId}/speedtest`);
+      return true;
+    } catch (err) {
+      showStatus(`测速任务失败：${err.message}`, "error", 6000);
+      return false;
+    } finally {
+      homeSpeedtestState.running = false;
+    }
   }
-  await autoSpeedtestCurrentNode(targetId, { force });
-}
+
+  async function autoMeasureCurrentNode({ force = false } = {}) {
+    const targetId = resolveHomeNodeId();
+    if (!targetId) {
+      return;
+    }
+    const pingTriggered = await autoPingCurrentNode(targetId, { force });
+    if (pingTriggered) {
+      await sleep(200);
+    }
+    await autoSpeedtestCurrentNode(targetId, { force });
+  }
 
   async function loadHomePanel({ notify = false } = {}) {
-    await Promise.all([loadComponents(), refreshXrayStatus({ notify }), loadSystemProxySettings({ notify })]);
+    await Promise.all([
+      loadNodes(),
+      loadComponents(),
+      refreshXrayStatus({ notify }),
+      loadSystemProxySettings({ notify })
+    ]);
     updateHomeNodeStatus();
     await autoMeasureCurrentNode({ force: true });
   }
@@ -627,16 +688,22 @@ async function autoMeasureCurrentNode({ force = false } = {}) {
         const installDir = escapeHtml(component.installDir || "-");
         const installedAt = formatTime(component.lastInstalledAt);
         let statusText;
+        let actionBtn = '';
+
         if (component.lastSyncError) {
           statusText = `<span class="badge error">失败：${escapeHtml(component.lastSyncError)}</span>`;
+          actionBtn = `<button class="primary" data-action="update-component">重试</button>`;
         } else if (component.installDir) {
           statusText = '<span class="badge">已安装</span>';
+          actionBtn = `<button class="ghost" data-action="update-component">更新</button>`;
         } else {
           statusText = '<span class="badge warn">未安装</span>';
+          actionBtn = `<button class="primary" data-action="update-component">安装</button>`;
         }
+
         const interval = formatInterval(component.autoUpdateInterval);
         return `
-          <tr data-id="${id}">
+          <tr data-id="${id}" data-kind="${escapeHtml(component.kind)}">
             <td>${name}</td>
             <td><span class="badge">${kind}</span></td>
             <td>${version}</td>
@@ -644,6 +711,7 @@ async function autoMeasureCurrentNode({ force = false } = {}) {
             <td>${installedAt}</td>
             <td>${statusText}<br /><span class="muted">自动更新：${interval}</span></td>
             <td>
+              ${actionBtn}
               <button class="danger" data-action="delete-component">删除</button>
             </td>
           </tr>
@@ -791,6 +859,7 @@ async function autoMeasureCurrentNode({ force = false } = {}) {
   const homeNodeAddress = document.getElementById("home-node-address");
   const homeNodeLatency = document.getElementById("home-node-latency");
   const homeNodeSpeed = document.getElementById("home-node-speed");
+  const homeNodeProtocol = document.getElementById("home-node-protocol");
   const homeNodeUpdated = document.getElementById("home-node-updated");
   if (proxyToggleButton) {
     proxyToggleButton.addEventListener("click", handleProxyToggle);
@@ -826,44 +895,242 @@ async function autoMeasureCurrentNode({ force = false } = {}) {
     });
   }
 
+  // Handle protocol and network-specific field visibility
+  const protocolSelect = document.getElementById("protocol-select");
+  const networkSelect = document.getElementById("network-select");
+  const tlsSelect = nodeForm?.querySelector('select[name="tls"]');
+
+  function updateFieldVisibility() {
+    if (!protocolSelect) return;
+
+    const protocol = protocolSelect.value;
+    const network = networkSelect?.value || "tcp";
+    const tls = tlsSelect?.value || "";
+
+    // Hide all protocol-specific fields first
+    const ssFields = document.getElementById("ss-fields");
+    const vmessFields = document.getElementById("vmess-fields");
+    const trojanFields = document.getElementById("trojan-fields");
+    const proxyFields = document.getElementById("proxy-fields");
+
+    if (ssFields) ssFields.style.display = "none";
+    if (vmessFields) vmessFields.style.display = "none";
+    if (trojanFields) trojanFields.style.display = "none";
+    if (proxyFields) proxyFields.style.display = "none";
+
+    // Show relevant protocol fields
+    if (protocol === "shadowsocks" && ssFields) {
+      ssFields.style.display = "grid";
+    } else if ((protocol === "vmess" || protocol === "vless") && vmessFields) {
+      vmessFields.style.display = "grid";
+    } else if (protocol === "trojan" && trojanFields) {
+      trojanFields.style.display = "block";
+    } else if ((protocol === "http" || protocol === "socks5") && proxyFields) {
+      proxyFields.style.display = "grid";
+    }
+
+    // Hide all network-specific fields first
+    const wsFields = document.getElementById("ws-fields");
+    const h2Fields = document.getElementById("h2-fields");
+    const grpcFields = document.getElementById("grpc-fields");
+
+    if (wsFields) wsFields.style.display = "none";
+    if (h2Fields) h2Fields.style.display = "none";
+    if (grpcFields) grpcFields.style.display = "none";
+
+    // Show relevant network fields
+    if (network === "ws" && wsFields) {
+      wsFields.style.display = "grid";
+    } else if (network === "h2" && h2Fields) {
+      h2Fields.style.display = "grid";
+    } else if (network === "grpc" && grpcFields) {
+      grpcFields.style.display = "block";
+    }
+
+    // Show/hide TLS fields
+    const tlsFields = document.getElementById("tls-fields");
+    if (tlsFields) {
+      tlsFields.style.display = (tls && tls !== "") ? "grid" : "none";
+    }
+  }
+
+  if (protocolSelect) {
+    protocolSelect.addEventListener("change", updateFieldVisibility);
+  }
+  if (networkSelect) {
+    networkSelect.addEventListener("change", updateFieldVisibility);
+  }
+  if (tlsSelect) {
+    tlsSelect.addEventListener("change", updateFieldVisibility);
+  }
+
+  // Handle advanced settings toggles
+  const enableNetworkCheckbox = document.getElementById("enable-network");
+  const enableTlsCheckbox = document.getElementById("enable-tls");
+  const networkSettings = document.getElementById("network-settings");
+  const tlsSettings = document.getElementById("tls-settings");
+
+  if (enableNetworkCheckbox && networkSettings) {
+    enableNetworkCheckbox.addEventListener("change", (e) => {
+      networkSettings.style.display = e.target.checked ? "grid" : "none";
+      if (e.target.checked) {
+        updateFieldVisibility();
+      }
+    });
+  }
+
+  if (enableTlsCheckbox && tlsSettings) {
+    enableTlsCheckbox.addEventListener("change", (e) => {
+      tlsSettings.style.display = e.target.checked ? "grid" : "none";
+    });
+  }
+
   if (nodeForm) {
     nodeForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       const form = event.target;
+
+      // Check for share link first
       const shareLink = form.shareLink.value.trim();
       if (shareLink) {
         try {
           await api.post("/nodes", { shareLink });
           form.reset();
           showStatus("节点添加成功", "success");
-          await loadNodes();
           closeNodeModal();
+          await loadNodes();
         } catch (err) {
           showStatus(`添加节点失败：${err.message}`, "error", 6000);
         }
         return;
       }
+
+      // Build payload from form fields
+      const protocol = form.protocol.value.trim();
+      if (!protocol) {
+        showStatus("请选择协议", "error");
+        return;
+      }
+
       const payload = {
         name: form.name.value.trim(),
         address: form.address.value.trim(),
         port: parseNumber(form.port.value),
-        protocol: form.protocol.value.trim(),
+        protocol: protocol,
         tags: parseList(form.tags.value),
+        remarks: form.remarks.value.trim() || "",
       };
-      if (!payload.name || !payload.address || !payload.protocol || !payload.port) {
+
+      if (!payload.name || !payload.address || !payload.port) {
         showStatus("请完整填写节点信息", "error");
         return;
       }
+
+      // Protocol-specific settings
+      if (protocol === "shadowsocks") {
+        payload.password = form.ss_password.value.trim();
+        payload.method = form.ss_method.value;
+      } else if (protocol === "vmess" || protocol === "vless") {
+        payload.uuid = form.vmess_uuid.value.trim();
+        if (protocol === "vmess") {
+          payload.alterId = parseNumber(form.vmess_alterid.value) || 0;
+          payload.security = form.vmess_security.value;
+        } else if (protocol === "vless") {
+          payload.flow = form.vless_flow.value || "";
+        }
+      } else if (protocol === "trojan") {
+        payload.password = form.trojan_password.value.trim();
+      } else if (protocol === "http" || protocol === "socks5") {
+        payload.username = form.proxy_username.value.trim() || "";
+        payload.password = form.proxy_password.value.trim() || "";
+      }
+
+      // Network settings
+      payload.network = form.network.value || "tcp";
+      payload.tls = form.tls.value || "";
+
+      // Network-specific settings
+      if (payload.network === "ws") {
+        payload.path = form.ws_path.value.trim() || "/";
+        payload.host = form.ws_host.value.trim() || "";
+      } else if (payload.network === "h2") {
+        payload.path = form.h2_path.value.trim() || "/";
+        payload.host = form.h2_host.value.trim() || "";
+      } else if (payload.network === "grpc") {
+        payload.serviceName = form.grpc_service.value.trim() || "";
+      }
+
+      // TLS settings
+      if (payload.tls) {
+        payload.sni = form.tls_sni.value.trim() || "";
+        payload.fingerprint = form.tls_fingerprint.value || "";
+      }
+
       try {
         await api.post("/nodes", payload);
         form.reset();
+        updateFieldVisibility(); // Reset field visibility
         showStatus("节点添加成功", "success");
-        await loadNodes();
         closeNodeModal();
+        await loadNodes();
       } catch (err) {
         showStatus(`添加节点失败：${err.message}`, "error", 6000);
       }
     });
+  }
+
+  function updateHomeNodeStatus() {
+    if (!homeNodeName || !homeNodeLatency || !homeNodeSpeed) return;
+
+    let node = null;
+    if (Array.isArray(nodesCache) && nodesCache.length > 0) {
+      const targetId = resolveHomeNodeId();
+      if (targetId) {
+        node = nodesCache.find((item) => item.id === targetId) || null;
+      }
+      if (!node) {
+        node = nodesCache[0];
+      }
+    }
+
+    if (!node) {
+      homeNodeName.textContent = "选择节点";
+      if (homeNodeAddress) homeNodeAddress.textContent = "-";
+      homeNodeLatency.textContent = "--";
+      homeNodeSpeed.textContent = "--";
+      if (homeNodeProtocol) homeNodeProtocol.textContent = "--";
+      if (homeNodeUpdated) homeNodeUpdated.textContent = "-";
+      return;
+    }
+
+    homeNodeName.textContent = escapeHtml(node.name || "-");
+    if (homeNodeAddress) {
+      homeNodeAddress.textContent = node.address ? `${escapeHtml(node.address)}:${escapeHtml(String(node.port || ""))}` : "-";
+    }
+
+    const latency = typeof node.lastLatencyMs === "number" && node.lastLatencyMs > 0 ? `${node.lastLatencyMs} ms` : "--";
+    let speed;
+    if (node.lastSpeedError) {
+      speed = `Error`;
+    } else if (typeof node.lastSpeedMbps === "number" && node.lastSpeedMbps > 0) {
+      speed = `${node.lastSpeedMbps >= 10 ? node.lastSpeedMbps.toFixed(1) : node.lastSpeedMbps.toFixed(2)} MB/s`;
+    } else {
+      speed = "--";
+    }
+    homeNodeLatency.textContent = latency;
+    homeNodeSpeed.textContent = speed;
+
+    // Display protocol
+    if (homeNodeProtocol) {
+      const protocol = node.protocol ? escapeHtml(node.protocol).toUpperCase() : "--";
+      homeNodeProtocol.textContent = protocol;
+    }
+
+    if (homeNodeUpdated) {
+      const timestamps = [node.lastLatencyAt, node.lastSpeedAt].filter(Boolean);
+      const updated = timestamps.length > 0 ? timestamps.sort().slice(-1)[0] : null;
+      homeNodeUpdated.textContent = updated ? formatTime(updated) : "-";
+    }
   }
 
   if (nodeGrid) {
@@ -889,6 +1156,7 @@ async function autoMeasureCurrentNode({ force = false } = {}) {
           await loadNodes();
         } else if (action === "select-node") {
           await api.post(`/nodes/${id}/select`);
+          localStorage.setItem("vea_selected_node_id", id);
           showStatus("已切换当前节点", "success");
           await loadNodes();
         }
@@ -911,39 +1179,106 @@ async function autoMeasureCurrentNode({ force = false } = {}) {
     });
   }
 
-  document.getElementById("config-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const form = event.target;
-    let inferredFormat = "";
-    const typedPayload = (form.payload.value || "").trim();
-    const sourceUrl = form.sourceUrl.value.trim();
-    const detectSample = typedPayload || sourceUrl;
-    if (detectSample) {
-      const lower = detectSample.toLowerCase();
-      if (/\"outbounds\"/.test(detectSample) || /\"inbounds\"/.test(detectSample) || /vmess|trojan|vless|ss:/.test(lower)) {
-        inferredFormat = "xray-json";
+  // Traffic Tabs Logic
+  const trafficTabs = document.getElementById("traffic-tabs");
+  if (trafficTabs) {
+    trafficTabs.addEventListener("click", (event) => {
+      const button = event.target.closest(".node-tab[data-tab]");
+      if (!button) return;
+      const tabName = button.dataset.tab;
+
+      // Update active tab state
+      trafficTabs.querySelectorAll(".node-tab").forEach(t => t.classList.remove("active"));
+      button.classList.add("active");
+
+      // Show/Hide content
+      const globalContent = document.getElementById("traffic-content-global");
+      const rulesContent = document.getElementById("traffic-content-rules");
+
+      if (tabName === "global") {
+        if (globalContent) globalContent.style.display = "block";
+        if (rulesContent) rulesContent.style.display = "none";
+      } else {
+        if (globalContent) globalContent.style.display = "none";
+        if (rulesContent) rulesContent.style.display = "block";
       }
-    }
-    const payload = {
-      name: form.name.value.trim(),
-      format: inferredFormat || "xray-json",
-      sourceUrl,
-      payload: typedPayload,
-      autoUpdateIntervalMinutes: parseNumber(form.autoUpdateInterval.value),
-    };
-    if (!payload.sourceUrl) {
-      showStatus("请填写源/订阅链接", "error", 5000);
-      return;
-    }
-    try {
-      await api.post("/configs/import", payload);
-      form.reset();
-      showStatus("配置添加成功", "success");
-      await Promise.all([loadConfigs(), loadNodes()]);
-    } catch (err) {
-      showStatus(`添加配置失败：${err.message}`, "error", 6000);
+    });
+  }
+
+  const configModal = document.getElementById("config-modal");
+  const configAddButton = document.getElementById("config-add-button");
+  const configModalClose = document.getElementById("config-modal-close");
+  const configModalBackdrop = configModal?.querySelector(".modal-backdrop");
+  const configModalReset = document.getElementById("config-modal-reset");
+  const configForm = document.getElementById("config-form");
+
+  function openConfigModal() {
+    if (!configModal) return;
+    configModal.classList.add("open");
+    if (configForm) configForm.reset();
+  }
+
+  function closeConfigModal() {
+    if (!configModal) return;
+    configModal.classList.remove("open");
+  }
+
+  if (configAddButton) {
+    configAddButton.addEventListener("click", openConfigModal);
+  }
+  if (configModalClose) {
+    configModalClose.addEventListener("click", closeConfigModal);
+  }
+  if (configModalBackdrop) {
+    configModalBackdrop.addEventListener("click", closeConfigModal);
+  }
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && configModal?.classList.contains("open")) {
+      closeConfigModal();
     }
   });
+  if (configModalReset && configForm) {
+    configModalReset.addEventListener("click", () => {
+      configForm.reset();
+    });
+  }
+
+  if (configForm) {
+    configForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = event.target;
+      let inferredFormat = "";
+      const typedPayload = (form.payload.value || "").trim();
+      const sourceUrl = form.sourceUrl.value.trim();
+      const detectSample = typedPayload || sourceUrl;
+      if (detectSample) {
+        const lower = detectSample.toLowerCase();
+        if (/\"outbounds\"/.test(detectSample) || /\"inbounds\"/.test(detectSample) || /vmess|trojan|vless|ss:/.test(lower)) {
+          inferredFormat = "xray-json";
+        }
+      }
+      const payload = {
+        name: form.name.value.trim(),
+        format: inferredFormat || "xray-json",
+        sourceUrl,
+        payload: typedPayload,
+        autoUpdateIntervalMinutes: parseNumber(form.autoUpdateInterval.value),
+      };
+      if (!payload.sourceUrl) {
+        showStatus("请填写源/订阅链接", "error", 5000);
+        return;
+      }
+      try {
+        await api.post("/configs/import", payload);
+        form.reset();
+        showStatus("配置添加成功", "success");
+        closeConfigModal();
+        await Promise.all([loadConfigs(), loadNodes()]);
+      } catch (err) {
+        showStatus(`添加配置失败：${err.message}`, "error", 6000);
+      }
+    });
+  }
 
   function getSelectedNodeIds() {
     if (!nodeGrid) return [];
@@ -1061,6 +1396,7 @@ async function autoMeasureCurrentNode({ force = false } = {}) {
       const tr = button.closest("tr[data-id]");
       if (!tr) return;
       const id = tr.dataset.id;
+      const kind = tr.dataset.kind;
       const action = button.dataset.action;
       try {
         if (action === "delete-component") {
@@ -1069,6 +1405,12 @@ async function autoMeasureCurrentNode({ force = false } = {}) {
           showStatus("组件已删除", "success");
           await loadComponents();
           await refreshXrayStatus();
+        } else if (action === "update-component") {
+          if (kind) {
+            await ensureComponent(kind);
+          } else {
+            showStatus("无法识别组件类型", "error");
+          }
         }
       } catch (err) {
         showStatus(`组件操作失败：${err.message}`, "error", 6000);
@@ -1108,28 +1450,69 @@ async function autoMeasureCurrentNode({ force = false } = {}) {
     }
   });
 
-  document.getElementById("rule-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const form = event.target;
-    const payload = {
-      name: form.name.value.trim(),
-      targets: parseList(form.targets.value),
-      nodeId: form.nodeId.value.trim(),
-      priority: parseNumber(form.priority.value),
-    };
-    if (!payload.name || payload.targets.length === 0 || !payload.nodeId) {
-      showStatus("请完整填写规则信息", "error");
-      return;
-    }
-    try {
-      await api.post("/traffic/rules", payload);
-      form.reset();
-      showStatus("规则添加成功", "success");
-      await loadTraffic();
-    } catch (err) {
-      showStatus(`添加规则失败：${err.message}`, "error", 6000);
+  const ruleModal = document.getElementById("rule-modal");
+  const ruleAddButton = document.getElementById("rule-add-button");
+  const ruleModalClose = document.getElementById("rule-modal-close");
+  const ruleModalBackdrop = ruleModal?.querySelector(".modal-backdrop");
+  const ruleModalReset = document.getElementById("rule-modal-reset");
+  const ruleForm = document.getElementById("rule-form");
+
+  function openRuleModal() {
+    if (!ruleModal) return;
+    ruleModal.classList.add("open");
+    if (ruleForm) ruleForm.reset();
+  }
+
+  function closeRuleModal() {
+    if (!ruleModal) return;
+    ruleModal.classList.remove("open");
+  }
+
+  if (ruleAddButton) {
+    ruleAddButton.addEventListener("click", openRuleModal);
+  }
+  if (ruleModalClose) {
+    ruleModalClose.addEventListener("click", closeRuleModal);
+  }
+  if (ruleModalBackdrop) {
+    ruleModalBackdrop.addEventListener("click", closeRuleModal);
+  }
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && ruleModal?.classList.contains("open")) {
+      closeRuleModal();
     }
   });
+  if (ruleModalReset && ruleForm) {
+    ruleModalReset.addEventListener("click", () => {
+      ruleForm.reset();
+    });
+  }
+
+  if (ruleForm) {
+    ruleForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = event.target;
+      const payload = {
+        name: form.name.value.trim(),
+        priority: parseNumber(form.priority.value),
+        targets: parseList(form.targets.value),
+        nodeId: form.nodeId.value.trim(),
+      };
+      if (!payload.name || !payload.targets.length || !payload.nodeId) {
+        showStatus("请完整填写规则信息", "error");
+        return;
+      }
+      try {
+        await api.post("/traffic/rules", payload);
+        form.reset();
+        showStatus("路由规则添加成功", "success");
+        closeRuleModal();
+        await loadTrafficRules();
+      } catch (err) {
+        showStatus(`添加规则失败：${err.message}`, "error", 6000);
+      }
+    });
+  }
 
   document.getElementById("rule-table").addEventListener("click", async (event) => {
     const button = event.target.closest("button[data-action]");
@@ -1171,8 +1554,8 @@ if (window.electronAPI) {
 }
 
 // Theme settings - Switch between HTML files
-const themeDarkBtn = document.getElementById("theme-dark");
-const themeLightBtn = document.getElementById("theme-light");
+// Theme selector
+const themeSelector = document.getElementById("theme-selector");
 
 function switchTheme(theme) {
   localStorage.setItem("theme", theme);
@@ -1180,14 +1563,23 @@ function switchTheme(theme) {
   window.location.href = file;
 }
 
-// Theme button handlers
-themeDarkBtn.addEventListener("click", () => switchTheme("dark"));
-themeLightBtn.addEventListener("click", () => switchTheme("light"));
-
 // Get current theme from filename
 const currentFile = window.location.pathname.split('/').pop();
 const currentTheme = currentFile.includes('light') ? 'light' : 'dark';
 
-// Update button states
-themeDarkBtn.classList.toggle("active", currentTheme === "dark");
-themeLightBtn.classList.toggle("active", currentTheme === "light");
+// Check if saved theme is different from current loaded theme
+const savedTheme = localStorage.getItem("theme") || "dark";
+if (savedTheme !== currentTheme) {
+  // Auto-redirect to saved theme
+  switchTheme(savedTheme);
+}
+
+// Set selector value to current theme
+if (themeSelector) {
+  themeSelector.value = currentTheme;
+
+  // Listen for theme changes
+  themeSelector.addEventListener("change", (e) => {
+    switchTheme(e.target.value);
+  });
+}

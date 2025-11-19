@@ -3,7 +3,7 @@ package store
 import (
 	"testing"
 
-	"vea/internal/domain"
+	"vea/backend/domain"
 )
 
 func TestDeleteConfigRemovesAssociatedNodes(t *testing.T) {

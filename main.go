@@ -8,14 +8,15 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
-	"vea/internal/api"
-	"vea/internal/persist"
-	"vea/internal/service"
-	"vea/internal/store"
-	"vea/internal/tasks"
+	"vea/backend/api"
+	"vea/backend/persist"
+	"vea/backend/service"
+	"vea/backend/store"
+	"vea/backend/tasks"
 
 	"github.com/gin-gonic/gin"
 )
@@ -94,25 +95,12 @@ type errorOnlyWriter struct {
 func (w *errorOnlyWriter) Write(p []byte) (n int, err error) {
 	s := string(p)
 	// 只输出包含这些关键字的日志
-	keywords := []string{"error", "failed", "fatal", "panic", "Error", "Failed", "Fatal", "Panic"}
+	keywords := []string{"error", "failed", "fatal", "panic"}
 	for _, keyword := range keywords {
-		if contains(s, keyword) {
+		if strings.Contains(strings.ToLower(s), keyword) {
 			return w.output.Write(p)
 		}
 	}
 	// 其他日志不输出
 	return len(p), nil
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && indexOf(s, substr) >= 0)
-}
-
-func indexOf(s, substr string) int {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return i
-		}
-	}
-	return -1
 }
