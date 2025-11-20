@@ -22,6 +22,16 @@ import {
   retry
 } from './utils.js'
 
+// 导入状态管理
+import {
+  createNodeStateManager,
+  resolvePreferredNode,
+  createNodeIdStorage,
+  createThemeManager,
+  extractNodeTags,
+  filterNodesByTag
+} from './state.js'
+
 // 统一导出
 const utils = {
   formatTime,
@@ -39,6 +49,15 @@ const utils = {
   retry
 }
 
+const state = {
+  createNodeStateManager,
+  resolvePreferredNode,
+  createNodeIdStorage,
+  createThemeManager,
+  extractNodeTags,
+  filterNodesByTag
+}
+
 // ES Module 导出
 export {
   VeaClient,
@@ -46,6 +65,7 @@ export {
   createAPI,
   createNodeManager,
   utils,
+  state,
   // 工具函数直接导出
   formatTime,
   formatBytes,
@@ -59,7 +79,14 @@ export {
   debounce,
   throttle,
   createPoller,
-  retry
+  retry,
+  // 状态管理直接导出
+  createNodeStateManager,
+  resolvePreferredNode,
+  createNodeIdStorage,
+  createThemeManager,
+  extractNodeTags,
+  filterNodesByTag
 }
 
 export default VeaClient
