@@ -34,12 +34,12 @@ make build            # 打包当前平台
 ## 项目结构
 
 ```
-electron/
+frontend/
 ├── main.js                 # Electron 主进程
-├── renderer/               # 渲染进程（UI）
-│   └── index.html         # 从 web/index.html 迁移
+├── theme/                  # 主题文件（UI）
+│   ├── dark.html          # 深色主题
+│   └── light.html         # 浅色主题
 ├── package.json           # NPM 配置
-├── vite.config.js         # Vite 构建配置
 ├── electron-builder.yml   # 打包配置
 └── dist/                  # 构建输出
     └── release/           # 打包后的应用
@@ -52,8 +52,8 @@ electron/
   - 创建应用窗口
   - 管理进程生命周期
 
-- **渲染进程 (renderer/)**：
-  - 复用现有 Web UI（HTML/CSS/JS）
+- **主题文件 (theme/)**：
+  - 自包含的HTML主题文件（HTML/CSS/JS）
   - 通过 ES Module 导入 SDK
   - 直接调用 HTTP API (localhost:8080)
 
@@ -71,7 +71,7 @@ electron/
    - 创建窗口并加载 UI
 
 2. **通信模式**：
-   - Renderer → SDK → HTTP → Go Backend
+   - Theme UI → SDK → HTTP → Go Backend
    - 无需复杂的 IPC，完全通过 REST API
 
 3. **退出流程**：
@@ -103,8 +103,7 @@ curl http://localhost:8080/
 pkill vea
 
 # 3. 验证 SDK 路径
-ls -lh sdk/dist/vea-sdk.esm.js
-ls -lh electron/renderer/../../sdk/dist/vea-sdk.esm.js
+ls -lh frontend/sdk/dist/vea-sdk.esm.js
 ```
 
 **在本地开发环境**（有图形界面）才能真正运行 Electron GUI。
@@ -113,11 +112,11 @@ ls -lh electron/renderer/../../sdk/dist/vea-sdk.esm.js
 
 ### 修改 UI
 
-编辑 `electron/renderer/index.html`，重启 Electron 即可看到效果。
+编辑 `frontend/theme/dark.html` 或 `light.html`，重启 Electron 即可看到效果。
 
 ### 修改主进程逻辑
 
-编辑 `electron/main.js`，需要重启 Electron。
+编辑 `frontend/main.js`，需要重启 Electron。
 
 ### 修改后端
 
@@ -128,7 +127,6 @@ ls -lh electron/renderer/../../sdk/dist/vea-sdk.esm.js
 1. **无头环境限制**：
    - 在 SSH 命令行服务器中无法运行 Electron GUI
    - `npm install electron` 可能失败或警告
-   - 可以使用 `node electron/test-main-logic.js` 验证核心逻辑
    - 需要在本地开发环境（有图形界面）中运行
 
 2. **首次启动可能较慢**：Go 服务需要初始化，窗口会在服务就绪后才显示。

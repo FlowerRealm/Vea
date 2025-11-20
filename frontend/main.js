@@ -110,7 +110,7 @@ function createWindow() {
 
   // 直接加载默认主题（dark.html）
   // 主题切换功能在应用内通过重新加载 HTML 文件实现
-  mainWindow.loadFile(path.join(__dirname, 'renderer/dark.html'))
+  mainWindow.loadFile(path.join(__dirname, 'theme/dark.html'))
 
   // 启用开发者工具以调试（在开发时需要时可以取消注释）
   // mainWindow.webContents.openDevTools()

@@ -69,17 +69,17 @@ ls electron/dist/release/
 
 ```
 Vea/
-├── electron/          # Electron 桌面应用
+├── frontend/          # Electron 桌面应用
 │   ├── main.js       # 主进程（启动 Go 服务）
-│   ├── renderer/     # 渲染进程（UI）
+│   ├── theme/        # 主题文件（UI）
 │   └── package.json
 ├── main.go           # Go 程序入口
-├── internal/         # Go 业务逻辑
+├── backend/          # Go 业务逻辑
 │   ├── api/         # HTTP 路由和处理器
 │   ├── domain/      # 领域模型
 │   ├── service/     # 业务服务层
 │   └── store/       # 数据存储
-├── sdk/              # JavaScript SDK
+├── frontend/sdk/     # JavaScript SDK
 ├── docs/             # 所有文档
 │   ├── api/         # API 文档（OpenAPI 规范）
 │   └── *.md
