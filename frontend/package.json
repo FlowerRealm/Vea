@@ -1,0 +1,30 @@
+{
+  "name": "vea-electron",
+  "version": "1.0.0",
+  "description": "Vea Proxy Manager - Electron Desktop Application",
+  "main": "main.js",
+  "scripts": {
+    "dev": "electron . --no-sandbox",
+    "build": "electron-builder",
+    "build:linux": "electron-builder --linux",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "homepage": "https://github.com/yourusername/vea",
+  "keywords": [
+    "vea",
+    "proxy",
+    "xray",
+    "electron"
+  ],
+  "author": {
+    "name": "FlowerRealm",
+    "email": "flower_realm@outlook.com"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^24.9.1"
+  }
+}
