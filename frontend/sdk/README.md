@@ -1,684 +1,388 @@
 # Vea SDK
 
-Vea 后端 API 的官方 JavaScript SDK，支持浏览器、Node.js、Electron/Tauri 等环境。
+Xray 代理管理 JavaScript SDK - 单文件、零依赖、TypeScript类型支持
 
 ## 特性
 
-- ✅ **零依赖** - 使用原生 `fetch` API，无需第三方库
-- ✅ **TypeScript 支持** - 完整的类型定义
-- ✅ **跨平台** - 浏览器、Node.js、Electron、Tauri 全兼容
-- ✅ **轻量级** - 约 24KB（ES Module 格式）
-- ✅ **Promise 异步** - 现代化异步 API
-- ✅ **完整封装** - 覆盖所有 Vea Backend API 端点
-- ✅ **错误处理** - 统一的错误类型和处理
-- ✅ **超时控制** - 可配置的请求超时
-
-## 安装
-
-### 本地开发
-
-SDK 已内置在 Vea 项目中，位于 `sdk/dist/vea-sdk.esm.js`。
-
-### Electron / 打包工具
-
-如果你在 Electron 或使用打包工具（Vite、Webpack等），可以直接导入：
-
-```javascript
-import { VeaClient } from './path/to/sdk/dist/vea-sdk.esm.js'
-```
+- ✅ **单文件** - 源码和构建产物都是单文件（vea-sdk.js）
+- ✅ **零依赖** - 不依赖任何第三方库
+- ✅ **跨平台** - 浏览器、Node.js、Electron全支持
+- ✅ **TypeScript** - 完整的类型定义
+- ✅ **ESM** - 原生ES Module格式
+- ✅ **轻量级** - 19KB (800行代码)
 
 ## 快速开始
 
-### 浏览器（ES Module）
+### 安装
 
 ```html
-<!DOCTYPE html>
-<html>
-<head>
-  <title>Vea SDK 示例</title>
-</head>
-<body>
-  <button id="loadBtn">加载节点列表</button>
-  <pre id="output"></pre>
-
-  <script type="module">
-    import { VeaClient } from '/ui/sdk/dist/vea-sdk.esm.js'
-
-    // 创建客户端实例
-    const vea = new VeaClient({ baseURL: 'http://localhost:8080' })
-
-    document.getElementById('loadBtn').addEventListener('click', async () => {
-      try {
-        const result = await vea.nodes.list()
-        document.getElementById('output').textContent = JSON.stringify(result, null, 2)
-      } catch (error) {
-        console.error('加载失败:', error)
-      }
-    })
-  </script>
-</body>
-</html>
+<!-- 方式1：直接使用（推荐） -->
+<script type="module">
+  import { createAPI, utils } from './sdk/dist/vea-sdk.esm.js'
+</script>
 ```
 
-### Electron / Node.js (ESM)
+```bash
+# 方式2：npm安装（如果发布到npm）
+npm install @vea/sdk
+```
+
+### 基础用法
 
 ```javascript
-import { VeaClient } from './sdk/dist/vea-sdk.esm.js'
+import { createAPI, utils } from '@vea/sdk'
 
-// 创建客户端实例
-const vea = new VeaClient({
-  baseURL: 'http://localhost:8080'
-})
+// 创建API客户端
+const api = createAPI('http://localhost:8080')
 
-// 使用 async/await
-async function main() {
-  try {
-    // 健康检查
-    const health = await vea.health()
-    console.log('服务状态:', health)
+// 获取节点列表
+const { nodes } = await api.get('/nodes')
+console.log(`加载了 ${nodes.length} 个节点`)
 
-    // 列出节点
-    const nodes = await vea.nodes.list()
-    console.log('节点列表:', nodes)
-
-    // 创建节点
-    const newNode = await vea.nodes.create({
-      name: 'Tokyo Server',
-      address: '1.2.3.4',
-      port: 443,
-      protocol: 'vless',
-      tags: ['premium', 'asia']
-    })
-    console.log('创建的节点:', newNode)
-  } catch (error) {
-    console.error('错误:', error.message)
-  }
-}
-
-main()
-```
-
-### TypeScript
-
-```typescript
-import { VeaClient, Node, VeaError } from '@vea/sdk'
-
-const vea = new VeaClient({
-  baseURL: 'http://localhost:8080',
-  timeout: 30000
-})
-
-async function main() {
-  try {
-    // TypeScript 会自动推断类型
-    const result = await vea.nodes.list()
-    const nodes: Node[] = result.nodes
-    const activeNodeId: string = result.activeNodeId
-
-    console.log(`共有 ${nodes.length} 个节点`)
-  } catch (error) {
-    if (error instanceof VeaError) {
-      console.error(`API 错误 [${error.statusCode}]: ${error.message}`)
-    }
-  }
-}
-```
-
-### Electron
-
-```javascript
-// Main Process
-const { VeaClient } = require('@vea/sdk')
-const { app, ipcMain } = require('electron')
-
-const vea = new VeaClient({ baseURL: 'http://localhost:8080' })
-
-ipcMain.handle('vea:nodes:list', async () => {
-  return await vea.nodes.list()
-})
-
-// Renderer Process (通过 preload.js)
-const nodes = await window.veaAPI.nodes.list()
-```
-
-详细示例请查看 [examples/](./examples/) 目录。
-
-## API 文档
-
-### 初始化客户端
-
-```javascript
-const vea = new VeaClient(options)
-```
-
-**选项**：
-- `baseURL` (string): API 基础 URL，默认 `http://localhost:8080`
-- `timeout` (number): 请求超时时间（毫秒），默认 `30000`
-- `headers` (object): 自定义 HTTP 头
-
-### 通用方法
-
-#### health()
-健康检查。
-
-```javascript
-const health = await vea.health()
-// => { status: "ok", timestamp: "2024-11-15T..." }
-```
-
-#### snapshot()
-获取完整系统快照。
-
-```javascript
-const snapshot = await vea.snapshot()
-// => { nodes: [...], configs: [...], ... }
-```
-
-### 节点管理 (vea.nodes)
-
-#### list()
-列出所有节点。
-
-```javascript
-const result = await vea.nodes.list()
-// => { nodes: [...], activeNodeId: "xxx", lastSelectedNodeId: "yyy" }
-```
-
-#### create(data)
-创建节点。
-
-```javascript
-// 方式1: 从分享链接创建
-const node = await vea.nodes.create({
-  shareLink: 'vmess://eyJhZGQiOiIxLjIuMy40IiwicG9ydCI6NDQzLC4uLn0='
-})
-
-// 方式2: 手动创建
-const node = await vea.nodes.create({
-  name: 'Tokyo Server',
-  address: '1.2.3.4',
+// 创建节点
+await api.post('/nodes', {
+  name: '香港节点',
+  address: 'hk.example.com',
   port: 443,
   protocol: 'vless',
-  tags: ['premium']
+  security: { uuid: 'your-uuid' }
 })
+
+// 使用工具函数
+const { formatBytes, formatTime } = utils
+console.log(formatBytes(1024000))  // "1000.0 KB"
+console.log(formatTime(new Date())) // "2025/11/20 09:30:00"
 ```
 
-#### update(id, data)
-更新节点。
+## 完整API文档
+
+### HTTP Client
+
+#### createAPI(baseURL)
+
+创建简化版API客户端
 
 ```javascript
-const updated = await vea.nodes.update('node-id', {
-  name: 'New Name',
-  tags: ['updated']
+const api = createAPI('http://localhost:8080')
+
+await api.get('/nodes')
+await api.post('/nodes', { name: 'test' })
+await api.put('/nodes/123', { name: 'updated' })
+await api.delete('/nodes/123')
+```
+
+#### VeaClient
+
+完整功能的客户端类
+
+```javascript
+import { VeaClient } from '@vea/sdk'
+
+const client = new VeaClient({
+  baseURL: 'http://localhost:8080',
+  timeout: 300000,  // 5分钟
+  headers: { 'Authorization': 'Bearer token' }
 })
+
+// 使用资源API
+await client.nodes.list()
+await client.configs.import({ sourceUrl: '...' })
+await client.xray.start()
 ```
 
-#### delete(id)
-删除节点。
+### 资源API
+
+#### Nodes API
 
 ```javascript
-await vea.nodes.delete('node-id')
-```
+// 列出所有节点
+const { nodes, activeNodeId, lastSelectedNodeId } = await client.nodes.list()
 
-#### resetTraffic(id)
-重置节点流量。
+// 创建节点（通过分享链接）
+await client.nodes.create({ shareLink: 'vmess://...' })
 
-```javascript
-const node = await vea.nodes.resetTraffic('node-id')
-```
-
-#### incrementTraffic(id, traffic)
-增加节点流量统计。
-
-```javascript
-const node = await vea.nodes.incrementTraffic('node-id', {
-  uploadBytes: 1024000,
-  downloadBytes: 5120000
+// 创建节点（手动）
+await client.nodes.create({
+  name: '香港节点',
+  address: 'hk.example.com',
+  port: 443,
+  protocol: 'vless',
+  tags: ['香港', '高速'],
+  security: { uuid: 'your-uuid' }
 })
+
+// 测试延迟/速度
+await client.nodes.ping('node-id')
+await client.nodes.speedtest('node-id')
+
+// 选择节点
+await client.nodes.select('node-id')
+
+// 批量操作
+await client.nodes.bulkPing(['id1', 'id2'])
+await client.nodes.resetSpeed(['id1', 'id2'])
 ```
 
-#### ping(id)
-测试节点延迟（异步）。
+#### Configs API
 
 ```javascript
-await vea.nodes.ping('node-id')
-// 返回 null，结果稍后更新到节点的 lastLatencyMs 字段
-```
-
-#### speedtest(id)
-测试节点速度（异步）。
-
-```javascript
-await vea.nodes.speedtest('node-id')
-// 返回 null，结果稍后更新到节点的 lastSpeedMbps 字段
-```
-
-#### select(id)
-选择节点（切换 Xray 使用的节点）。
-
-```javascript
-await vea.nodes.select('node-id')
-```
-
-#### bulkPing(ids)
-批量测试延迟。
-
-```javascript
-// 测试所有节点
-await vea.nodes.bulkPing()
-
-// 测试指定节点
-await vea.nodes.bulkPing(['node-1', 'node-2'])
-```
-
-#### resetSpeed(ids)
-重置节点速度测试结果。
-
-```javascript
-await vea.nodes.resetSpeed(['node-1', 'node-2'])
-```
-
-### 配置管理 (vea.configs)
-
-#### list()
-列出所有配置。
-
-```javascript
-const configs = await vea.configs.list()
-```
-
-#### import(data)
-导入配置。
-
-```javascript
-const config = await vea.configs.import({
-  name: 'My Config',
-  format: 'xray-json',
-  sourceUrl: 'https://example.com/config.json',
+// 导入配置/订阅
+await client.configs.import({
+  name: '我的订阅',
+  sourceUrl: 'https://example.com/sub',
   autoUpdateIntervalMinutes: 60
 })
+
+// 刷新配置
+await client.configs.refresh('config-id')
+
+// 拉取配置中的节点
+const nodes = await client.configs.pullNodes('config-id')
 ```
 
-#### update(id, data)
-更新配置。
+#### Xray API
 
 ```javascript
-const updated = await vea.configs.update('config-id', {
-  name: 'Updated Config',
-  autoUpdateIntervalMinutes: 120
-})
+// 获取状态
+const status = await client.xray.status()
+// { enabled: true, running: true, activeNodeId: 'xxx', binary: '/path' }
+
+// 启动/停止
+await client.xray.start({ activeNodeId: 'node-id' })
+await client.xray.stop()
 ```
 
-#### delete(id)
-删除配置。
+#### Components API
 
 ```javascript
-await vea.configs.delete('config-id')
+// 列出/安装组件
+const components = await client.components.list()
+await client.components.create({ kind: 'xray' })
+await client.components.install('component-id')
 ```
 
-#### refresh(id)
-刷新配置（从 sourceUrl 重新拉取）。
+#### Traffic API
 
 ```javascript
-const config = await vea.configs.refresh('config-id')
-```
-
-#### pullNodes(id)
-同步配置节点（从配置中提取节点）。
-
-```javascript
-const nodes = await vea.configs.pullNodes('config-id')
-```
-
-#### incrementTraffic(id, traffic)
-增加配置流量统计。
-
-```javascript
-const config = await vea.configs.incrementTraffic('config-id', {
-  uploadBytes: 1024000,
-  downloadBytes: 5120000
-})
-```
-
-### Geo 资源管理 (vea.geo)
-
-#### list()
-列出所有 Geo 资源。
-
-```javascript
-const geoResources = await vea.geo.list()
-```
-
-#### create(data)
-创建 Geo 资源。
-
-```javascript
-const geo = await vea.geo.create({
-  name: 'GeoIP',
-  type: 'geoip',
-  sourceUrl: 'https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat'
-})
-```
-
-#### update(id, data)
-更新 Geo 资源。
-
-```javascript
-const geo = await vea.geo.update('geo-id', {
-  name: 'Updated GeoIP',
-  version: '20241115'
-})
-```
-
-#### delete(id)
-删除 Geo 资源。
-
-```javascript
-await vea.geo.delete('geo-id')
-```
-
-#### refresh(id)
-刷新 Geo 资源（重新下载）。
-
-```javascript
-const geo = await vea.geo.refresh('geo-id')
-```
-
-### 核心组件管理 (vea.components)
-
-#### list()
-列出所有核心组件。
-
-```javascript
-const components = await vea.components.list()
-```
-
-#### create(data)
-创建核心组件记录。
-
-```javascript
-const component = await vea.components.create({
-  kind: 'xray'
-})
-```
-
-#### update(id, data)
-更新核心组件。
-
-```javascript
-const component = await vea.components.update('component-id', {
-  autoUpdateIntervalMinutes: 1440
-})
-```
-
-#### delete(id)
-删除核心组件。
-
-```javascript
-await vea.components.delete('component-id')
-```
-
-#### install(id)
-安装核心组件。
-
-```javascript
-const component = await vea.components.install('component-id')
-```
-
-### Xray 控制 (vea.xray)
-
-#### status()
-获取 Xray 状态。
-
-```javascript
-const status = await vea.xray.status()
-// => { enabled: true, running: true, activeNodeId: "xxx", binary: "...", config: "..." }
-```
-
-#### start(options)
-启动 Xray。
-
-```javascript
-// 使用默认节点启动
-await vea.xray.start()
-
-// 指定节点启动
-await vea.xray.start({ activeNodeId: 'node-id' })
-```
-
-#### stop()
-停止 Xray。
-
-```javascript
-await vea.xray.stop()
-```
-
-### 流量策略 (vea.traffic)
-
-#### getProfile()
-获取流量策略。
-
-```javascript
-const profile = await vea.traffic.getProfile()
-```
-
-#### updateProfile(data)
-更新流量策略。
-
-```javascript
-const profile = await vea.traffic.updateProfile({
+// 流量策略
+const profile = await client.traffic.getProfile()
+await client.traffic.updateProfile({
   defaultNodeId: 'node-id',
-  dns: {
-    strategy: 'ipv4-only',
-    servers: ['8.8.8.8', '1.1.1.1']
-  }
+  dns: { strategy: 'UseIPv4', servers: ['8.8.8.8'] }
 })
-```
 
-#### rules.list()
-列出所有分流规则。
-
-```javascript
-const rules = await vea.traffic.rules.list()
-```
-
-#### rules.create(data)
-创建分流规则。
-
-```javascript
-const rule = await vea.traffic.rules.create({
-  name: 'Netflix',
-  targets: ['netflix.com', 'netflixcdn.com'],
-  nodeId: 'node-id',
+// 分流规则
+await client.traffic.rules.list()
+await client.traffic.rules.create({
+  name: 'Google服务',
+  targets: ['google.com', 'youtube.com'],
+  nodeId: 'hk-node',
   priority: 10
 })
 ```
 
-#### rules.update(id, data)
-更新分流规则。
+#### Settings API
 
 ```javascript
-const rule = await vea.traffic.rules.update('rule-id', {
-  priority: 20
-})
-```
-
-#### rules.delete(id)
-删除分流规则。
-
-```javascript
-await vea.traffic.rules.delete('rule-id')
-```
-
-### 系统设置 (vea.settings)
-
-#### getSystemProxy()
-获取系统代理设置。
-
-```javascript
-const result = await vea.settings.getSystemProxy()
-// => { settings: { enabled: false, ignoreHosts: [...] }, message: "" }
-```
-
-#### updateSystemProxy(data)
-更新系统代理设置。
-
-```javascript
-const result = await vea.settings.updateSystemProxy({
+// 系统代理
+await client.settings.getSystemProxy()
+await client.settings.updateSystemProxy({
   enabled: true,
-  ignoreHosts: ['localhost', '127.0.0.0/8', '::1']
+  ignoreHosts: ['localhost', '127.0.0.1']
 })
 ```
 
-## 错误处理
+### 状态管理
 
-SDK 抛出 `VeaError` 异常，包含以下属性：
+#### createNodeStateManager(options)
 
-- `message` (string): 错误信息
-- `statusCode` (number): HTTP 状态码
-- `response` (any): 原始响应数据
+节点状态管理器（Ping/测速cooldown）
 
 ```javascript
+import { createNodeStateManager } from '@vea/sdk'
+
+const stateManager = createNodeStateManager({
+  pingCooldown: 60000,      // Ping冷却60秒
+  speedtestCooldown: 60000  // 测速冷却60秒
+})
+
+if (stateManager.canPing('node-id', node)) {
+  stateManager.startPing('node-id')
+  await client.nodes.ping('node-id')
+  stateManager.endPing()
+}
+```
+
+#### resolvePreferredNode(options)
+
+解析首选节点ID（优先级：savedNodeId > lastSelectedNodeId > activeNodeId > 第一个节点）
+
+```javascript
+import { resolvePreferredNode } from '@vea/sdk'
+
+const nodeId = resolvePreferredNode({
+  nodes, activeNodeId, lastSelectedNodeId, savedNodeId
+})
+```
+
+#### createNodeIdStorage(key)
+
+localStorage节点ID管理器
+
+```javascript
+import { createNodeIdStorage } from '@vea/sdk'
+
+const storage = createNodeIdStorage('vea_selected_node_id')
+storage.set('node-123')
+const nodeId = storage.get()
+```
+
+#### createThemeManager()
+
+主题管理器
+
+```javascript
+import { createThemeManager } from '@vea/sdk'
+
+const themeManager = createThemeManager()
+themeManager.switch('dark')  // 跳转到dark.html
+themeManager.autoRedirect()  // 自动重定向到保存的主题
+```
+
+#### extractNodeTags(nodes) / filterNodesByTag(nodes, tag)
+
+标签处理
+
+```javascript
+import { extractNodeTags, filterNodesByTag } from '@vea/sdk'
+
+const tags = extractNodeTags(nodes)  // ['全部', '香港', '美国']
+const filtered = filterNodesByTag(nodes, '香港')
+```
+
+### 工具函数
+
+```javascript
+import { utils } from '@vea/sdk'
+
+// 格式化
+utils.formatTime('2025-11-20T09:30:00Z')  // "2025/11/20 09:30:00"
+utils.formatBytes(1048576)                // "1.0 MB"
+utils.formatInterval(3600000000000)       // "60 分钟"
+utils.formatLatency(50)                   // "50 ms"
+utils.formatSpeed(15.678)                 // "15.7 MB/s"
+
+// HTML转义
+utils.escapeHtml('<script>')              // "&lt;script&gt;"
+
+// 解析
+utils.parseList('a,b,c')                  // ['a', 'b', 'c']
+utils.parseNumber('123')                  // 123
+
+// 异步工具
+utils.sleep(1000)                         // Promise<void>
+await utils.retry(() => api.get('/nodes'), { maxRetries: 3 })
+
+// 性能工具
+const debounced = utils.debounce(fn, 500)
+const throttled = utils.throttle(fn, 100)
+const poller = utils.createPoller(fn, 1000)
+```
+
+### NodeManager
+
+带轮询的节点管理器
+
+```javascript
+import { createNodeManager, VeaClient } from '@vea/sdk'
+
+const client = new VeaClient()
+const nodeManager = createNodeManager(client, 1000)
+
+// 监听节点变化
+nodeManager.onUpdate(({ nodes, activeNodeId }) => {
+  console.log(`更新了 ${nodes.length} 个节点`)
+})
+
+// 启动轮询
+nodeManager.startPolling()
+
+// 获取缓存
+const nodes = nodeManager.getNodes()
+const activeId = nodeManager.getActiveNodeId()
+
+// 手动刷新
+await nodeManager.refresh()
+
+// 停止轮询
+nodeManager.stopPolling()
+```
+
+## TypeScript支持
+
+SDK包含完整的TypeScript类型定义：
+
+```typescript
+import { VeaClient, VeaError } from '@vea/sdk'
+
+const client: VeaClient = new VeaClient()
+
 try {
-  await vea.nodes.create({ /* ... */ })
+  await client.nodes.list()
 } catch (error) {
   if (error instanceof VeaError) {
-    console.error(`错误 [${error.statusCode}]: ${error.message}`)
-
-    if (error.statusCode === 404) {
-      console.log('资源不存在')
-    } else if (error.statusCode === 400) {
-      console.log('请求参数错误')
-    } else if (error.statusCode === 500) {
-      console.log('服务器内部错误')
-    }
+    console.error(`HTTP ${error.statusCode}: ${error.message}`)
   }
 }
 ```
 
-## 高级用法
+## 错误处理
 
-### 直接调用 API
-
-如果 SDK 未封装某个端点，可以使用底层 `request` 方法：
+所有API调用可能抛出`VeaError`：
 
 ```javascript
-const response = await vea.request({
-  method: 'POST',
-  path: '/custom/endpoint',
-  body: { foo: 'bar' },
-  headers: { 'X-Custom-Header': 'value' },
-  timeout: 60000
-})
-```
+import { VeaError } from '@vea/sdk'
 
-### 自定义 HTTP 头
-
-```javascript
-const vea = new VeaClient({
-  baseURL: 'http://localhost:8080',
-  headers: {
-    'Authorization': 'Bearer token',
-    'X-Custom-Header': 'value'
+try {
+  await client.nodes.create({ name: 'test' })
+} catch (error) {
+  if (error instanceof VeaError) {
+    console.error(`状态码: ${error.statusCode}`)
+    console.error(`错误信息: ${error.message}`)
+    console.error(`响应数据:`, error.response)
   }
-})
+}
 ```
 
-### 超时控制
+## 浏览器兼容性
 
-```javascript
-// 全局超时
-const vea = new VeaClient({ timeout: 60000 })
+- Chrome/Edge 88+
+- Firefox 78+
+- Safari 14+
 
-// 单次请求超时
-const nodes = await vea.request({
-  method: 'GET',
-  path: '/nodes',
-  timeout: 10000
-})
-```
-
-## 示例代码
-
-完整示例请查看 [examples/](./examples/) 目录：
-
-- [browser.html](./examples/browser.html) - 浏览器示例
-- [electron-example.js](./examples/electron-example.js) - Electron 应用示例
-- [react-example.jsx](./examples/react-example.jsx) - React 组件示例
-
-## TypeScript 类型定义
-
-SDK 提供完整的 TypeScript 类型定义，支持自动补全和类型检查。
-
-```typescript
-import {
-  VeaClient,
-  Node,
-  Config,
-  GeoResource,
-  CoreComponent,
-  XrayStatus,
-  TrafficProfile,
-  TrafficRule,
-  VeaError
-} from '@vea/sdk'
-
-// 类型会自动推断
-const vea = new VeaClient()
-const result = await vea.nodes.list()  // result 类型自动推断为 NodesListResponse
-```
-
-查看完整类型定义：[src/types.d.ts](./src/types.d.ts)
-
-## API 版本兼容性
-
-SDK 版本与 Vea Backend API 版本对应关系：
-
-| SDK 版本 | API 版本 | 兼容性 |
-|----------|----------|--------|
-| 1.0.x    | v1.0.x   | ✅ 完全兼容 |
-| 1.x.y    | v1.x.y   | ⚠️ 向后兼容（可使用新特性） |
-| 2.0.x    | v2.0.x   | ❌ 不兼容 v1.x |
-
-**推荐做法**：
-- 使用 `^1.0.0` 获取向后兼容的更新
-- 锁定主版本号，避免破坏性变更
-
-详见 [API 版本管理策略](../api/versioning.md)。
+需要支持：ES Modules、Fetch API、AbortController、Promise
 
 ## 开发
 
-### 构建
-
 ```bash
-npm install
-npm run build
+npm install  # 安装依赖
+npm run build  # 构建 → dist/vea-sdk.esm.js (19KB)
 ```
 
-输出文件：
-- `dist/vea-sdk.esm.js` - ES Module 格式（适用于现代浏览器、Electron 和打包工具）
+## 项目结构
 
-### 开发模式
-
-```bash
-npm run dev  # 监听文件变化并自动构建
+```
+sdk/
+├── src/
+│   ├── vea-sdk.js        # 单源文件 (800行)
+│   └── types.d.ts        # TypeScript类型
+├── dist/
+│   └── vea-sdk.esm.js    # 构建产物 (19KB)
+├── package.json
+├── rollup.config.js
+└── README.md
 ```
 
 ## 许可证
 
-[MIT](../LICENSE)
-
-## 贡献
-
-欢迎提交 Issue 和 Pull Request！
-
-- [GitHub Issues](https://github.com/FlowerRealm/Vea/issues)
-- [API 文档](../api/openapi.yaml)
-- [变更日志](../api/CHANGELOG.md)
-
-## 相关链接
-
-- [Vea Backend](https://github.com/FlowerRealm/Vea)
-- [API 规范 (OpenAPI)](../api/openapi.yaml)
-- [版本管理策略](../api/versioning.md)
-- [变更日志](../api/CHANGELOG.md)
+MIT © 2025 Vea Project
