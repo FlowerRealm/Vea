@@ -1,0 +1,395 @@
+name: Build and Release Electron App
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. v1.0.0)'
+        required: true
+        type: string
+      release_notes:
+        description: 'Release notes / changelog'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  # ===================================
+  # 1. 构建Go后端（跨平台）
+  # ===================================
+  build-backend:
+    name: Build Backend - ${{ matrix.os }}-${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux
+          - os: linux
+            arch: amd64
+            goos: linux
+            goarch: amd64
+            binary: vea
+          - os: linux
+            arch: arm64
+            goos: linux
+            goarch: arm64
+            binary: vea
+          # macOS
+          - os: darwin
+            arch: x64
+            goos: darwin
+            goarch: amd64
+            binary: vea
+          - os: darwin
+            arch: arm64
+            goos: darwin
+            goarch: arm64
+            binary: vea
+          # Windows
+          - os: windows
+            arch: x64
+            goos: windows
+            goarch: amd64
+            binary: vea.exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build backend
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          go build -trimpath -ldflags "-s -w" -o ${{ matrix.binary }} .
+          ls -lh ${{ matrix.binary }}
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-${{ matrix.os }}-${{ matrix.arch }}
+          path: ${{ matrix.binary }}
+          retention-days: 1
+
+  # ===================================
+  # 2. 构建SDK
+  # ===================================
+  build-sdk:
+    name: Build SDK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/sdk/package.json
+
+      - name: Install SDK dependencies
+        working-directory: frontend/sdk
+        run: npm ci
+
+      - name: Build SDK
+        working-directory: frontend/sdk
+        run: npm run build
+
+      - name: Verify SDK build
+        working-directory: frontend/sdk
+        run: |
+          ls -lh dist/vea-sdk.esm.js
+          echo "SDK size: $(stat -f%z dist/vea-sdk.esm.js 2>/dev/null || stat -c%s dist/vea-sdk.esm.js) bytes"
+
+      - name: Upload SDK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-dist
+          path: frontend/sdk/dist/vea-sdk.esm.js
+          retention-days: 1
+
+  # ===================================
+  # 3. 打包Linux应用
+  # ===================================
+  package-linux:
+    name: Package Linux App
+    runs-on: ubuntu-latest
+    needs: [build-backend, build-sdk]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package.json
+
+      - name: Download backend artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: backend-linux-*
+          path: backend-bins
+
+      - name: Download SDK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sdk-dist
+          path: frontend/sdk/dist
+
+      - name: Prepare backend binaries
+        run: |
+          # 复制所有Linux后端到根目录（electron-builder会根据架构选择）
+          cp backend-bins/backend-linux-amd64/vea ./vea-x64
+          cp backend-bins/backend-linux-arm64/vea ./vea-arm64
+          chmod +x vea-*
+          ls -lh vea-*
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build Linux packages
+        working-directory: frontend
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 修改electron-builder配置以支持多架构后端
+          # x64
+          cp ../vea-x64 ../vea
+          npm run build:linux -- --x64
+
+          # arm64
+          cp ../vea-arm64 ../vea
+          npm run build:linux -- --arm64
+
+      - name: List build outputs
+        working-directory: frontend/dist/release
+        run: ls -lh
+
+      - name: Upload Linux packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages
+          path: |
+            frontend/dist/release/*.AppImage
+            frontend/dist/release/*.deb
+          retention-days: 1
+
+  # ===================================
+  # 4. 打包macOS应用
+  # ===================================
+  package-macos:
+    name: Package macOS App
+    runs-on: macos-latest
+    needs: [build-backend, build-sdk]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package.json
+
+      - name: Download backend artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: backend-darwin-*
+          path: backend-bins
+
+      - name: Download SDK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sdk-dist
+          path: frontend/sdk/dist
+
+      - name: Prepare backend binaries
+        run: |
+          cp backend-bins/backend-darwin-x64/vea ./vea-x64
+          cp backend-bins/backend-darwin-arm64/vea ./vea-arm64
+          chmod +x vea-*
+          ls -lh vea-*
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build macOS packages
+        working-directory: frontend
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # x64
+          cp ../vea-x64 ../vea
+          npm run build:mac -- --x64
+
+          # arm64
+          cp ../vea-arm64 ../vea
+          npm run build:mac -- --arm64
+
+      - name: List build outputs
+        working-directory: frontend/dist/release
+        run: ls -lh
+
+      - name: Upload macOS packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-packages
+          path: frontend/dist/release/*.dmg
+          retention-days: 1
+
+  # ===================================
+  # 5. 打包Windows应用
+  # ===================================
+  package-windows:
+    name: Package Windows App
+    runs-on: windows-latest
+    needs: [build-backend, build-sdk]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package.json
+
+      - name: Download backend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-windows-x64
+          path: backend-bins
+
+      - name: Download SDK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sdk-dist
+          path: frontend/sdk/dist
+
+      - name: Prepare backend binary
+        shell: pwsh
+        run: |
+          Copy-Item backend-bins/vea.exe ./vea.exe
+          Get-ChildItem vea.exe
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build Windows package
+        working-directory: frontend
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run build:win
+
+      - name: List build outputs
+        working-directory: frontend/dist/release
+        shell: pwsh
+        run: Get-ChildItem
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-packages
+          path: frontend/dist/release/*.exe
+          retention-days: 1
+
+  # ===================================
+  # 6. 创建GitHub Release
+  # ===================================
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [package-linux, package-macos, package-windows]
+    steps:
+      - name: Download all packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-packages'
+          path: release-dist
+
+      - name: Organize release files
+        working-directory: release-dist
+        run: |
+          mkdir -p ../dist
+          find . -type f \( -name "*.AppImage" -o -name "*.deb" -o -name "*.dmg" -o -name "*.exe" \) -exec mv {} ../dist/ \;
+          ls -lh ../dist/
+
+      - name: Generate checksums
+        working-directory: dist
+        run: |
+          sha256sum * > Vea-${{ github.event.inputs.version }}-SHA256SUMS.txt
+          cat Vea-${{ github.event.inputs.version }}-SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          name: Vea ${{ github.event.inputs.version }}
+          body: |
+            # Vea ${{ github.event.inputs.version }}
+
+            ${{ github.event.inputs.release_notes }}
+
+            ## 下载
+
+            ### Linux
+            - **AppImage** (x64/arm64) - 通用格式，无需安装
+            - **deb** (x64/arm64) - Debian/Ubuntu系统
+
+            ### macOS
+            - **dmg** (Intel/Apple Silicon) - 支持x64和arm64
+
+            ### Windows
+            - **exe** (x64) - NSIS安装程序
+
+            ## 安装说明
+
+            ### Linux (AppImage)
+            \`\`\`bash
+            chmod +x Vea-*.AppImage
+            ./Vea-*.AppImage
+            \`\`\`
+
+            ### Linux (deb)
+            \`\`\`bash
+            sudo dpkg -i vea_*_amd64.deb
+            \`\`\`
+
+            ### macOS (dmg)
+            双击dmg文件，拖动Vea到Applications文件夹
+
+            ### Windows (exe)
+            双击exe安装程序，按提示安装
+
+            ## 校验文件完整性
+
+            使用SHA256校验和验证下载文件：
+            \`\`\`bash
+            sha256sum -c Vea-${{ github.event.inputs.version }}-SHA256SUMS.txt
+            \`\`\`
+
+            ---
+
+            🤖 Generated with [Claude Code](https://claude.com/claude-code)
+          draft: false
+          prerelease: false
+          files: dist/*
+          token: ${{ secrets.GITHUB_TOKEN }}
