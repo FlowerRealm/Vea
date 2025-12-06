@@ -8,30 +8,40 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 
 	"vea/backend/domain"
 )
 
-// getDefaultInterface 获取系统默认网络接口名称
+// 缓存默认网络接口名称（仅 Linux）
+var (
+	defaultInterfaceOnce sync.Once
+	defaultInterfaceValue string
+)
+
+// getDefaultInterface 获取系统默认网络接口名称（带缓存）
 func getDefaultInterface() string {
 	if runtime.GOOS != "linux" {
 		return ""
 	}
 
-	// 使用 ip route 获取默认接口
-	cmd := exec.Command("ip", "route", "get", "8.8.8.8")
-	out, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
+	defaultInterfaceOnce.Do(func() {
+		// 使用 ip route 获取默认接口
+		cmd := exec.Command("ip", "route", "get", "8.8.8.8")
+		out, err := cmd.Output()
+		if err != nil {
+			return
+		}
 
-	// 解析输出: "8.8.8.8 via 192.168.1.1 dev eno1 src 192.168.1.108"
-	re := regexp.MustCompile(`dev\s+(\S+)`)
-	matches := re.FindStringSubmatch(string(out))
-	if len(matches) > 1 {
-		return matches[1]
-	}
-	return ""
+		// 解析输出: "8.8.8.8 via 192.168.1.1 dev eno1 src 192.168.1.108"
+		re := regexp.MustCompile(`dev\s+(\S+)`)
+		matches := re.FindStringSubmatch(string(out))
+		if len(matches) > 1 {
+			defaultInterfaceValue = matches[1]
+		}
+	})
+
+	return defaultInterfaceValue
 }
 
 // SingBoxAdapter sing-box 适配器
@@ -133,13 +143,13 @@ func (a *SingBoxAdapter) RequiresPrivileges(profile domain.ProxyProfile) bool {
 // BuildTUNOnlyConfig 生成纯 TUN 配置（v2rayN 风格）
 // proxy outbound 指向本地 SOCKS，由另一个进程处理实际代理
 func (a *SingBoxAdapter) BuildTUNOnlyConfig(localSOCKSPort int, geo GeoFiles) ([]byte, error) {
-	// TUN inbound
+	// TUN inbound（两层架构使用独立接口名 singbox_tun，避免与单层模式冲突）
 	tun := map[string]interface{}{
 		"type":                       "tun",
 		"tag":                        "tun-in",
 		"interface_name":             "singbox_tun",
-		"address":                    []string{"172.18.0.1/30"},
-		"mtu":                        9000,
+		"address":                    []string{domain.DefaultTUNAddress},
+		"mtu":                        domain.DefaultTUNMTU,
 		"auto_route":                 true,
 		"strict_route":               true,
 		"stack":                      "gvisor",
@@ -164,9 +174,9 @@ func (a *SingBoxAdapter) BuildTUNOnlyConfig(localSOCKSPort int, geo GeoFiles) ([
 	// DNS 配置
 	dns := map[string]interface{}{
 		"servers": []map[string]interface{}{
-			{"tag": "remote", "address": "tcp://8.8.8.8", "strategy": "prefer_ipv4", "detour": "proxy"},
-			{"tag": "local", "address": "223.5.5.5", "strategy": "prefer_ipv4", "detour": "direct"},
-			{"tag": "local-fallback", "address": "8.8.8.8", "strategy": "prefer_ipv4", "detour": "direct"},
+			{"tag": "remote", "address": "tcp://" + domain.DNSGoogle, "strategy": "prefer_ipv4", "detour": "proxy"},
+			{"tag": "local", "address": domain.DNSAliDNS, "strategy": "prefer_ipv4", "detour": "direct"},
+			{"tag": "local-fallback", "address": domain.DNSGoogle, "strategy": "prefer_ipv4", "detour": "direct"},
 			{"tag": "block", "address": "rcode://success"},
 		},
 		"rules": []map[string]interface{}{
@@ -583,13 +593,13 @@ func (a *SingBoxAdapter) buildDNS(profile domain.ProxyProfile, defaultTag string
 		{
 			"tag":    "dns-local",
 			"type":   "udp",
-			"server": "223.5.5.5", // 阿里 DNS，国内访问快
+			"server": domain.DNSAliDNS, // 阿里 DNS，国内访问快
 			"detour": "direct",
 		},
 		{
 			"tag":    "dns-remote",
 			"type":   "udp",
-			"server": "8.8.8.8", // Google DNS，走代理
+			"server": domain.DNSGoogle, // Google DNS，走代理
 			"detour": defaultTag,
 		},
 	}

@@ -15,11 +15,19 @@ import (
 const (
 	// defaultTUNSOCKSPort 两层代理架构中 SOCKS 层的默认端口
 	defaultTUNSOCKSPort = 46331
-	// defaultTUNInterface 默认 TUN 接口名称
-	defaultTUNInterface = "tun0"
 	// configFileMode 配置文件权限（包含敏感信息，仅所有者可读写）
 	configFileMode = 0600
 )
+
+// killAndWait 安全地终止进程并等待其退出，避免僵尸进程
+func killAndWait(cmd *exec.Cmd) {
+	if cmd == nil || cmd.Process == nil {
+		return
+	}
+	_ = cmd.Process.Kill()
+	// 等待进程退出，避免僵尸进程
+	_ = cmd.Wait()
+}
 
 // ProxyProfile CRUD methods
 
@@ -47,16 +55,16 @@ func (s *Service) CreateProxyProfile(profile domain.ProxyProfile) (domain.ProxyP
 	// 设置默认 TUN 配置
 	if profile.InboundMode == domain.InboundTUN && profile.TUNSettings == nil {
 		profile.TUNSettings = &domain.TUNConfiguration{
-			InterfaceName:          "tun0",
-			MTU:                    9000,
-			Address:                []string{"198.18.0.1/30"}, // 使用 IANA 保留地址段，避免冲突
+			InterfaceName:          domain.DefaultTUNInterface,
+			MTU:                    domain.DefaultTUNMTU,
+			Address:                []string{domain.DefaultTUNAddress}, // 使用 IANA 保留地址段，避免冲突
 			AutoRoute:              true,
 			AutoRedirect:           false, // Linux: 默认禁用，可手动启用
 			StrictRoute:            true,
-			Stack:                  "mixed",
+			Stack:                  domain.DefaultTUNStack,
 			DNSHijack:              false, // 不劫持 DNS 路由，通过 sniff 处理
 			EndpointIndependentNat: false, // gvisor: 默认禁用
-			UDPTimeout:             300,   // 5 分钟
+			UDPTimeout:             domain.DefaultUDPTimeout,
 		}
 	}
 
@@ -80,7 +88,7 @@ func (s *Service) CreateProxyProfile(profile domain.ProxyProfile) (domain.ProxyP
 		profile.DNSConfig = &domain.DNSConfiguration{
 			UseResolved:            useResolved,
 			AcceptDefaultResolvers: false,
-			RemoteServers:          []string{"1.1.1.1", "8.8.8.8"}, // 使用 UDP DNS，避免 DoH 兼容性问题
+			RemoteServers:          domain.DefaultRemoteDNS, // 使用 UDP DNS，避免 DoH 兼容性问题
 			Strategy:               "prefer_ipv4",
 		}
 	}
@@ -129,7 +137,7 @@ func (s *Service) CreateProxyProfile(profile domain.ProxyProfile) (domain.ProxyP
 		profile.XrayConfig = &domain.XrayConfiguration{
 			MuxEnabled:     false, // 默认禁用多路复用
 			MuxConcurrency: 8,     // 默认并发数
-			DNSServers:     []string{"1.1.1.1", "8.8.8.8"},
+			DNSServers:     domain.DefaultRemoteDNS,
 			DomainStrategy: "AsIs", // 默认不解析域名
 		}
 	}
@@ -177,7 +185,7 @@ func (s *Service) StartProxyWithProfile(profileID string) error {
 	// 停止现有代理
 	if s.proxyCmd != nil && s.proxyCmd.Process != nil {
 		log.Printf("[Proxy] 停止现有代理进程")
-		_ = s.proxyCmd.Process.Kill()
+		killAndWait(s.proxyCmd)
 		s.proxyCmd = nil
 	}
 
@@ -386,12 +394,12 @@ func (s *Service) StartProxyWithProfile(profileID string) error {
 		sbAdapter := adapter.(*adapters.SingBoxAdapter)
 		tunConfigBytes, err := sbAdapter.BuildTUNOnlyConfig(socksPort, geo)
 		if err != nil {
-			socksCmd.Process.Kill()
+			killAndWait(socksCmd)
 			return fmt.Errorf("failed to build TUN config: %w", err)
 		}
 		tunConfigPath := filepath.Join(configDir, "tun-config.json")
 		if err := os.WriteFile(tunConfigPath, tunConfigBytes, configFileMode); err != nil {
-			socksCmd.Process.Kill()
+			killAndWait(socksCmd)
 			return fmt.Errorf("failed to write TUN config: %w", err)
 		}
 		log.Printf("[Proxy] TUN 配置写入: %s", tunConfigPath)
@@ -399,13 +407,13 @@ func (s *Service) StartProxyWithProfile(profileID string) error {
 		// 获取 sing-box 路径（TUN 必须用 sing-box）
 		singboxPath, err := s.getEngineBinaryPath(domain.EngineSingBox)
 		if err != nil {
-			socksCmd.Process.Kill()
+			killAndWait(socksCmd)
 			return fmt.Errorf("sing-box not found for TUN: %w", err)
 		}
 
 		cmd, err = s.StartTUNProcess(singboxPath, tunConfigPath)
 		if err != nil {
-			socksCmd.Process.Kill()
+			killAndWait(socksCmd)
 			return fmt.Errorf("failed to start TUN: %w", err)
 		}
 	} else {
@@ -452,16 +460,14 @@ func (s *Service) StopProxy() error {
 		}
 	}
 
-	// 停止进程
-	if err := s.proxyCmd.Process.Kill(); err != nil {
-		log.Printf("[Proxy] 停止进程失败: %v", err)
-	}
+	// 停止进程并等待退出
+	log.Printf("[Proxy] 停止代理进程...")
+	killAndWait(s.proxyCmd)
 
 	// 停止 SOCKS 进程（两层代理模式）
 	if s.socksCmd != nil && s.socksCmd.Process != nil {
-		if err := s.socksCmd.Process.Kill(); err != nil {
-			log.Printf("[Proxy] 停止 SOCKS 进程失败: %v", err)
-		}
+		log.Printf("[Proxy] 停止 SOCKS 进程...")
+		killAndWait(s.socksCmd)
 		s.socksCmd = nil
 	}
 
@@ -478,7 +484,7 @@ func (s *Service) StopProxy() error {
 
 	// 清理 TUN 接口和路由
 	if profile.InboundMode == domain.InboundTUN {
-		tunInterface := defaultTUNInterface
+		tunInterface := domain.DefaultTUNInterface
 		if profile.TUNSettings != nil && profile.TUNSettings.InterfaceName != "" {
 			tunInterface = profile.TUNSettings.InterfaceName
 		}
@@ -522,7 +528,7 @@ func (s *Service) monitorProxyProcess(cmd *exec.Cmd, profileID string, inboundMo
 
 		if inboundMode == domain.InboundTUN {
 			// 清理 TUN
-			tunInterface := defaultTUNInterface
+			tunInterface := domain.DefaultTUNInterface
 			if profile, err := s.store.GetProxyProfile(profileID); err == nil && profile.TUNSettings != nil && profile.TUNSettings.InterfaceName != "" {
 				tunInterface = profile.TUNSettings.InterfaceName
 			}

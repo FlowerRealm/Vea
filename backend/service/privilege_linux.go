@@ -105,8 +105,14 @@ func (s *Service) setTUNCapabilities() error {
 		return fmt.Errorf("user lookup failed: %w", err)
 	}
 
-	uid, _ := strconv.Atoi(u.Uid)
-	gid, _ := strconv.Atoi(u.Gid)
+	uid, err := strconv.Atoi(u.Uid)
+	if err != nil {
+		return fmt.Errorf("invalid UID %q: %w", u.Uid, err)
+	}
+	gid, err := strconv.Atoi(u.Gid)
+	if err != nil {
+		return fmt.Errorf("invalid GID %q: %w", u.Gid, err)
+	}
 
 	if err := os.Chown(binaryPath, uid, gid); err != nil {
 		return fmt.Errorf("chown failed: %w", err)
@@ -202,23 +208,27 @@ func (s *Service) EnsureTUNCapabilities() (bool, error) {
 	log.Printf("[TUN-Setup] 缺少: user=%v, caps=%v", !status.UserExists, status.MissingCaps)
 
 	// 尝试使用 pkexec 自动提权配置
-	// 构建 setcap 命令
 	binaryPath := status.BinaryPath
 
 	// 如果用户不存在，先创建用户
 	if !status.UserExists {
-		log.Printf("[TUN-Setup] 使用 pkexec 创建 vea-tun 用户...")
-		cmd := exec.Command("pkexec", "useradd", "-r", "-s", "/usr/sbin/nologin", "-M", tunUserName)
-		var stderr bytes.Buffer
-		cmd.Stderr = &stderr
-		if err := cmd.Run(); err != nil {
-			// 检查是否因为用户已存在而失败
-			if !bytes.Contains(stderr.Bytes(), []byte("already exists")) &&
-				!bytes.Contains(stderr.Bytes(), []byte("已存在")) {
-				return false, fmt.Errorf("创建 vea-tun 用户失败: %v, stderr: %s\n请手动运行: sudo useradd -r -s /usr/sbin/nologin -M vea-tun", err, stderr.String())
+		// 再次检查用户是否已存在（避免竞态条件）
+		if _, err := user.Lookup(tunUserName); err != nil {
+			log.Printf("[TUN-Setup] 使用 pkexec 创建 vea-tun 用户...")
+			cmd := exec.Command("pkexec", "useradd", "-r", "-s", "/usr/sbin/nologin", "-M", tunUserName)
+			var stderr bytes.Buffer
+			cmd.Stderr = &stderr
+			if err := cmd.Run(); err != nil {
+				// 再次通过 user.Lookup 确认用户是否已存在
+				if _, lookupErr := user.Lookup(tunUserName); lookupErr != nil {
+					return false, fmt.Errorf("创建 vea-tun 用户失败: %v, stderr: %s\n请手动运行: sudo useradd -r -s /usr/sbin/nologin -M vea-tun", err, stderr.String())
+				}
+				// 用户已存在，忽略错误
 			}
+			log.Printf("[TUN-Setup] vea-tun 用户已创建")
+		} else {
+			log.Printf("[TUN-Setup] vea-tun 用户已存在，跳过创建")
 		}
-		log.Printf("[TUN-Setup] vea-tun 用户已创建")
 	}
 
 	// 设置 capabilities

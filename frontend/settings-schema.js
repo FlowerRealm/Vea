@@ -11,6 +11,12 @@
  * - tags: 标签输入（逗号分隔）
  *
  * 每个设置项的 key 对应后端 API 的字段路径
+ *
+ * 注意：TUN 相关默认值需与后端 domain/entities.go 中的常量保持同步：
+ * - DefaultTUNInterface = "tun0"
+ * - DefaultTUNMTU = 9000
+ * - DefaultTUNStack = "mixed"
+ * - DefaultUDPTimeout = 300
  */
 
 const SETTINGS_SCHEMA = {
@@ -105,8 +111,8 @@ const SETTINGS_SCHEMA = {
           key: "tun.dnsHijack",
           type: "toggle",
           label: "DNS 劫持",
-          description: "劫持所有 DNS 请求",
-          default: true
+          description: "劫持所有 DNS 请求（不推荐，通过 sniff 自动处理）",
+          default: false
         },
         {
           key: "tun.autoRedirect",
@@ -130,6 +136,20 @@ const SETTINGS_SCHEMA = {
           default: 300,
           min: 30,
           max: 3600
+        },
+        {
+          key: "tun.routeAddress",
+          type: "textarea",
+          label: "自定义包含路由",
+          description: "强制走代理的 IP/CIDR，每行一个（如 8.8.8.8/32）",
+          default: ""
+        },
+        {
+          key: "tun.routeExcludeAddress",
+          type: "textarea",
+          label: "自定义排除路由",
+          description: "不走代理的 IP/CIDR，每行一个（如 192.168.0.0/16）",
+          default: ""
         }
       ]
     },

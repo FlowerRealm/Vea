@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"os/user"
 	"runtime"
 
 	"vea/backend/domain"
@@ -42,28 +43,26 @@ func (s *Service) setupTUNLinux() error {
 
 	log.Printf("[TUN-Setup] 检测到 root 权限，开始配置...")
 
-	// 1. 创建 vea-tun 用户
-	cmd := exec.Command("useradd", "-r", "-s", "/usr/sbin/nologin", "-M", "vea-tun")
-
 	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
 
-	err := cmd.Run()
-	stderrStr := stderr.String()
+	// 1. 创建 vea-tun 用户（先检查是否已存在）
+	if _, err := user.Lookup("vea-tun"); err != nil {
+		// 用户不存在，创建它
+		cmd := exec.Command("useradd", "-r", "-s", "/usr/sbin/nologin", "-M", "vea-tun")
+		cmd.Stderr = &stderr
 
-	// 检查是否因为用户已存在而失败
-	userExists := bytes.Contains(stderr.Bytes(), []byte("already exists")) ||
-		bytes.Contains(stderr.Bytes(), []byte("已存在"))
-
-	if err != nil && !userExists {
-		// 真正的错误，不是"用户已存在"
-		return fmt.Errorf("failed to create vea-tun user: %w, stderr: %s", err, stderrStr)
-	}
-
-	if userExists {
-		log.Printf("[TUN-Setup] vea-tun 用户已存在，继续配置权限")
+		if err := cmd.Run(); err != nil {
+			// 再次通过 user.Lookup 确认用户是否已存在（避免竞态条件）
+			if _, lookupErr := user.Lookup("vea-tun"); lookupErr != nil {
+				return fmt.Errorf("failed to create vea-tun user: %w, stderr: %s", err, stderr.String())
+			}
+			// 用户已存在（可能被其他进程创建），继续
+			log.Printf("[TUN-Setup] vea-tun 用户已存在（竞态），继续配置权限")
+		} else {
+			log.Printf("[TUN-Setup] vea-tun 用户已创建")
+		}
 	} else {
-		log.Printf("[TUN-Setup] vea-tun 用户已创建")
+		log.Printf("[TUN-Setup] vea-tun 用户已存在，继续配置权限")
 	}
 
 	// 2. 设置 sing-box 二进制的 capabilities
@@ -77,7 +76,7 @@ func (s *Service) setupTUNLinux() error {
 	log.Printf("[TUN-Setup] 设置 sing-box 权限: %s", binaryPath)
 
 	// 先设置二进制文件所有者为 vea-tun（必须在 setcap 之前，因为 chown 会清除 capabilities）
-	cmd = exec.Command("chown", "vea-tun:vea-tun", binaryPath)
+	cmd := exec.Command("chown", "vea-tun:vea-tun", binaryPath)
 	stderr.Reset()
 	cmd.Stderr = &stderr
 
@@ -193,36 +192,32 @@ func (s *Service) cleanupTUNLinux() error {
 		log.Printf("[TUN-Cleanup] sing-box 未安装，跳过权限清理")
 	}
 
-	// 2. 删除用户
-	cmd := exec.Command("userdel", "vea-tun")
-	stderr.Reset()
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		// 检查是否因为用户不存在而失败
-		if !bytes.Contains(stderr.Bytes(), []byte("does not exist")) &&
-			!bytes.Contains(stderr.Bytes(), []byte("不存在")) {
+	// 2. 删除用户（先检查是否存在）
+	if _, err := user.Lookup("vea-tun"); err == nil {
+		cmd := exec.Command("userdel", "vea-tun")
+		stderr.Reset()
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
 			log.Printf("[TUN-Cleanup] 警告：删除用户失败: %v, stderr: %s", err, stderr.String())
 		} else {
-			log.Printf("[TUN-Cleanup] vea-tun 用户不存在")
+			log.Printf("[TUN-Cleanup] vea-tun 用户已删除")
 		}
 	} else {
-		log.Printf("[TUN-Cleanup] vea-tun 用户已删除")
+		log.Printf("[TUN-Cleanup] vea-tun 用户不存在，跳过删除")
 	}
 
-	// 3. 删除组
-	cmd = exec.Command("groupdel", "vea-tun")
-	stderr.Reset()
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		// 检查是否因为组不存在而失败
-		if !bytes.Contains(stderr.Bytes(), []byte("does not exist")) &&
-			!bytes.Contains(stderr.Bytes(), []byte("不存在")) {
+	// 3. 删除组（先检查是否存在）
+	if _, err := user.LookupGroup("vea-tun"); err == nil {
+		cmd := exec.Command("groupdel", "vea-tun")
+		stderr.Reset()
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
 			log.Printf("[TUN-Cleanup] 警告：删除组失败: %v, stderr: %s", err, stderr.String())
 		} else {
-			log.Printf("[TUN-Cleanup] vea-tun 组不存在")
+			log.Printf("[TUN-Cleanup] vea-tun 组已删除")
 		}
 	} else {
-		log.Printf("[TUN-Cleanup] vea-tun 组已删除")
+		log.Printf("[TUN-Cleanup] vea-tun 组不存在，跳过删除")
 	}
 
 	log.Printf("[TUN-Cleanup] TUN 配置已清理")
