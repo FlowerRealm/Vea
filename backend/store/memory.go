@@ -45,7 +45,7 @@ func NewMemoryStore() *MemoryStore {
 		components:    make(map[string]domain.CoreComponent),
 		proxyProfiles: make(map[string]domain.ProxyProfile),
 		trafficProfile: domain.TrafficProfile{
-			DNS:       domain.DNSSetting{Strategy: "ipv4-only", Servers: []string{"8.8.8.8"}},
+			DNS:       domain.DNSSetting{Strategy: "ipv4-only", Servers: []string{domain.DNSGoogle}},
 			Rules:     []domain.TrafficRule{},
 			UpdatedAt: time.Now(),
 		},

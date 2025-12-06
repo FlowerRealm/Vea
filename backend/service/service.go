@@ -3996,16 +3996,16 @@ func (s *Service) ensureTUNProfile() (string, error) {
 		ActualEngine:    domain.EngineSingBox,
 		DefaultNode:     defaultNodeID,
 		TUNSettings: &domain.TUNConfiguration{
-			InterfaceName:          "tun0",
-			MTU:                    9000,
-			Address:                []string{"198.18.0.1/30"}, // 使用 IANA 保留地址段
+			InterfaceName:          domain.DefaultTUNInterface,
+			MTU:                    domain.DefaultTUNMTU,
+			Address:                []string{domain.DefaultTUNAddress},
 			AutoRoute:              true,
 			AutoRedirect:           false, // Linux: 默认禁用，可手动启用
 			StrictRoute:            true,
-			Stack:                  "mixed",
+			Stack:                  domain.DefaultTUNStack,
 			DNSHijack:              false, // 不劫持 DNS 路由，通过 sniff 处理
 			EndpointIndependentNat: false, // gvisor: 默认禁用
-			UDPTimeout:             300,   // 5 分钟
+			UDPTimeout:             domain.DefaultUDPTimeout,
 		},
 		ResolvedService: &domain.ResolvedServiceConfiguration{
 			Enabled:    false, // 禁用 resolved service（需要 DBUS 权限）
@@ -4015,7 +4015,7 @@ func (s *Service) ensureTUNProfile() (string, error) {
 		DNSConfig: &domain.DNSConfiguration{
 			UseResolved:            true, // TUN 模式需要 domain_resolver 打破 DNS bootstrap 循环
 			AcceptDefaultResolvers: false,
-			RemoteServers:          []string{"1.1.1.1", "8.8.8.8"}, // UDP DNS，避免 DoH 兼容性问题
+			RemoteServers:          domain.DefaultRemoteDNS, // UDP DNS，避免 DoH 兼容性问题
 			Strategy:               "prefer_ipv4",
 		},
 	}

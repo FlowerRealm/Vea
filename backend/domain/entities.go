@@ -13,6 +13,36 @@ const (
 	ProtocolVMess       NodeProtocol = "vmess"
 )
 
+// DNS 服务器常量
+const (
+	// DNSGoogle Google Public DNS
+	DNSGoogle = "8.8.8.8"
+	// DNSCloudflare Cloudflare DNS
+	DNSCloudflare = "1.1.1.1"
+	// DNSAliDNS 阿里公共 DNS（国内访问快）
+	DNSAliDNS = "223.5.5.5"
+)
+
+// DefaultRemoteDNS 默认远程 DNS 服务器列表（走代理）
+var DefaultRemoteDNS = []string{DNSCloudflare, DNSGoogle}
+
+// DefaultLocalDNS 默认本地 DNS 服务器（直连，国内使用）
+var DefaultLocalDNS = []string{DNSAliDNS}
+
+// TUN 模式常量
+const (
+	// DefaultTUNAddress 默认 TUN 地址段（198.18.0.0/15 是 IANA 保留的测试地址段）
+	DefaultTUNAddress = "198.18.0.1/30"
+	// DefaultTUNInterface 默认 TUN 接口名称
+	DefaultTUNInterface = "tun0"
+	// DefaultTUNMTU 默认 TUN MTU
+	DefaultTUNMTU = 9000
+	// DefaultTUNStack 默认 TUN 栈类型
+	DefaultTUNStack = "mixed"
+	// DefaultUDPTimeout 默认 UDP 超时时间（秒）
+	DefaultUDPTimeout = 300
+)
+
 type Node struct {
 	ID             string         `json:"id"`
 	Name           string         `json:"name"`

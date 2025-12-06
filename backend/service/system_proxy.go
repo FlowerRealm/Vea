@@ -246,7 +246,7 @@ func findGSettings() (string, error) {
 	if path, err := exec.LookPath("gsettings"); err == nil {
 		return path, nil
 	}
-	// Fallback to common paths
+	// 回退到常见路径
 	commonPaths := []string{"/usr/bin/gsettings", "/bin/gsettings", "/usr/local/bin/gsettings"}
 	for _, p := range commonPaths {
 		if _, err := os.Stat(p); err == nil {

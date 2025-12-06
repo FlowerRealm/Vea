@@ -39,8 +39,12 @@ func main() {
 		log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 		// 开发模式：同时输出到终端和日志文件
-		// 使用固定路径，避免 Electron 工作目录问题
-		logPath := "/tmp/vea-debug.log"
+		// 日志保存在项目的 data 目录下
+		logDir := "data"
+		if err := os.MkdirAll(logDir, 0755); err != nil {
+			log.Printf("无法创建日志目录: %v", err)
+		}
+		logPath := logDir + "/vea-debug.log"
 		logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 		if err != nil {
 			log.Printf("无法创建日志文件: %v", err)

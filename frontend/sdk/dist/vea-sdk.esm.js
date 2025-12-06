@@ -41,6 +41,8 @@ class VeaClient {
     this.settings = new SettingsAPI(this);
     this.proxy = new ProxyAPI(this);
     this.proxyProfiles = new ProxyProfilesAPI(this);
+    this.tun = new TUNAPI(this);
+    this.ipGeo = new IPGeoAPI(this);
   }
 
   async request(options) {
@@ -294,57 +296,6 @@ class XrayAPI {
   }
 }
 
-class TrafficAPI {
-  constructor(client) {
-    this.client = client;
-    this.rules = new TrafficRulesAPI(client);
-  }
-
-  async getProfile() {
-    return this.client.get('/traffic/profile')
-  }
-
-  async updateProfile(data) {
-    return this.client.put('/traffic/profile', data)
-  }
-}
-
-class TrafficRulesAPI {
-  constructor(client) {
-    this.client = client;
-  }
-
-  async list() {
-    return this.client.get('/traffic/rules')
-  }
-
-  async create(data) {
-    return this.client.post('/traffic/rules', data)
-  }
-
-  async update(id, data) {
-    return this.client.put(`/traffic/rules/${id}`, data)
-  }
-
-  async delete(id) {
-    return this.client.delete(`/traffic/rules/${id}`)
-  }
-}
-
-class SettingsAPI {
-  constructor(client) {
-    this.client = client;
-  }
-
-  async getSystemProxy() {
-    return this.client.get('/settings/system-proxy')
-  }
-
-  async updateSystemProxy(data) {
-    return this.client.put('/settings/system-proxy', data)
-  }
-}
-
 class ProxyAPI {
   constructor(client) {
     this.client = client;
@@ -389,6 +340,105 @@ class ProxyProfilesAPI {
   }
 }
 
+class TrafficAPI {
+  constructor(client) {
+    this.client = client;
+    this.rules = new TrafficRulesAPI(client);
+  }
+
+  async getProfile() {
+    return this.client.get('/traffic/profile')
+  }
+
+  async updateProfile(data) {
+    return this.client.put('/traffic/profile', data)
+  }
+}
+
+class TrafficRulesAPI {
+  constructor(client) {
+    this.client = client;
+  }
+
+  async list() {
+    return this.client.get('/traffic/rules')
+  }
+
+  async create(data) {
+    return this.client.post('/traffic/rules', data)
+  }
+
+  async update(id, data) {
+    return this.client.put(`/traffic/rules/${id}`, data)
+  }
+
+  async delete(id) {
+    return this.client.delete(`/traffic/rules/${id}`)
+  }
+}
+
+class SettingsAPI {
+  constructor(client) {
+    this.client = client;
+  }
+
+  // 系统代理设置
+  async getSystemProxy() {
+    return this.client.get('/settings/system-proxy')
+  }
+
+  async updateSystemProxy(data) {
+    return this.client.put('/settings/system-proxy', data)
+  }
+
+  // TUN 设置
+  async getTUN() {
+    return this.client.get('/settings/tun')
+  }
+
+  async updateTUN(data) {
+    return this.client.put('/settings/tun', data)
+  }
+
+  // 前端设置持久化
+  async getFrontend() {
+    return this.client.get('/settings/frontend')
+  }
+
+  async saveFrontend(data) {
+    return this.client.put('/settings/frontend', data)
+  }
+}
+
+// TUN API
+class TUNAPI {
+  constructor(client) {
+    this.client = client;
+  }
+
+  // 检查 TUN 权限是否已配置
+  async check() {
+    return this.client.get('/tun/check')
+  }
+
+  // 设置 TUN 权限（需要 root/管理员）
+  async setup() {
+    return this.client.post('/tun/setup')
+  }
+}
+
+// IP 地理位置 API
+class IPGeoAPI {
+  constructor(client) {
+    this.client = client;
+  }
+
+  // 获取当前 IP 地理位置
+  async get() {
+    return this.client.get('/ip/geo')
+  }
+}
+
 function createAPI(baseURL = '') {
   const client = new VeaClient({ baseURL });
 
@@ -423,6 +473,8 @@ function createAPI(baseURL = '') {
     settings: client.settings,
     proxy: client.proxy,
     proxyProfiles: client.proxyProfiles,
+    tun: client.tun,
+    ipGeo: client.ipGeo,
 
     client
   }
@@ -573,7 +625,7 @@ function parseNumber(value) {
 
 function debounce(fn, delay) {
   let timer = null;
-  return function(...args) {
+  return function (...args) {
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => fn.apply(this, args), delay);
   }
@@ -581,7 +633,7 @@ function debounce(fn, delay) {
 
 function throttle(fn, delay) {
   let last = 0;
-  return function(...args) {
+  return function (...args) {
     const now = Date.now();
     if (now - last >= delay) {
       last = now;

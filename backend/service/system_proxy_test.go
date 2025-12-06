@@ -38,7 +38,7 @@ func TestResolveTargetUser(t *testing.T) {
 			t.Skip("skipping PKEXEC_UID test on Windows")
 		}
 		os.Unsetenv("SUDO_USER")
-		// We need a valid UID for LookupId to work, usually 0 is root
+		// 需要一个有效的 UID 让 LookupId 正常工作，通常 0 是 root
 		os.Setenv("PKEXEC_UID", "0")
 		if got := resolveTargetUser(); got != "root" {
 			t.Errorf("resolveTargetUser() = %v, want %v", got, "root")

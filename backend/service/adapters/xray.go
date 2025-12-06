@@ -424,7 +424,7 @@ func firstNonEmpty(values ...string) string {
 
 // buildDNS 构建 DNS 配置
 func (a *XrayAdapter) buildDNS(profile domain.ProxyProfile) map[string]interface{} {
-	servers := []string{"1.1.1.1", "8.8.8.8"}
+	servers := domain.DefaultRemoteDNS
 	if profile.XrayConfig != nil && len(profile.XrayConfig.DNSServers) > 0 {
 		servers = profile.XrayConfig.DNSServers
 	}
