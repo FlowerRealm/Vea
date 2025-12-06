@@ -17,6 +17,7 @@ var (
 	errGeoNotFound       = errors.New("geo resource not found")
 	errRuleNotFound      = errors.New("traffic rule not found")
 	errComponentNotFound = errors.New("core component not found")
+	errProfileNotFound = errors.New("proxy profile not found")
 )
 
 type MemoryStore struct {
@@ -26,25 +27,33 @@ type MemoryStore struct {
 	geo            map[string]domain.GeoResource
 	rules          map[string]domain.TrafficRule
 	components     map[string]domain.CoreComponent
+	proxyProfiles  map[string]domain.ProxyProfile
+	activeProfile  string
 	trafficProfile domain.TrafficProfile
 	systemProxy    domain.SystemProxySettings
+	tunSettings    domain.TUNSettings
 	afterMu        sync.RWMutex
 	afterWrite     func()
 }
 
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		nodes:      make(map[string]domain.Node),
-		configs:    make(map[string]domain.Config),
-		geo:        make(map[string]domain.GeoResource),
-		rules:      make(map[string]domain.TrafficRule),
-		components: make(map[string]domain.CoreComponent),
+		nodes:         make(map[string]domain.Node),
+		configs:       make(map[string]domain.Config),
+		geo:           make(map[string]domain.GeoResource),
+		rules:         make(map[string]domain.TrafficRule),
+		components:    make(map[string]domain.CoreComponent),
+		proxyProfiles: make(map[string]domain.ProxyProfile),
 		trafficProfile: domain.TrafficProfile{
 			DNS:       domain.DNSSetting{Strategy: "ipv4-only", Servers: []string{"8.8.8.8"}},
 			Rules:     []domain.TrafficRule{},
 			UpdatedAt: time.Now(),
 		},
 		systemProxy: defaultSystemProxySettings(),
+		tunSettings: domain.TUNSettings{
+			Enabled:   false,
+			UpdatedAt: time.Now(),
+		},
 	}
 }
 
@@ -582,13 +591,21 @@ func (s *MemoryStore) Snapshot() domain.ServiceState {
 	profile := s.trafficProfile
 	profile.Rules = append([]domain.TrafficRule(nil), profile.Rules...)
 
+	profiles := make([]domain.ProxyProfile, 0, len(s.proxyProfiles))
+	for _, p := range s.proxyProfiles {
+		profiles = append(profiles, p)
+	}
+
 	return domain.ServiceState{
 		Nodes:          nodes,
 		Configs:        configs,
 		GeoResources:   geo,
 		Components:     components,
+		ProxyProfiles:  profiles,
+		ActiveProfile:  s.activeProfile,
 		TrafficProfile: profile,
 		SystemProxy:    s.systemProxy,
+		TUNSettings:    s.tunSettings,
 		GeneratedAt:    time.Now(),
 	}
 }
@@ -670,6 +687,23 @@ func (s *MemoryStore) LoadState(state domain.ServiceState) {
 		s.components[comp.ID] = comp
 	}
 
+	s.proxyProfiles = make(map[string]domain.ProxyProfile)
+	for _, profile := range state.ProxyProfiles {
+		if profile.ID == "" {
+			profile.ID = uuid.NewString()
+		}
+		if profile.CreatedAt.IsZero() {
+			profile.CreatedAt = now
+		}
+		if profile.UpdatedAt.IsZero() {
+			profile.UpdatedAt = profile.CreatedAt
+		}
+		s.proxyProfiles[profile.ID] = profile
+	}
+
+
+	s.activeProfile = state.ActiveProfile
+
 	if state.TrafficProfile.UpdatedAt.IsZero() {
 		state.TrafficProfile.UpdatedAt = now
 	}
@@ -687,6 +721,14 @@ func (s *MemoryStore) LoadState(state domain.ServiceState) {
 	} else {
 		s.systemProxy = state.SystemProxy
 	}
+
+	// Load TUN settings
+	if state.TUNSettings.UpdatedAt.IsZero() {
+		state.TUNSettings.UpdatedAt = now
+	}
+	// 强制 TUN 在启动时默认关闭（安全考虑）
+	// state.TUNSettings.Enabled = false
+	s.tunSettings = state.TUNSettings
 
 	s.cleanupOrphanNodesLocked()
 }
@@ -731,3 +773,114 @@ func (s *MemoryStore) fireAfterWrite() {
 		cb()
 	}
 }
+
+// ProxyProfile CRUD methods
+
+func (s *MemoryStore) ListProxyProfiles() []domain.ProxyProfile {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	items := make([]domain.ProxyProfile, 0, len(s.proxyProfiles))
+	for _, profile := range s.proxyProfiles {
+		items = append(items, profile)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].CreatedAt.Before(items[j].CreatedAt)
+	})
+	return items
+}
+
+func (s *MemoryStore) CreateProxyProfile(profile domain.ProxyProfile) domain.ProxyProfile {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if profile.ID == "" {
+		profile.ID = uuid.NewString()
+	}
+	profile.CreatedAt = time.Now()
+	profile.UpdatedAt = profile.CreatedAt
+	s.proxyProfiles[profile.ID] = profile
+	s.fireAfterWrite()
+	return profile
+}
+
+func (s *MemoryStore) GetProxyProfile(id string) (domain.ProxyProfile, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	profile, ok := s.proxyProfiles[id]
+	if !ok {
+		return domain.ProxyProfile{}, errProfileNotFound
+	}
+	return profile, nil
+}
+
+func (s *MemoryStore) UpdateProxyProfile(id string, updateFn func(domain.ProxyProfile) (domain.ProxyProfile, error)) (domain.ProxyProfile, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	profile, ok := s.proxyProfiles[id]
+	if !ok {
+		return domain.ProxyProfile{}, errProfileNotFound
+	}
+	updated, err := updateFn(profile)
+	if err != nil {
+		return domain.ProxyProfile{}, err
+	}
+	updated.UpdatedAt = time.Now()
+	s.proxyProfiles[id] = updated
+	s.fireAfterWrite()
+	return updated, nil
+}
+
+func (s *MemoryStore) DeleteProxyProfile(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.proxyProfiles[id]; !ok {
+		return errProfileNotFound
+	}
+	delete(s.proxyProfiles, id)
+	// 如果删除的是活跃 Profile，清空活跃状态
+	if s.activeProfile == id {
+		s.activeProfile = ""
+	}
+	s.fireAfterWrite()
+	return nil
+}
+
+func (s *MemoryStore) GetActiveProfile() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.activeProfile
+}
+
+func (s *MemoryStore) SetActiveProfile(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// 验证 Profile 存在
+	if id != "" {
+		if _, ok := s.proxyProfiles[id]; !ok {
+			return errProfileNotFound
+		}
+	}
+	s.activeProfile = id
+	s.fireAfterWrite()
+	return nil
+}
+
+// TUN Settings
+func (s *MemoryStore) GetTUNSettings() domain.TUNSettings {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.tunSettings
+}
+
+func (s *MemoryStore) UpdateTUNSettings(updateFn func(domain.TUNSettings) (domain.TUNSettings, error)) (domain.TUNSettings, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	updated, err := updateFn(s.tunSettings)
+	if err != nil {
+		return domain.TUNSettings{}, err
+	}
+	updated.UpdatedAt = time.Now()
+	s.tunSettings = updated
+	s.fireAfterWrite()
+	return s.tunSettings, nil
+}
+

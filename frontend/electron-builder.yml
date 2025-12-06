@@ -3,7 +3,7 @@ productName: Vea
 copyright: Copyright © 2025 FlowerRealm
 
 directories:
-  output: dist/release
+  output: ../release
 
 files:
   - main.js
@@ -16,6 +16,10 @@ extraResources:
     to: vea
     filter:
       - "**/*"
+  - from: ../scripts
+    to: scripts
+    filter:
+      - "**/*"
 
 mac:
   target:
@@ -25,6 +29,8 @@ mac:
         - x64
   category: public.app-category.utilities
   icon: assets/icon.icns
+  entitlements: entitlements.mac.plist
+  entitlementsInherit: entitlements.mac.plist
 
 linux:
   target:
@@ -46,8 +52,11 @@ win:
       arch:
         - x64
   icon: assets/icon.ico
+  requestedExecutionLevel: requireAdministrator
 
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: Vea (管理员模式)

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Vea (管理员模式)
+GenericName=Proxy Client
+Comment=以管理员权限运行 Vea（TUN 模式需要）
+Exec=pkexec /usr/bin/vea-admin
+Icon=vea
+Terminal=false
+Categories=Network;Utility;
+Keywords=proxy;vpn;tun;network;
+StartupWMClass=Vea
