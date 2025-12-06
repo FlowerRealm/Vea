@@ -45,22 +45,39 @@ build-backend: ## 编译 Go 后端
 	@echo "==> 后端编译完成: $(OUTPUT_DIR)/$(BINARY_NAME)"
 	@ls -lh $(OUTPUT_DIR)/$(BINARY_NAME)
 
-dev: build-backend deps ## 启动 Electron 开发模式
+dev: ## 启动 Electron 开发模式
+	@echo "==> 停止正在运行的 vea 和 electron 进程..."
+	@-pkill -9 -f "vea.*--addr" 2>/dev/null || true
+	@-pkill -9 electron 2>/dev/null || true
+	@echo "==> 等待端口释放..."
+	@sleep 2
+	@-fuser -k 8080/tcp 2>/dev/null || true
+	@sleep 1
+	@echo "==> 删除旧的二进制文件..."
+	@rm -f vea vea.exe
+	@$(MAKE) build-backend deps
 	@echo "==> 启动 Electron 开发模式..."
 	@cp $(OUTPUT_DIR)/$(BINARY_NAME) vea
 	@cd frontend && npm run dev
 
-build: build-backend deps ## 打包 Electron 应用
+build: ## 打包 Electron 应用
+	@echo "==> 停止正在运行的 vea 进程..."
+	@-pkill -9 vea 2>/dev/null || true
+	@sleep 1
+	@echo "==> 删除旧的二进制文件..."
+	@rm -f vea vea.exe
+	@$(MAKE) build-backend deps
 	@echo "==> 打包 Electron 应用..."
 	@cp $(OUTPUT_DIR)/$(BINARY_NAME) vea
 	@cd frontend && npm run build
 	@echo "==> 应用打包完成"
-	@ls -lh frontend/dist/release/
+	@ls -lh release/
 
 clean: ## 清理构建产物
 	@echo "==> 清理构建产物..."
 	@rm -rf $(OUTPUT_DIR)
 	@rm -rf frontend/dist
+	@rm -rf release
 	@rm -f vea vea.exe
 	@echo "==> 清理完成"
 

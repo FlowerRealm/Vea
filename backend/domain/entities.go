@@ -13,6 +13,36 @@ const (
 	ProtocolVMess       NodeProtocol = "vmess"
 )
 
+// DNS 服务器常量
+const (
+	// DNSGoogle Google Public DNS
+	DNSGoogle = "8.8.8.8"
+	// DNSCloudflare Cloudflare DNS
+	DNSCloudflare = "1.1.1.1"
+	// DNSAliDNS 阿里公共 DNS（国内访问快）
+	DNSAliDNS = "223.5.5.5"
+)
+
+// DefaultRemoteDNS 默认远程 DNS 服务器列表（走代理）
+var DefaultRemoteDNS = []string{DNSCloudflare, DNSGoogle}
+
+// DefaultLocalDNS 默认本地 DNS 服务器（直连，国内使用）
+var DefaultLocalDNS = []string{DNSAliDNS}
+
+// TUN 模式常量
+const (
+	// DefaultTUNAddress 默认 TUN 地址段（198.18.0.0/15 是 IANA 保留的测试地址段）
+	DefaultTUNAddress = "198.18.0.1/30"
+	// DefaultTUNInterface 默认 TUN 接口名称
+	DefaultTUNInterface = "tun0"
+	// DefaultTUNMTU 默认 TUN MTU
+	DefaultTUNMTU = 9000
+	// DefaultTUNStack 默认 TUN 栈类型
+	DefaultTUNStack = "mixed"
+	// DefaultUDPTimeout 默认 UDP 超时时间（秒）
+	DefaultUDPTimeout = 300
+)
+
 type Node struct {
 	ID             string         `json:"id"`
 	Name           string         `json:"name"`
@@ -116,8 +146,19 @@ type CoreComponentKind string
 
 const (
 	ComponentXray    CoreComponentKind = "xray"
+	ComponentSingBox CoreComponentKind = "singbox"
 	ComponentGeo     CoreComponentKind = "geo"
 	ComponentGeneric CoreComponentKind = "generic"
+)
+
+type InstallStatus string
+
+const (
+	InstallStatusIdle        InstallStatus = ""
+	InstallStatusDownloading InstallStatus = "downloading"
+	InstallStatusExtracting  InstallStatus = "extracting"
+	InstallStatusDone        InstallStatus = "done"
+	InstallStatusError       InstallStatus = "error"
 )
 
 type CoreComponent struct {
@@ -135,6 +176,12 @@ type CoreComponent struct {
 	Meta               map[string]string `json:"meta,omitempty"`
 	CreatedAt          time.Time         `json:"createdAt"`
 	UpdatedAt          time.Time         `json:"updatedAt"`
+	// 配套组件（如 sing-box 的 v2ray-plugin）
+	Accessories []string `json:"accessories,omitempty"`
+	// 安装进度相关
+	InstallStatus   InstallStatus `json:"installStatus,omitempty"`
+	InstallProgress int           `json:"installProgress,omitempty"` // 0-100
+	InstallMessage  string        `json:"installMessage,omitempty"`
 }
 
 type TrafficRule struct {
@@ -165,6 +212,11 @@ type SystemProxySettings struct {
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
+type TUNSettings struct {
+	Enabled   bool      `json:"enabled"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 type ServiceState struct {
 	Nodes          []Node              `json:"nodes"`
 	Configs        []Config            `json:"configs"`
@@ -172,5 +224,142 @@ type ServiceState struct {
 	Components     []CoreComponent     `json:"components"`
 	TrafficProfile TrafficProfile      `json:"trafficProfile"`
 	SystemProxy    SystemProxySettings `json:"systemProxy"`
+	TUNSettings    TUNSettings         `json:"tunSettings"`
+
+	// 新增字段：代理配置和内核管理
+	ProxyProfiles  []ProxyProfile      `json:"proxyProfiles"`
+	CoreEngines    []CoreEngineInfo    `json:"coreEngines"`
+	ActiveProfile  string              `json:"activeProfile"`
+
 	GeneratedAt    time.Time           `json:"generatedAt"`
+}
+
+// InboundMode 入站模式
+type InboundMode string
+
+const (
+	InboundSOCKS InboundMode = "socks"
+	InboundHTTP  InboundMode = "http"
+	InboundMixed InboundMode = "mixed"
+	InboundTUN   InboundMode = "tun"
+)
+
+// CoreEngineKind 内核引擎类型
+type CoreEngineKind string
+
+const (
+	EngineXray    CoreEngineKind = "xray"
+	EngineSingBox CoreEngineKind = "singbox"
+	EngineAuto    CoreEngineKind = "auto"
+)
+
+// ProxyProfile 代理配置文件
+type ProxyProfile struct {
+	ID                string                          `json:"id"`
+	Name              string                          `json:"name"`
+	InboundMode       InboundMode                     `json:"inboundMode"`
+	InboundPort       int                             `json:"inboundPort,omitempty"`
+	InboundConfig     *InboundConfiguration           `json:"inboundConfig,omitempty"`
+	TUNSettings       *TUNConfiguration               `json:"tunSettings,omitempty"`
+	ResolvedService   *ResolvedServiceConfiguration   `json:"resolvedService,omitempty"`
+	DNSConfig         *DNSConfiguration               `json:"dnsConfig,omitempty"`
+	LogConfig         *LogConfiguration               `json:"logConfig,omitempty"`
+	PerformanceConfig *PerformanceConfiguration       `json:"performanceConfig,omitempty"`
+	XrayConfig        *XrayConfiguration              `json:"xrayConfig,omitempty"`
+	PreferredEngine   CoreEngineKind                  `json:"preferredEngine"`
+	ActualEngine      CoreEngineKind                  `json:"actualEngine"`
+	DefaultNode       string                          `json:"defaultNode"`
+	CreatedAt         time.Time                       `json:"createdAt"`
+	UpdatedAt         time.Time                       `json:"updatedAt"`
+}
+
+// TUNConfiguration TUN 模式配置
+type TUNConfiguration struct {
+	InterfaceName          string              `json:"interfaceName"`
+	MTU                    int                 `json:"mtu"`
+	Address                []string            `json:"address"`
+	AutoRoute              bool                `json:"autoRoute"`
+	AutoRedirect           bool                `json:"autoRedirect"`           // Linux: 使用 nftables 提供更好的路由性能
+	StrictRoute            bool                `json:"strictRoute"`
+	Stack                  string              `json:"stack"`                  // system, gvisor, mixed
+	DNSHijack              bool                `json:"dnsHijack"`
+	EndpointIndependentNat bool                `json:"endpointIndependentNat"` // gvisor stack: 启用端点独立 NAT
+	UDPTimeout             int                 `json:"udpTimeout"`             // UDP 会话超时时间（秒），默认 300
+	RouteAddress           []string            `json:"routeAddress,omitempty"` // 自定义包含路由
+	RouteExcludeAddress    []string            `json:"routeExcludeAddress,omitempty"` // 自定义排除路由
+	Platform               *PlatformTUNConfig  `json:"platform,omitempty"`
+}
+
+// PlatformTUNConfig 平台特定的 TUN 配置
+type PlatformTUNConfig struct {
+	FileDescriptor int    `json:"fileDescriptor,omitempty"`
+	WinTUNPath     string `json:"wintunPath,omitempty"`
+	DeviceNode     string `json:"deviceNode,omitempty"`
+}
+
+// InboundConfiguration 入站配置（SOCKS/HTTP/Mixed 模式）
+type InboundConfiguration struct {
+	Listen          string                  `json:"listen"`          // 监听地址，默认 127.0.0.1
+	AllowLAN        bool                    `json:"allowLan"`        // 允许局域网连接
+	Authentication  *InboundAuthentication  `json:"authentication,omitempty"` // 认证配置
+	Sniff           bool                    `json:"sniff"`           // 嗅探域名
+	SniffOverride   bool                    `json:"sniffOverride"`   // 覆盖目标地址
+	SetSystemProxy  bool                    `json:"setSystemProxy"`  // 自动设置系统代理
+}
+
+// InboundAuthentication 入站认证配置
+type InboundAuthentication struct {
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
+}
+
+// LogConfiguration 日志配置
+type LogConfiguration struct {
+	Level      string `json:"level"`      // debug, info, warning, error, none
+	Timestamp  bool   `json:"timestamp"`  // 显示时间戳
+	Output     string `json:"output"`     // 输出位置：stdout, stderr, file path
+}
+
+// PerformanceConfiguration 性能配置
+type PerformanceConfiguration struct {
+	TCPFastOpen       bool `json:"tcpFastOpen"`       // TCP Fast Open
+	TCPMultiPath      bool `json:"tcpMultiPath"`      // TCP MultiPath (MPTCP)
+	UDPFragment       bool `json:"udpFragment"`       // UDP 分片
+	UDPTimeout        int  `json:"udpTimeout"`        // UDP 超时（秒）
+	Sniff             bool `json:"sniff"`             // 全局嗅探
+	SniffOverride     bool `json:"sniffOverride"`     // 全局嗅探覆盖
+	DomainStrategy    string `json:"domainStrategy"`  // prefer_ipv4, prefer_ipv6, ipv4_only, ipv6_only
+	DomainMatcher     string `json:"domainMatcher"`   // hybrid, linear (性能 vs 内存)
+}
+
+// XrayConfiguration Xray 特定配置
+type XrayConfiguration struct {
+	MuxEnabled      bool     `json:"muxEnabled"`      // 启用多路复用
+	MuxConcurrency  int      `json:"muxConcurrency"`  // 并发连接数（-1 为自动）
+	DNSServers      []string `json:"dnsServers"`      // DNS 服务器列表
+	DomainStrategy  string   `json:"domainStrategy"`  // AsIs, IPIfNonMatch, IPOnDemand
+}
+
+// ResolvedServiceConfiguration systemd-resolved 集成服务配置
+type ResolvedServiceConfiguration struct {
+	Enabled    bool   `json:"enabled"`              // 是否启用 resolved service
+	Listen     string `json:"listen"`               // 监听地址，默认 127.0.0.53
+	ListenPort int    `json:"listenPort"`           // 监听端口，默认 53
+}
+
+// DNSConfiguration DNS 配置
+type DNSConfiguration struct {
+	UseResolved            bool     `json:"useResolved"`            // 使用 systemd-resolved 集成
+	AcceptDefaultResolvers bool     `json:"acceptDefaultResolvers"` // 接受默认解析器作为 fallback
+	RemoteServers          []string `json:"remoteServers"`          // 远程 DNS 服务器列表
+	Strategy               string   `json:"strategy"`               // DNS 解析策略：prefer_ipv4, prefer_ipv6
+}
+
+// CoreEngineInfo 内核引擎信息
+type CoreEngineInfo struct {
+	Kind         CoreEngineKind `json:"kind"`
+	BinaryPath   string         `json:"binaryPath"`
+	Version      string         `json:"version"`
+	Capabilities []string       `json:"capabilities"`
+	Installed    bool           `json:"installed"`
 }

@@ -95,7 +95,14 @@ func (s *Service) prepareXrayRuntime(desiredNodeID string) (XrayRuntime, string,
 		return XrayRuntime{}, "", err
 	}
 
-	configBytes, chosenNodeID, err := buildXrayConfig(preparedNodes, geo, xrayDefaultInboundPort, activeNodeID)
+	// 从前端设置读取端口，如果没有则使用默认值
+	inboundPort := xrayDefaultInboundPort
+	frontendSettings := s.GetFrontendSettings()
+	if proxyPort, ok := frontendSettings["proxy.port"].(float64); ok && proxyPort > 0 {
+		inboundPort = int(proxyPort)
+	}
+
+	configBytes, chosenNodeID, err := buildXrayConfig(preparedNodes, geo, inboundPort, activeNodeID)
 	if err != nil {
 		return XrayRuntime{}, "", err
 	}
@@ -130,7 +137,7 @@ func (s *Service) prepareXrayRuntime(desiredNodeID string) (XrayRuntime, string,
 		Config:       configPathAbs,
 		GeoIP:        geoIPAbs,
 		GeoSite:      geoSiteAbs,
-		InboundPort:  xrayDefaultInboundPort,
+		InboundPort:  inboundPort,
 		ActiveNodeID: chosenNodeID,
 	}
 	return runtime, chosenNodeID, nil

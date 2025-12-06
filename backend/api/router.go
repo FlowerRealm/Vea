@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -106,6 +107,10 @@ func (r *Router) register(engine *gin.Engine) {
 	{
 		settings.GET("/system-proxy", r.getSystemProxySettings)
 		settings.PUT("/system-proxy", r.updateSystemProxySettings)
+		settings.GET("/tun", r.getTUNSettings)
+		settings.PUT("/tun", r.updateTUNSettings)
+		settings.GET("/frontend", r.getFrontendSettings)
+		settings.PUT("/frontend", r.saveFrontendSettings)
 	}
 
 	xray := engine.Group("/xray")
@@ -114,6 +119,30 @@ func (r *Router) register(engine *gin.Engine) {
 		xray.POST("/start", r.startXray)
 		xray.POST("/stop", r.stopXray)
 	}
+
+	// 新的 ProxyProfile API
+	profiles := engine.Group("/proxy-profiles")
+	{
+		profiles.GET("", r.listProxyProfiles)
+		profiles.POST("", r.createProxyProfile)
+		profiles.GET(":id", r.getProxyProfile)
+		profiles.PUT(":id", r.updateProxyProfile)
+		profiles.DELETE(":id", r.deleteProxyProfile)
+		profiles.POST(":id/start", r.startProxyProfile)
+	}
+
+	proxy := engine.Group("/proxy")
+	{
+		proxy.GET("/status", r.getProxyStatus)
+		proxy.POST("/stop", r.stopProxy)
+	}
+
+	// TUN API
+	engine.GET("/tun/check", r.checkTUNCapabilities)
+	engine.POST("/tun/setup", r.setupTUN)
+
+	// IP Geo API
+	engine.GET("/ip/geo", r.getIPGeo)
 
 	traffic := engine.Group("/traffic")
 	{
@@ -160,6 +189,9 @@ type nodeCreateRequest struct {
 	Port      int                 `json:"port"`
 	Protocol  domain.NodeProtocol `json:"protocol"`
 	Tags      []string            `json:"tags"`
+	Security  *domain.NodeSecurity  `json:"security,omitempty"`
+	Transport *domain.NodeTransport `json:"transport,omitempty"`
+	TLS       *domain.NodeTLS       `json:"tls,omitempty"`
 }
 
 type nodeUpdateRequest struct {
@@ -203,13 +235,18 @@ func (r *Router) createNode(c *gin.Context) {
 		badRequest(c, errors.New("name, address, port and protocol are required"))
 		return
 	}
+
 	node := domain.Node{
-		Name:     req.Name,
-		Address:  req.Address,
-		Port:     req.Port,
-		Protocol: req.Protocol,
-		Tags:     req.Tags,
+		Name:      req.Name,
+		Address:   req.Address,
+		Port:      req.Port,
+		Protocol:  req.Protocol,
+		Tags:      req.Tags,
+		Security:  req.Security,
+		Transport: req.Transport,
+		TLS:       req.TLS,
 	}
+
 	created := r.service.CreateNode(node)
 	c.JSON(http.StatusCreated, created)
 }
@@ -570,12 +607,12 @@ func (r *Router) deleteComponent(c *gin.Context) {
 
 func (r *Router) installComponent(c *gin.Context) {
 	id := c.Param("id")
-	component, err := r.service.InstallComponent(id)
+	component, err := r.service.InstallComponentAsync(id)
 	if err != nil {
 		r.handleError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, component)
+	c.JSON(http.StatusAccepted, component)
 }
 
 func (r *Router) getSystemProxySettings(c *gin.Context) {
@@ -704,6 +741,70 @@ func (r *Router) deleteTrafficRule(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+func (r *Router) getTUNSettings(c *gin.Context) {
+	settings := r.service.GetTUNSettings()
+	log.Printf("[API] GET /settings/tun: enabled=%v", settings.Enabled)
+	c.JSON(http.StatusOK, settings)
+}
+
+type tunSettingsRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
+func (r *Router) updateTUNSettings(c *gin.Context) {
+	var req tunSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("[API] PUT /settings/tun: 解析请求失败: %v", err)
+		badRequest(c, err)
+		return
+	}
+	log.Printf("[API] PUT /settings/tun: enabled=%v", req.Enabled)
+	updated, err := r.service.UpdateTUNSettings(func(settings domain.TUNSettings) (domain.TUNSettings, error) {
+		settings.Enabled = req.Enabled
+		return settings, nil
+	})
+	if err != nil {
+		log.Printf("[API] PUT /settings/tun: 失败: %v", err)
+		r.handleError(c, err)
+		return
+	}
+	log.Printf("[API] PUT /settings/tun: 成功, enabled=%v", updated.Enabled)
+	c.JSON(http.StatusOK, updated)
+}
+
+func (r *Router) getFrontendSettings(c *gin.Context) {
+	settings := r.service.GetFrontendSettings()
+	c.JSON(http.StatusOK, settings)
+}
+
+func (r *Router) saveFrontendSettings(c *gin.Context) {
+	var settings map[string]interface{}
+	if err := c.ShouldBindJSON(&settings); err != nil {
+		badRequest(c, err)
+		return
+	}
+	if err := r.service.SaveFrontendSettings(settings); err != nil {
+		r.handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, settings)
+}
+
+func (r *Router) getIPGeo(c *gin.Context) {
+	result, err := r.service.GetIPGeo()
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"ip":       "",
+			"location": "",
+			"asn":      "",
+			"isp":      "",
+			"error":    err.Error(),
+		})
+		return
+	}
+	c.JSON(http.StatusOK, result)
 }
 
 func badRequest(c *gin.Context, err error) {

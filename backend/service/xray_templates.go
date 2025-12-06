@@ -99,10 +99,7 @@ func buildXrayConfig(nodes []domain.Node, geo GeoFiles, inboundPort int, activeN
 		"outbounds": outbounds,
 		"routing":   routing,
 		"dns": map[string]any{
-			"servers": []any{
-				"1.1.1.1",
-				"8.8.8.8",
-			},
+			"servers": domain.DefaultRemoteDNS,
 		},
 	}
 
