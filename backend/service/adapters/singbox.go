@@ -194,9 +194,9 @@ func (a *SingBoxAdapter) BuildTUNOnlyConfig(localSOCKSPort int, geo GeoFiles) ([
 			{"outbound": "direct", "rule_set": []string{"geosite-cn"}},
 		},
 		"rule_set": []map[string]interface{}{
-			{"tag": "geosite-category-ads-all", "type": "local", "format": "binary", "path": ruleSetDir + "/geosite-category-ads-all.srs"},
-			{"tag": "geosite-cn", "type": "local", "format": "binary", "path": ruleSetDir + "/geosite-cn.srs"},
-			{"tag": "geoip-cn", "type": "local", "format": "binary", "path": ruleSetDir + "/geoip-cn.srs"},
+			{"tag": "geosite-category-ads-all", "type": "local", "format": "binary", "path": filepath.Join(ruleSetDir, "geosite-category-ads-all.srs")},
+			{"tag": "geosite-cn", "type": "local", "format": "binary", "path": filepath.Join(ruleSetDir, "geosite-cn.srs")},
+			{"tag": "geoip-cn", "type": "local", "format": "binary", "path": filepath.Join(ruleSetDir, "geoip-cn.srs")},
 		},
 		"final": "proxy",
 	}
@@ -453,25 +453,25 @@ func (a *SingBoxAdapter) buildOutbound(node domain.Node, geo GeoFiles) (map[stri
 func (a *SingBoxAdapter) buildRoute(profile domain.ProxyProfile, defaultTag string, geo GeoFiles, nodes []domain.Node) map[string]interface{} {
 	// 使用本地 rule-set 文件（在组件下载时捆绑）
 	// 必须使用绝对路径，因为 Electron 从 frontend/ 目录启动
-	ruleSetDir := geo.ArtifactsDir + "/core/sing-box/rule-set"
+	ruleSetDir := filepath.Join(geo.ArtifactsDir, "core", "sing-box", "rule-set")
 	ruleSets := []map[string]interface{}{
 		{
 			"tag":    "geosite-category-ads-all",
 			"type":   "local",
 			"format": "binary",
-			"path":   ruleSetDir + "/geosite-category-ads-all.srs",
+			"path":   filepath.Join(ruleSetDir, "geosite-category-ads-all.srs"),
 		},
 		{
 			"tag":    "geosite-cn",
 			"type":   "local",
 			"format": "binary",
-			"path":   ruleSetDir + "/geosite-cn.srs",
+			"path":   filepath.Join(ruleSetDir, "geosite-cn.srs"),
 		},
 		{
 			"tag":    "geoip-cn",
 			"type":   "local",
 			"format": "binary",
-			"path":   ruleSetDir + "/geoip-cn.srs",
+			"path":   filepath.Join(ruleSetDir, "geoip-cn.srs"),
 		},
 	}
 

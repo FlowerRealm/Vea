@@ -12,6 +12,15 @@ import (
 	"vea/backend/service/adapters"
 )
 
+const (
+	// defaultTUNSOCKSPort 两层代理架构中 SOCKS 层的默认端口
+	defaultTUNSOCKSPort = 46331
+	// defaultTUNInterface 默认 TUN 接口名称
+	defaultTUNInterface = "tun0"
+	// configFileMode 配置文件权限（包含敏感信息，仅所有者可读写）
+	configFileMode = 0600
+)
+
 // ProxyProfile CRUD methods
 
 func (s *Service) ListProxyProfiles() []domain.ProxyProfile {
@@ -293,7 +302,7 @@ func (s *Service) StartProxyWithProfile(profileID string) error {
 		return err
 	}
 	configPath := filepath.Join(configDir, "config.json")
-	if err := os.WriteFile(configPath, configBytes, 0644); err != nil {
+	if err := os.WriteFile(configPath, configBytes, configFileMode); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
 	log.Printf("[Proxy] 配置写入: %s", configPath)
@@ -301,7 +310,7 @@ func (s *Service) StartProxyWithProfile(profileID string) error {
 	// 同时保存到 data 目录，方便用户排查问题
 	debugConfigPath := filepath.Join("data", fmt.Sprintf("%s-config.json", engine))
 	_ = os.MkdirAll("data", 0755)
-	if err := os.WriteFile(debugConfigPath, configBytes, 0644); err != nil {
+	if err := os.WriteFile(debugConfigPath, configBytes, configFileMode); err != nil {
 		log.Printf("[Proxy] 保存调试配置失败: %v", err)
 	} else {
 		log.Printf("[Proxy] 调试配置保存至: %s", debugConfigPath)
@@ -317,7 +326,7 @@ func (s *Service) StartProxyWithProfile(profileID string) error {
 		log.Printf("[Proxy] 以 TUN 模式启动（两层代理架构）...")
 
 		// 第一层：启动代理核心，提供 SOCKS 入站
-		socksPort := 46331
+		socksPort := defaultTUNSOCKSPort
 		socksProfile := profile
 		socksProfile.InboundMode = domain.InboundSOCKS
 		socksProfile.InboundPort = socksPort
@@ -327,7 +336,7 @@ func (s *Service) StartProxyWithProfile(profileID string) error {
 			return fmt.Errorf("failed to build SOCKS config: %w", err)
 		}
 		socksConfigPath := filepath.Join(configDir, "socks-config.json")
-		if err := os.WriteFile(socksConfigPath, socksConfigBytes, 0644); err != nil {
+		if err := os.WriteFile(socksConfigPath, socksConfigBytes, configFileMode); err != nil {
 			return fmt.Errorf("failed to write SOCKS config: %w", err)
 		}
 		log.Printf("[Proxy] SOCKS 配置写入: %s", socksConfigPath)
@@ -381,7 +390,7 @@ func (s *Service) StartProxyWithProfile(profileID string) error {
 			return fmt.Errorf("failed to build TUN config: %w", err)
 		}
 		tunConfigPath := filepath.Join(configDir, "tun-config.json")
-		if err := os.WriteFile(tunConfigPath, tunConfigBytes, 0644); err != nil {
+		if err := os.WriteFile(tunConfigPath, tunConfigBytes, configFileMode); err != nil {
 			socksCmd.Process.Kill()
 			return fmt.Errorf("failed to write TUN config: %w", err)
 		}
@@ -469,8 +478,8 @@ func (s *Service) StopProxy() error {
 
 	// 清理 TUN 接口和路由
 	if profile.InboundMode == domain.InboundTUN {
-		tunInterface := "tun0"
-		if profile.TUNSettings.InterfaceName != "" {
+		tunInterface := defaultTUNInterface
+		if profile.TUNSettings != nil && profile.TUNSettings.InterfaceName != "" {
 			tunInterface = profile.TUNSettings.InterfaceName
 		}
 		if err := s.cleanupTUN(tunInterface); err != nil {
@@ -513,8 +522,8 @@ func (s *Service) monitorProxyProcess(cmd *exec.Cmd, profileID string, inboundMo
 
 		if inboundMode == domain.InboundTUN {
 			// 清理 TUN
-			tunInterface := "tun0"
-			if profile, err := s.store.GetProxyProfile(profileID); err == nil && profile.TUNSettings.InterfaceName != "" {
+			tunInterface := defaultTUNInterface
+			if profile, err := s.store.GetProxyProfile(profileID); err == nil && profile.TUNSettings != nil && profile.TUNSettings.InterfaceName != "" {
 				tunInterface = profile.TUNSettings.InterfaceName
 			}
 			if err := s.cleanupTUN(tunInterface); err != nil {

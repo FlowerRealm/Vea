@@ -37,3 +37,12 @@ func (s *Service) StartTUNProcess(binaryPath, configPath string) (*exec.Cmd, err
 func (s *Service) CleanupTUNUser() error {
 	return nil
 }
+
+// EnsureTUNCapabilities macOS 下检查是否有 root 权限
+// 返回 (是否需要重启应用, 错误)
+func (s *Service) EnsureTUNCapabilities() (bool, error) {
+	if os.Geteuid() != 0 {
+		return false, fmt.Errorf("TUN mode requires root privileges on macOS. Please run: sudo vea")
+	}
+	return false, nil
+}

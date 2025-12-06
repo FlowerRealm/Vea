@@ -87,8 +87,12 @@ func (s *Service) setupTUNLinux() error {
 	log.Printf("[TUN-Setup] chown 完成")
 
 	// 3. 设置 capabilities（在 chown 之后）
-	// 使用 requiredCapabilities 常量（定义在 privilege_linux.go）
-	cmd = exec.Command("setcap", requiredCapabilities+"+ep", binaryPath)
+	// TUN 模式所需的 capabilities：
+	// cap_net_admin: 创建 TUN 设备、设置路由、nftables 规则
+	// cap_net_bind_service: 绑定低端口（<1024）
+	// cap_net_raw: 使用 SO_BINDTODEVICE 绑定物理接口（bind_interface 需要）
+	caps := "cap_net_admin,cap_net_bind_service,cap_net_raw"
+	cmd = exec.Command("setcap", caps+"+ep", binaryPath)
 	stderr.Reset()
 	cmd.Stderr = &stderr
 

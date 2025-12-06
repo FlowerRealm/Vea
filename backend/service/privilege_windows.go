@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os/exec"
 	"syscall"
-	"unsafe"
 )
 
 var (
@@ -47,4 +46,13 @@ func (s *Service) StartTUNProcess(binaryPath, configPath string) (*exec.Cmd, err
 // CleanupTUNUser Windows 不需要清理
 func (s *Service) CleanupTUNUser() error {
 	return nil
+}
+
+// EnsureTUNCapabilities Windows 下检查是否有管理员权限
+// 返回 (是否需要重启应用, 错误)
+func (s *Service) EnsureTUNCapabilities() (bool, error) {
+	if admin, _ := isAdmin(); !admin {
+		return false, fmt.Errorf("TUN mode requires administrator privileges. Please run Vea as Administrator")
+	}
+	return false, nil
 }
