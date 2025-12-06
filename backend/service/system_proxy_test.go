@@ -4,11 +4,16 @@ import (
 	"os"
 	"os/user"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
 	"vea/backend/domain"
 )
+
+func isWindows() bool {
+	return runtime.GOOS == "windows"
+}
 
 func TestResolveTargetUser(t *testing.T) {
 	// Save original env
@@ -28,6 +33,10 @@ func TestResolveTargetUser(t *testing.T) {
 	})
 
 	t.Run("PKEXEC_UID fallback", func(t *testing.T) {
+		// PKEXEC_UID is Linux-specific (polkit), skip on other platforms
+		if os.Getenv("GOOS") == "windows" || (os.Getenv("GOOS") == "" && isWindows()) {
+			t.Skip("skipping PKEXEC_UID test on Windows")
+		}
 		os.Unsetenv("SUDO_USER")
 		// We need a valid UID for LookupId to work, usually 0 is root
 		os.Setenv("PKEXEC_UID", "0")
