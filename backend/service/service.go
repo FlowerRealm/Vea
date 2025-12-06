@@ -273,7 +273,7 @@ func xrayAssetCandidates() ([]string, error) {
 	case "darwin/amd64":
 		return []string{"Xray-macos-64.zip"}, nil
 	case "darwin/arm64":
-		return []string{"Xray-macos-arm64.zip"}, nil
+		return []string{"Xray-macos-arm64-v8a.zip", "Xray-macos-arm64.zip"}, nil
 	default:
 		return nil, fmt.Errorf("unsupported platform %s for xray release asset", key)
 	}
