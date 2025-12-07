@@ -9,6 +9,7 @@ files:
   - main.js
   - preload.js
   - theme/**/*
+  - assets/**/*
   - "!**/*.map"
 
 extraResources:
