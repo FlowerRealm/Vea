@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "Vea Proxy Manager - Electron Desktop Application",
   "main": "main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FlowerRealm/Vea.git"
+  },
   "scripts": {
     "dev": "electron . --no-sandbox",
     "build": "electron-builder",
@@ -11,7 +15,7 @@
     "build:win": "electron-builder --win",
     "postinstall": "electron-builder install-app-deps"
   },
-  "homepage": "https://github.com/yourusername/vea",
+  "homepage": "https://github.com/FlowerRealm/Vea",
   "keywords": [
     "vea",
     "proxy",
