@@ -2,6 +2,9 @@ appId: com.vea.app
 productName: Vea
 copyright: Copyright © 2025 FlowerRealm
 
+# 统一文件命名格式: Vea-版本-平台-架构.扩展名
+artifactName: "${productName}-${version}-${os}-${arch}.${ext}"
+
 directories:
   output: ../release
 

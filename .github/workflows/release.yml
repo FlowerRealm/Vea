@@ -157,13 +157,17 @@ jobs:
           chmod +x vea-*
           ls -lh vea-*
 
+      - name: Set version
+        working-directory: frontend
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          VERSION="${VERSION#v}"  # 去掉 v 前缀
+          npm version $VERSION --no-git-tag-version --allow-same-version
+          echo "Version set to: $VERSION"
+
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
-
-      - name: Set version from input
-        working-directory: frontend
-        run: npm version ${{ github.event.inputs.version }} --no-git-tag-version --allow-same-version
 
       - name: Build Linux packages
         working-directory: frontend
@@ -229,13 +233,17 @@ jobs:
           chmod +x vea-*
           ls -lh vea-*
 
+      - name: Set version
+        working-directory: frontend
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          VERSION="${VERSION#v}"  # 去掉 v 前缀
+          npm version $VERSION --no-git-tag-version --allow-same-version
+          echo "Version set to: $VERSION"
+
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
-
-      - name: Set version from input
-        working-directory: frontend
-        run: npm version ${{ github.event.inputs.version }} --no-git-tag-version --allow-same-version
 
       - name: Build macOS packages
         working-directory: frontend
@@ -297,13 +305,18 @@ jobs:
           Copy-Item backend-bins/vea.exe ./vea.exe
           Get-ChildItem vea.exe
 
+      - name: Set version
+        working-directory: frontend
+        shell: pwsh
+        run: |
+          $VERSION = "${{ github.event.inputs.version }}"
+          $VERSION = $VERSION -replace '^v', ''
+          npm version $VERSION --no-git-tag-version --allow-same-version
+          Write-Host "Version set to: $VERSION"
+
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
-
-      - name: Set version from input
-        working-directory: frontend
-        run: npm version ${{ github.event.inputs.version }} --no-git-tag-version --allow-same-version
 
       - name: Build Windows package
         working-directory: frontend
