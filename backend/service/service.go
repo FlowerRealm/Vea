@@ -30,24 +30,64 @@ import (
 	"time"
 
 	"vea/backend/domain"
+	"vea/backend/service/adapters"
 	"vea/backend/store"
 )
+
+// CoreAdapter 适配器接口别名
+type CoreAdapter = adapters.CoreAdapter
 
 const (
 	defaultConfigSyncInterval      = time.Hour
 	defaultComponentUpdateInterval = 12 * time.Hour
-	maxDownloadSize                = 50 << 20 // 50 MiB guard rail
+	maxDownloadSize                = 50 << 20        // 50 MiB guard rail
 	downloadTimeout                = 5 * time.Minute // 增加到 5 分钟以支持慢速网络
-	measurementPort                = 31346
+	measurementPort                = 17891
 
-	artifactsRoot = "artifacts"
 	geoDir        = "geo"
 	componentFile = "artifact.bin"
 )
 
 var (
+	// artifactsRoot 是 artifacts 目录的绝对路径，在 init() 中初始化
+	artifactsRoot string
+)
+
+var (
 	speedTestTimeout = 30 * time.Second
 )
+
+func init() {
+	// 初始化 artifactsRoot 为绝对路径
+	// 优先使用可执行文件所在目录，失败则使用当前工作目录
+	exePath, err := os.Executable()
+	if err == nil {
+		// 可执行文件路径，取其父目录作为项目根目录
+		exeDir := filepath.Dir(exePath)
+		// 如果是符号链接，解析真实路径
+		if realPath, err := filepath.EvalSymlinks(exePath); err == nil {
+			exeDir = filepath.Dir(realPath)
+		}
+		artifactsRoot = filepath.Join(exeDir, "artifacts")
+	} else {
+		// 回退到当前工作目录
+		cwd, _ := os.Getwd()
+		artifactsRoot = filepath.Join(cwd, "artifacts")
+	}
+
+	// 确保使用绝对路径
+	if absPath, err := filepath.Abs(artifactsRoot); err == nil {
+		artifactsRoot = absPath
+	}
+
+	log.Printf("[Init] artifacts root: %s", artifactsRoot)
+}
+
+// GetArtifactsRoot 返回 artifacts 目录的绝对路径
+// 供 adapters 等子包使用，确保路径一致性
+func GetArtifactsRoot() string {
+	return artifactsRoot
+}
 
 var httpClient = &http.Client{
 	Timeout: downloadTimeout,
@@ -93,6 +133,7 @@ type componentDefault struct {
 	repo            string
 	assetCandidates []string
 	archiveType     string
+	accessories     []string
 }
 
 type componentInstallInfo struct {
@@ -100,22 +141,32 @@ type componentInstallInfo struct {
 	lastInstalledAt time.Time
 }
 
-func (d *componentDefault) fallbackAsset() string {
-	if d == nil || len(d.assetCandidates) == 0 {
-		return ""
+// buildDownloadURL v2rayN 方式：直接构造下载 URL
+// repo: "SagerNet/sing-box"
+// version: "v1.12.12" 或 "1.12.12"
+// template: "sing-box-*-linux-amd64.tar.gz"
+func buildDownloadURL(repo, version, template string) (string, string, error) {
+	log.Printf("[buildDownloadURL] inputs repo=%s, version=%s, template=%s", repo, version, template)
+	if repo == "" || version == "" || template == "" {
+		return "", "", errors.New("invalid parameters")
 	}
-	return d.assetCandidates[0]
-}
 
-func (d *componentDefault) fallbackURL() string {
-	if d == nil || d.repo == "" {
-		return ""
+	// 确保版本号格式正确
+	tag := version
+	if !strings.HasPrefix(tag, "v") {
+		tag = "v" + tag
 	}
-	asset := d.fallbackAsset()
-	if asset == "" {
-		return ""
-	}
-	return latestDownloadURL(d.repo, asset)
+	versionNumber := strings.TrimPrefix(tag, "v")
+	log.Printf("[buildDownloadURL] version normalized tag=%s, versionNumber=%s", tag, versionNumber)
+
+	// 替换模板中的 * 为版本号
+	log.Printf("[buildDownloadURL] asset template before replace: %s", template)
+	assetName := strings.ReplaceAll(template, "*", versionNumber)
+	log.Printf("[buildDownloadURL] asset name after replace: %s", assetName)
+	downloadURL := fmt.Sprintf("https://github.com/%s/releases/download/%s/%s", repo, tag, assetName)
+	log.Printf("[buildDownloadURL] downloadURL=%s", downloadURL)
+
+	return downloadURL, assetName, nil
 }
 
 func componentDefaultFor(component domain.CoreComponent) (*componentDefault, error) {
@@ -131,64 +182,74 @@ func componentDefaultFor(component domain.CoreComponent) (*componentDefault, err
 			assetCandidates: assets,
 			archiveType:     inferArchiveTypeFromName(assets[0]),
 		}, nil
-	case domain.ComponentGeo:
-		slug := strings.ToLower(component.Name)
-		asset := "geoip.dat"
-		display := component.Name
-		if strings.Contains(slug, "site") {
-			asset = "geosite.dat"
-		}
-		if display == "" && asset == "geoip.dat" {
-			display = "GeoIP"
-		} else if display == "" {
-			display = "GeoSite"
+	case domain.ComponentSingBox:
+		assets, err := singBoxAssetCandidates()
+		if err != nil {
+			return nil, err
 		}
 		return &componentDefault{
-			name:            display,
-			repo:            "Loyalsoldier/v2ray-rules-dat",
-			assetCandidates: []string{asset},
-			archiveType:     "raw",
+			name:            "sing-box",
+			repo:            "SagerNet/sing-box",
+			assetCandidates: assets,
+			archiveType:     inferArchiveTypeFromName(assets[0]),
+			accessories:     []string{"v2ray-plugin"},
 		}, nil
+	case domain.ComponentGeneric:
+		// 处理配套组件（如 v2ray-plugin）
+		if component.ID == "v2ray-plugin" {
+			assets, err := v2rayPluginAssetCandidates()
+			if err != nil {
+				return nil, err
+			}
+			return &componentDefault{
+				name:            "v2ray-plugin",
+				repo:            "shadowsocks/v2ray-plugin",
+				assetCandidates: assets,
+				archiveType:     inferArchiveTypeFromName(assets[0]),
+			}, nil
+		}
+		return nil, nil
 	default:
 		return nil, nil
 	}
 }
 
-func resolveComponentAssetFallback(kind domain.CoreComponentKind, repo string, candidates []string) (releaseAssetInfo, error) {
+// getComponentDownloadInfo v2rayN 方式：简单直接获取下载信息
+func getComponentDownloadInfo(repo string, candidates []string) (releaseAssetInfo, error) {
 	if repo == "" || len(candidates) == 0 {
-		return releaseAssetInfo{}, errReleaseAssetNotFound
+		return releaseAssetInfo{}, errors.New("invalid repo or candidates")
 	}
-	tag, version, err := fetchLatestReleaseTag(repo)
+
+	// 1. 获取最新版本号
+	tag, _, err := fetchLatestReleaseTag(repo)
+	if err != nil {
+		log.Printf("[Install] 获取版本号失败: %v", err)
+		return releaseAssetInfo{}, err
+	}
+
+	log.Printf("[Install] 获取到最新版本: %s", tag)
+
+	// 2. 使用第一个候选模板构造下载 URL
+	template := candidates[0]
+	downloadURL, assetName, err := buildDownloadURL(repo, tag, template)
 	if err != nil {
 		return releaseAssetInfo{}, err
 	}
-	version = strings.TrimSpace(version)
-	for _, candidate := range candidates {
-		candidate = strings.TrimSpace(candidate)
-		if candidate == "" {
-			continue
-		}
-		assetOptions := []string{candidate}
-		for _, asset := range assetOptions {
-			ok, size, probeErr := probeReleaseAsset(repo, tag, asset)
-			if probeErr != nil {
-				continue
-			}
-			if ok {
-				url := fmt.Sprintf("https://github.com/%s/releases/download/%s/%s", repo, tag, asset)
-				return releaseAssetInfo{Name: asset, DownloadURL: url, Version: tag, Size: size}, nil
-			}
-		}
-	}
-	return releaseAssetInfo{}, errReleaseAssetNotFound
+
+	log.Printf("[Install] 构造下载 URL: %s", downloadURL)
+
+	return releaseAssetInfo{
+		Name:        assetName,
+		DownloadURL: downloadURL,
+		Version:     tag,
+		Size:        0, // 不预先获取大小，下载时会知道
+	}, nil
 }
 
 func defaultArchiveForKind(kind domain.CoreComponentKind) string {
 	switch kind {
 	case domain.ComponentXray:
 		return "zip"
-	case domain.ComponentGeo:
-		return "raw"
 	default:
 		return "zip"
 	}
@@ -212,9 +273,57 @@ func xrayAssetCandidates() ([]string, error) {
 	case "darwin/amd64":
 		return []string{"Xray-macos-64.zip"}, nil
 	case "darwin/arm64":
-		return []string{"Xray-macos-arm64.zip"}, nil
+		return []string{"Xray-macos-arm64-v8a.zip", "Xray-macos-arm64.zip"}, nil
 	default:
 		return nil, fmt.Errorf("unsupported platform %s for xray release asset", key)
+	}
+}
+
+func singBoxAssetCandidates() ([]string, error) {
+	key := runtime.GOOS + "/" + runtime.GOARCH
+	switch key {
+	case "linux/amd64":
+		return []string{"sing-box-*-linux-amd64.tar.gz"}, nil
+	case "linux/386":
+		return []string{"sing-box-*-linux-386.tar.gz"}, nil
+	case "linux/arm64":
+		return []string{"sing-box-*-linux-arm64.tar.gz"}, nil
+	case "linux/arm":
+		return []string{"sing-box-*-linux-armv7.tar.gz"}, nil
+	case "windows/amd64":
+		return []string{"sing-box-*-windows-amd64.zip"}, nil
+	case "windows/386":
+		return []string{"sing-box-*-windows-386.zip"}, nil
+	case "darwin/amd64":
+		return []string{"sing-box-*-darwin-amd64.tar.gz"}, nil
+	case "darwin/arm64":
+		return []string{"sing-box-*-darwin-arm64.tar.gz"}, nil
+	default:
+		return nil, fmt.Errorf("unsupported platform %s for sing-box release asset", key)
+	}
+}
+
+func v2rayPluginAssetCandidates() ([]string, error) {
+	key := runtime.GOOS + "/" + runtime.GOARCH
+	switch key {
+	case "linux/amd64":
+		return []string{"v2ray-plugin-linux-amd64-v*.tar.gz"}, nil
+	case "linux/386":
+		return []string{"v2ray-plugin-linux-386-v*.tar.gz"}, nil
+	case "linux/arm64":
+		return []string{"v2ray-plugin-linux-arm64-v*.tar.gz"}, nil
+	case "linux/arm":
+		return []string{"v2ray-plugin-linux-arm-v*.tar.gz"}, nil
+	case "windows/amd64":
+		return []string{"v2ray-plugin-windows-amd64-v*.tar.gz"}, nil
+	case "windows/386":
+		return []string{"v2ray-plugin-windows-386-v*.tar.gz"}, nil
+	case "darwin/amd64":
+		return []string{"v2ray-plugin-darwin-amd64-v*.tar.gz"}, nil
+	case "darwin/arm64":
+		return []string{"v2ray-plugin-darwin-arm64-v*.tar.gz"}, nil
+	default:
+		return nil, fmt.Errorf("unsupported platform %s for v2ray-plugin release asset", key)
 	}
 }
 
@@ -222,18 +331,32 @@ type Service struct {
 	store *store.MemoryStore
 	tasks []Task
 
+	// 旧的 xray 字段（兼容性保留）
 	xrayMu      sync.Mutex
 	xrayCmd     *exec.Cmd
 	xrayRuntime XrayRuntime
 	xrayEnabled bool
 
+	// 新的适配器架构
+	adapters      map[domain.CoreEngineKind]CoreAdapter
+	proxyMu       sync.Mutex
+	proxyCmd      *exec.Cmd
+	socksCmd      *exec.Cmd // TUN 两层代理模式下的 SOCKS 进程
+	activeProfile string
+
 	measureMu sync.Mutex
+
+	singBoxDNSActionSupported bool
 
 	jobMu        sync.Mutex
 	speedQueue   chan string
 	latencyQueue chan string
 	speedJobs    map[string]struct{}
 	latencyJobs  map[string]struct{}
+
+	// 正在安装的组件
+	installingMu    sync.Mutex
+	installingComps map[string]struct{}
 }
 
 type XrayStatus struct {
@@ -254,12 +377,17 @@ type Task interface {
 
 func NewService(store *store.MemoryStore, tasks ...Task) *Service {
 	svc := &Service{
-		store:        store,
-		tasks:        tasks,
-		speedQueue:   make(chan string, 32),
-		latencyQueue: make(chan string, 32),
-		speedJobs:    make(map[string]struct{}),
-		latencyJobs:  make(map[string]struct{}),
+		store:           store,
+		tasks:           tasks,
+		speedQueue:      make(chan string, 32),
+		latencyQueue:    make(chan string, 32),
+		speedJobs:       make(map[string]struct{}),
+		latencyJobs:     make(map[string]struct{}),
+		installingComps: make(map[string]struct{}),
+		adapters: map[domain.CoreEngineKind]CoreAdapter{
+			domain.EngineXray:    &adapters.XrayAdapter{},
+			domain.EngineSingBox: &adapters.SingBoxAdapter{},
+		},
 	}
 	if removed := svc.store.CleanupOrphanNodes(); removed > 0 {
 		log.Printf("purged %d orphan nodes referencing deleted configs", removed)
@@ -279,6 +407,9 @@ func (s *Service) Start(ctx context.Context) {
 	for _, task := range s.tasks {
 		go task.Start(ctx)
 	}
+	// 尝试恢复 TUN 状态
+	// 注：restoreXrayState() 已在 NewService() 中调用，无需重复
+	s.restoreTUNState()
 }
 
 func (s *Service) restoreXrayState() {
@@ -313,6 +444,30 @@ func (s *Service) restoreXrayState() {
 			log.Printf("auto start xray failed: %v", err)
 		}
 	}(active)
+}
+
+func (s *Service) restoreTUNState() {
+	settings := s.GetTUNSettings()
+	if !settings.Enabled {
+		log.Printf("[TUN] TUN 模式未开启，跳过自动启动")
+		return
+	}
+	log.Printf("[TUN] 正在恢复 TUN 模式 (Enabled=true)...")
+	go func() {
+		// 给一点时间让系统初始化
+		time.Sleep(2 * time.Second)
+		log.Printf("[TUN] 尝试自动启动 TUN 模式...")
+		if err := s.startTUNMode(); err != nil {
+			log.Printf("[TUN] 自动启动失败: %v", err)
+			// 如果启动失败，更新状态为关闭，避免下次死循环尝试
+			_, _ = s.UpdateTUNSettings(func(t domain.TUNSettings) (domain.TUNSettings, error) {
+				t.Enabled = false
+				return t, nil
+			})
+		} else {
+			log.Printf("[TUN] 自动启动成功")
+		}
+	}()
 }
 
 func (s *Service) resetNodeProbeStats() {
@@ -543,8 +698,15 @@ func (s *Service) ProbeSpeed(id string) (domain.Node, error) {
 		n.LastSpeedError = ""
 		return n, nil
 	})
-	// Launch measurement xray bound to reserved port.
-	stop, err := s.startMeasurementXray(node)
+	// Launch measurement proxy bound to reserved port.
+	var stop func()
+	if s.isEngineInstalled(domain.EngineXray) {
+		stop, err = s.startMeasurementXray(node)
+	} else if s.isEngineInstalled(domain.EngineSingBox) {
+		stop, err = s.startMeasurementSingBox(node)
+	} else {
+		return domain.Node{}, fmt.Errorf("no proxy engine installed")
+	}
 	if err != nil {
 		return domain.Node{}, err
 	}
@@ -774,48 +936,74 @@ func (s *Service) RefreshGeo(id string) (domain.GeoResource, error) {
 }
 
 func (s *Service) ListComponents() []domain.CoreComponent {
-	s.ensureCoreComponents()
-	components := s.store.ListComponents()
-	snapshot := make([]domain.CoreComponent, 0, len(components))
-	for _, comp := range components {
-		sanitized := comp
+	// 固定返回 xray 和 singbox 两个组件
+	fixedKinds := []domain.CoreComponentKind{domain.ComponentXray, domain.ComponentSingBox}
+	stored := s.store.ListComponents()
+
+	// 建立 kind -> stored component 的映射
+	storedMap := make(map[domain.CoreComponentKind]domain.CoreComponent)
+	for _, comp := range stored {
+		storedMap[comp.Kind] = comp
+	}
+
+	result := make([]domain.CoreComponent, 0, len(fixedKinds))
+
+	for _, kind := range fixedKinds {
+		var comp domain.CoreComponent
+		var exists bool
+
+		// 尝试从 store 获取
+		if storedComp, found := storedMap[kind]; found {
+			comp = storedComp
+			exists = true
+		} else {
+			// 不存在则创建并存储
+			newComp := domain.CoreComponent{
+				Kind:               kind,
+				AutoUpdateInterval: defaultComponentUpdateInterval,
+			}
+			comp = s.store.CreateComponent(newComp)
+			exists = true
+		}
+
+		// 检测本地安装
 		detected := false
 		detectedInfo := componentInstallInfo{}
 		if comp.InstallDir == "" {
-			if info, ok := detectExistingComponentInstall(comp.Kind); ok {
+			if info, ok := detectExistingComponentInstall(kind); ok {
 				detected = true
 				detectedInfo = info
-				sanitized.InstallDir = info.dir
-				sanitized.LastInstalledAt = info.lastInstalledAt
-				sanitized.LastSyncError = ""
-				sanitized.ArchiveType = defaultArchiveForKind(comp.Kind)
+				comp.InstallDir = info.dir
+				comp.LastInstalledAt = info.lastInstalledAt
+				comp.LastSyncError = ""
+				comp.ArchiveType = defaultArchiveForKind(kind)
 			}
 		}
+
+		// 验证已存储的安装目录
 		if !detected && comp.InstallDir != "" {
 			invalid := false
 			if info, err := os.Stat(comp.InstallDir); err != nil || !info.IsDir() {
 				invalid = true
-			} else if comp.Kind == domain.ComponentXray {
+			} else if kind == domain.ComponentXray {
 				if _, err := findXrayBinary(comp.InstallDir); err != nil {
 					invalid = true
 				}
 			}
 			if invalid {
-				sanitized.InstallDir = ""
-				sanitized.LastSyncError = ""
-				sanitized.LastVersion = ""
-				sanitized.LastInstalledAt = time.Time{}
+				comp.InstallDir = ""
+				comp.LastSyncError = ""
+				comp.LastVersion = ""
+				comp.LastInstalledAt = time.Time{}
 			}
-		} else {
-			sanitized.LastSyncError = ""
-			sanitized.LastVersion = ""
-			sanitized.LastInstalledAt = time.Time{}
 		}
-		if detected {
+
+		// 如果检测到本地安装且 store 中存在，更新 store
+		if detected && exists {
 			_, _ = s.store.UpdateComponent(comp.ID, func(component domain.CoreComponent) (domain.CoreComponent, error) {
 				component.InstallDir = detectedInfo.dir
 				component.LastInstalledAt = detectedInfo.lastInstalledAt
-				component.ArchiveType = defaultArchiveForKind(component.Kind)
+				component.ArchiveType = defaultArchiveForKind(kind)
 				component.LastSyncError = ""
 				if component.AutoUpdateInterval <= 0 {
 					component.AutoUpdateInterval = defaultComponentUpdateInterval
@@ -823,54 +1011,37 @@ func (s *Service) ListComponents() []domain.CoreComponent {
 				return component, nil
 			})
 		}
-		if sanitized.Meta != nil {
-			metaCopy := make(map[string]string, len(sanitized.Meta))
-			for k, v := range sanitized.Meta {
+
+		// 清理敏感元数据
+		if comp.Meta != nil {
+			metaCopy := make(map[string]string, len(comp.Meta))
+			for k, v := range comp.Meta {
 				if k == "_clearLastSyncError" {
 					continue
 				}
 				metaCopy[k] = v
 			}
 			if len(metaCopy) > 0 {
-				sanitized.Meta = metaCopy
+				comp.Meta = metaCopy
 			} else {
-				sanitized.Meta = nil
+				comp.Meta = nil
 			}
 		}
-		snapshot = append(snapshot, sanitized)
-	}
-	return snapshot
-}
 
-func (s *Service) ensureCoreComponents() {
-	components := s.store.ListComponents()
-	hasXray := false
-	for _, comp := range components {
-		switch comp.Kind {
-		case domain.ComponentXray:
-			hasXray = true
+		// 重置遗留的安装进度（只有真正正在安装的才保留）
+		s.installingMu.Lock()
+		_, isInstalling := s.installingComps[comp.ID]
+		s.installingMu.Unlock()
+		if !isInstalling {
+			comp.InstallStatus = ""
+			comp.InstallProgress = 0
+			comp.InstallMessage = ""
 		}
-		if hasXray {
-			return
-		}
-	}
-	if !hasXray {
-		s.ensureCoreComponentRecord(domain.ComponentXray)
-	}
-}
 
-func (s *Service) ensureCoreComponentRecord(kind domain.CoreComponentKind) {
-	component := domain.CoreComponent{
-		Kind:               kind,
-		AutoUpdateInterval: defaultComponentUpdateInterval,
+		result = append(result, comp)
 	}
-	if info, ok := detectExistingComponentInstall(kind); ok {
-		component.InstallDir = info.dir
-		component.LastInstalledAt = info.lastInstalledAt
-	}
-	if _, err := s.CreateComponent(component); err != nil {
-		log.Printf("ensure component %s failed: %v", kind, err)
-	}
+
+	return result
 }
 
 func detectExistingComponentInstall(kind domain.CoreComponentKind) (componentInstallInfo, bool) {
@@ -902,7 +1073,7 @@ func (s *Service) ensureComponentDefaults(component *domain.CoreComponent) error
 	if component.Kind == "" {
 		component.Kind = domain.ComponentGeneric
 	}
-	def, defErr := componentDefaultFor(*component)
+	def, _ := componentDefaultFor(*component)
 	if component.Name == "" {
 		if def != nil && def.name != "" {
 			component.Name = def.name
@@ -910,17 +1081,8 @@ func (s *Service) ensureComponentDefaults(component *domain.CoreComponent) error
 			component.Name = string(component.Kind)
 		}
 	}
-	if component.SourceURL == "" {
-		if def != nil {
-			component.SourceURL = def.fallbackURL()
-		}
-		if component.SourceURL == "" {
-			if defErr != nil {
-				return defErr
-			}
-			return fmt.Errorf("sourceUrl is required for component kind %s", component.Kind)
-		}
-	}
+	// SourceURL 不再必需，使用 repo + candidates 直接构造下载地址
+	// 如果为空就留空，安装时会自动设置
 	if component.ArchiveType == "" {
 		if def != nil && def.archiveType != "" {
 			component.ArchiveType = def.archiveType
@@ -935,7 +1097,28 @@ func (s *Service) ensureComponentDefaults(component *domain.CoreComponent) error
 	if component.AutoUpdateInterval <= 0 {
 		component.AutoUpdateInterval = defaultComponentUpdateInterval
 	}
+	if len(component.Accessories) == 0 && def != nil && len(def.accessories) > 0 {
+		component.Accessories = append([]string{}, def.accessories...)
+	}
 	return nil
+}
+
+func (s *Service) ensureAccessoryComponent(id string) (domain.CoreComponent, error) {
+	if comp, err := s.store.GetComponent(id); err == nil {
+		return comp, nil
+	}
+
+	accessory := domain.CoreComponent{
+		ID:                 id,
+		Kind:               domain.ComponentGeneric,
+		Name:               id,
+		AutoUpdateInterval: defaultComponentUpdateInterval,
+	}
+	if err := s.ensureComponentDefaults(&accessory); err != nil {
+		return domain.CoreComponent{}, err
+	}
+	created := s.store.CreateComponent(accessory)
+	return created, nil
 }
 
 func (s *Service) CreateComponent(component domain.CoreComponent) (domain.CoreComponent, error) {
@@ -987,6 +1170,21 @@ func (s *Service) UpdateComponent(id string, mutate func(domain.CoreComponent) (
 }
 
 func (s *Service) DeleteComponent(id string) error {
+	component, err := s.store.GetComponent(id)
+	if err != nil {
+		return err
+	}
+
+	// 删除已安装的文件
+	if component.InstallDir != "" {
+		log.Printf("[Component] 删除组件安装目录: %s", component.InstallDir)
+		if err := os.RemoveAll(component.InstallDir); err != nil {
+			log.Printf("[Component] 删除安装目录失败: %v", err)
+			// 继续删除数据库记录，即使文件删除失败
+		}
+	}
+
+	// 从数据库删除记录
 	return s.store.DeleteComponent(id)
 }
 
@@ -995,8 +1193,22 @@ func resolveInstallDir(component domain.CoreComponent) string {
 	switch component.Kind {
 	case domain.ComponentXray:
 		return filepath.Join(base, "xray")
-	case domain.ComponentGeo:
-		return filepath.Join(base, "geo")
+	case domain.ComponentSingBox:
+		return filepath.Join(base, "sing-box")
+	case domain.ComponentGeneric:
+		// 配套组件（如 v2ray-plugin）安装到 plugins 目录
+		if component.ID == "v2ray-plugin" {
+			return filepath.Join(artifactsRoot, "plugins", "v2ray-plugin")
+		}
+		// 其他通用组件
+		name := sanitizeID(component.Name)
+		if name == "" {
+			name = sanitizeID(component.ID)
+		}
+		if name == "" {
+			name = "component"
+		}
+		return filepath.Join(base, name)
 	default:
 		name := sanitizeID(component.Name)
 		if name == "" {
@@ -1009,13 +1221,59 @@ func resolveInstallDir(component domain.CoreComponent) string {
 	}
 }
 
-func (s *Service) InstallComponent(id string) (domain.CoreComponent, error) {
+// InstallComponentAsync 异步安装组件，立即返回，前端轮询获取状态
+func (s *Service) InstallComponentAsync(id string) (domain.CoreComponent, error) {
 	component, err := s.store.GetComponent(id)
 	if err != nil {
 		return domain.CoreComponent{}, err
 	}
 
+	// 检查是否已在安装中
+	s.installingMu.Lock()
+	if _, installing := s.installingComps[id]; installing {
+		s.installingMu.Unlock()
+		return component, nil
+	}
+	s.installingComps[id] = struct{}{}
+	s.installingMu.Unlock()
+
+	// 设置状态为下载中
+	updated, err := s.store.UpdateComponent(id, func(comp domain.CoreComponent) (domain.CoreComponent, error) {
+		comp.InstallStatus = domain.InstallStatusDownloading
+		comp.InstallProgress = 0
+		comp.InstallMessage = "正在准备下载..."
+		comp.LastSyncError = ""
+		return comp, nil
+	})
+	if err != nil {
+		s.installingMu.Lock()
+		delete(s.installingComps, id)
+		s.installingMu.Unlock()
+		return domain.CoreComponent{}, err
+	}
+
+	// 启动异步安装
+	go s.doInstallComponent(id)
+
+	return updated, nil
+}
+
+// doInstallComponent 执行实际的安装逻辑
+func (s *Service) doInstallComponent(id string) {
+	defer func() {
+		s.installingMu.Lock()
+		delete(s.installingComps, id)
+		s.installingMu.Unlock()
+	}()
+
+	component, err := s.store.GetComponent(id)
+	if err != nil {
+		s.updateInstallStatus(id, domain.InstallStatusError, 0, err.Error())
+		return
+	}
+
 	component = normalizeComponentInput(component)
+
 	def, _ := componentDefaultFor(component)
 
 	var (
@@ -1032,83 +1290,109 @@ func (s *Service) InstallComponent(id string) (domain.CoreComponent, error) {
 		if archiveType == "" {
 			archiveType = def.archiveType
 		}
-		if downloadURL == "" {
-			downloadURL = def.fallbackURL()
-		}
 	}
 
+	s.updateInstallStatus(id, domain.InstallStatusDownloading, 10, "正在获取下载地址...")
+
+	// v2rayN 方式：简单直接
 	if repo != "" && len(assetCandidates) > 0 {
-		info, releaseErr := fetchLatestReleaseAsset(repo, assetCandidates)
-		if releaseErr == nil && info.DownloadURL != "" {
+		log.Printf("[Install] 获取组件下载信息: %s, 模板: %v", repo, assetCandidates)
+		info, err := getComponentDownloadInfo(repo, assetCandidates)
+		if err == nil && info.DownloadURL != "" {
 			releaseInfo = info
 			downloadURL = info.DownloadURL
 			archiveType = inferArchiveTypeFromName(info.Name)
+			log.Printf("[Install] 成功: %s (版本: %s)", info.Name, info.Version)
 		} else {
-			fallbackInfo, fallbackErr := resolveComponentAssetFallback(component.Kind, repo, assetCandidates)
-			if fallbackErr == nil && fallbackInfo.DownloadURL != "" {
-				releaseInfo = fallbackInfo
-				downloadURL = fallbackInfo.DownloadURL
-				archiveType = inferArchiveTypeFromName(fallbackInfo.Name)
-			} else {
-				if releaseErr != nil && !errors.Is(releaseErr, errReleaseAssetNotFound) {
-					log.Printf("github release lookup failed for %s: %v", repo, releaseErr)
-				}
-				if fallbackErr != nil && !errors.Is(fallbackErr, errReleaseAssetNotFound) {
-					log.Printf("github release fallback failed for %s: %v", repo, fallbackErr)
-				}
-			}
+			log.Printf("[Install] 获取下载信息失败: %v", err)
 		}
 	}
 
 	if downloadURL == "" {
-		return domain.CoreComponent{}, errors.New("component sourceUrl is empty")
+		errMsg := "无法获取下载地址。GitHub API 访问可能受限，请检查网络连接或稍后重试。"
+		log.Printf("[Install] %s (repo: %s, candidates: %v)", errMsg, repo, assetCandidates)
+		s.updateInstallStatus(id, domain.InstallStatusError, 0, errMsg)
+		return
 	}
+
+	log.Printf("[Install] 最终下载 URL: %s", downloadURL)
 
 	if archiveType == "" {
 		archiveType = inferArchiveTypeFromName(downloadURL)
 	}
 	archiveType = normalizeArchiveType(archiveType)
 	if err := validateArchiveType(archiveType); err != nil {
-		return domain.CoreComponent{}, err
+		s.updateInstallStatus(id, domain.InstallStatusError, 0, "不支持的压缩格式: "+archiveType)
+		return
 	}
 
-	data, checksum, err := downloadResource(downloadURL)
+	s.updateInstallStatus(id, domain.InstallStatusDownloading, 20, "正在下载...")
+	log.Printf("[Install] 开始下载组件 %s (%s) 从: %s", component.Kind, component.Name, downloadURL)
+
+	// 下载资源并实时更新进度
+	data, checksum, err := downloadResourceWithProgress(downloadURL, func(downloaded, total int64, percent int) {
+		// 下载占 20-70% 的总进度
+		progress := 20 + (percent * 50 / 100)
+
+		var message string
+		if total > 0 {
+			downloadedMB := float64(downloaded) / (1024 * 1024)
+			totalMB := float64(total) / (1024 * 1024)
+			message = fmt.Sprintf("正在下载... %.2f/%.2f MB (%d%%)", downloadedMB, totalMB, percent)
+		} else {
+			downloadedMB := float64(downloaded) / (1024 * 1024)
+			message = fmt.Sprintf("正在下载... %.2f MB", downloadedMB)
+		}
+
+		s.updateInstallStatus(id, domain.InstallStatusDownloading, progress, message)
+	})
+
 	if err != nil {
-		updated, updateErr := s.store.UpdateComponent(id, func(comp domain.CoreComponent) (domain.CoreComponent, error) {
+		log.Printf("[Install] 下载失败: %v", err)
+		s.store.UpdateComponent(id, func(comp domain.CoreComponent) (domain.CoreComponent, error) {
 			comp.LastSyncError = err.Error()
 			comp.LastInstalledAt = time.Now()
+			comp.InstallStatus = domain.InstallStatusError
+			comp.InstallProgress = 0
+			comp.InstallMessage = "下载失败: " + err.Error()
 			if comp.Meta == nil {
 				comp.Meta = map[string]string{}
 			}
 			comp.Meta["downloadUrl"] = downloadURL
 			return comp, nil
 		})
-		if updateErr != nil {
-			return domain.CoreComponent{}, updateErr
-		}
-		return updated, err
+		return
 	}
+
+	log.Printf("[Install] 下载成功，文件大小: %d bytes, checksum: %s", len(data), checksum[:16])
+
+	s.updateInstallStatus(id, domain.InstallStatusExtracting, 70, "正在解压安装...")
+	log.Printf("[Install] 开始解压，格式: %s, 目标目录: %s", archiveType, resolveInstallDir(component))
 
 	targetDir := resolveInstallDir(component)
 	legacyDir := filepath.Join(artifactsRoot, "components", sanitizeID(component.ID))
 	_ = os.RemoveAll(legacyDir)
 
 	if component.Kind == domain.ComponentXray {
+		log.Printf("[Install] 停止 Xray 进程...")
 		s.terminateXrayProcess(true)
 	}
 
 	installDir, installErr := installComponentArchive(targetDir, archiveType, data)
 	if installErr != nil {
-		updated, updateErr := s.store.UpdateComponent(id, func(comp domain.CoreComponent) (domain.CoreComponent, error) {
+		log.Printf("[Install] 解压失败: %v", installErr)
+		s.store.UpdateComponent(id, func(comp domain.CoreComponent) (domain.CoreComponent, error) {
 			comp.LastSyncError = installErr.Error()
 			comp.LastInstalledAt = time.Now()
+			comp.InstallStatus = domain.InstallStatusError
+			comp.InstallProgress = 0
+			comp.InstallMessage = "解压失败: " + installErr.Error()
 			return comp, nil
 		})
-		if updateErr != nil {
-			return domain.CoreComponent{}, updateErr
-		}
-		return updated, installErr
+		return
 	}
+
+	log.Printf("[Install] 解压成功，安装目录: %s", installDir)
 
 	if component.Kind == domain.ComponentXray {
 		if err := cleanupXrayInstall(installDir); err != nil {
@@ -1120,19 +1404,21 @@ func (s *Service) InstallComponent(id string) (domain.CoreComponent, error) {
 	if version == "" {
 		version = deriveComponentVersion(downloadURL, checksum)
 	}
-	installed, err := s.store.UpdateComponent(id, func(comp domain.CoreComponent) (domain.CoreComponent, error) {
+
+	log.Printf("[Install] 安装完成，版本: %s, checksum: %s", version, checksum[:16])
+
+	s.store.UpdateComponent(id, func(comp domain.CoreComponent) (domain.CoreComponent, error) {
 		comp.InstallDir = installDir
 		comp.LastInstalledAt = time.Now()
 		comp.LastVersion = version
 		comp.Checksum = checksum
 		comp.LastSyncError = ""
 		comp.ArchiveType = archiveType
+		comp.InstallStatus = domain.InstallStatusDone
+		comp.InstallProgress = 100
+		comp.InstallMessage = "安装完成"
 		if comp.SourceURL == "" {
-			if def != nil && def.fallbackURL() != "" {
-				comp.SourceURL = def.fallbackURL()
-			} else {
-				comp.SourceURL = downloadURL
-			}
+			comp.SourceURL = downloadURL
 		}
 		if comp.Meta == nil {
 			comp.Meta = map[string]string{}
@@ -1153,10 +1439,9 @@ func (s *Service) InstallComponent(id string) (domain.CoreComponent, error) {
 		}
 		return comp, nil
 	})
-	if err != nil {
-		return domain.CoreComponent{}, err
-	}
 
+	// 获取更新后的组件
+	installed, _ := s.store.GetComponent(id)
 	if installed.Kind == domain.ComponentXray {
 		if err := s.regenerateXrayConfig(s.ActiveXrayNodeID()); err != nil && !errors.Is(err, errXrayComponentNotInstalled) {
 			log.Printf("regenerate xray config failed: %v", err)
@@ -1167,7 +1452,113 @@ func (s *Service) InstallComponent(id string) (domain.CoreComponent, error) {
 			}
 		}
 	}
-	return installed, nil
+
+	// Sing-box 组件安装后下载 rule-set 文件
+	if installed.Kind == domain.ComponentSingBox {
+		log.Printf("[Sing-box] 开始下载 rule-set 文件...")
+		if err := s.downloadSingBoxRuleSets(installed.InstallDir); err != nil {
+			log.Printf("[Sing-box] rule-set 下载失败（非致命）: %v", err)
+		}
+	}
+
+	if def != nil && len(def.accessories) > 0 {
+		for _, accessoryID := range def.accessories {
+			accessoryID = strings.TrimSpace(accessoryID)
+			if accessoryID == "" || accessoryID == component.ID {
+				continue
+			}
+
+			log.Printf("[Install] 检测到配套组件 %s，准备自动安装...", accessoryID)
+
+			accComp, prepErr := s.ensureAccessoryComponent(accessoryID)
+			if prepErr != nil {
+				log.Printf("[Install] 配套组件 %s 准备失败（非致命）: %v", accessoryID, prepErr)
+				continue
+			}
+
+			s.installingMu.Lock()
+			_, installing := s.installingComps[accComp.ID]
+			s.installingMu.Unlock()
+			if installing {
+				log.Printf("[Install] 配套组件 %s 已在安装中，跳过重复触发", accComp.ID)
+				continue
+			}
+
+			// 检查配套组件是否真正安装（检查实际可执行文件）
+			isInstalled := false
+			if accComp.InstallDir != "" {
+				execPath := filepath.Join(accComp.InstallDir, accessoryID)
+				if _, err := os.Stat(execPath); err == nil {
+					isInstalled = true
+					log.Printf("[Install] 配套组件 %s 已安装: %s", accComp.ID, execPath)
+				}
+			}
+
+			if isInstalled {
+				continue
+			}
+
+			log.Printf("[Install] 开始自动安装配套组件 %s...", accComp.ID)
+			if _, err := s.InstallComponentAsync(accComp.ID); err != nil {
+				log.Printf("[Install] 配套组件 %s 安装触发失败（非致命）: %v", accComp.ID, err)
+			} else {
+				log.Printf("[Install] 配套组件 %s 安装已加入后台队列，请在组件面板查看进度", accComp.ID)
+			}
+		}
+	}
+}
+
+// updateInstallStatus 更新安装状态
+func (s *Service) updateInstallStatus(id string, status domain.InstallStatus, progress int, message string) {
+	s.store.UpdateComponent(id, func(comp domain.CoreComponent) (domain.CoreComponent, error) {
+		comp.InstallStatus = status
+		comp.InstallProgress = progress
+		comp.InstallMessage = message
+		return comp, nil
+	})
+}
+
+// InstallComponent 同步安装组件
+// 委托给 InstallComponentAsync 并等待完成
+func (s *Service) InstallComponent(id string) (domain.CoreComponent, error) {
+	// 触发异步安装
+	comp, err := s.InstallComponentAsync(id)
+	if err != nil {
+		return domain.CoreComponent{}, err
+	}
+
+	// 等待安装完成（轮询检查状态）
+	maxWait := 10 * time.Minute
+	pollInterval := 500 * time.Millisecond
+	deadline := time.Now().Add(maxWait)
+
+	for time.Now().Before(deadline) {
+		current, err := s.store.GetComponent(id)
+		if err != nil {
+			return domain.CoreComponent{}, err
+		}
+
+		switch current.InstallStatus {
+		case domain.InstallStatusDone:
+			return current, nil
+		case domain.InstallStatusError:
+			errMsg := current.InstallMessage
+			if errMsg == "" {
+				errMsg = current.LastSyncError
+			}
+			if errMsg == "" {
+				errMsg = "安装失败"
+			}
+			return current, errors.New(errMsg)
+		case domain.InstallStatusIdle:
+			// 安装可能还未开始，继续等待
+		}
+
+		time.Sleep(pollInterval)
+	}
+
+	// 超时
+	return comp, errors.New("安装超时")
 }
 
 func (s *Service) AutoUpdateComponents() {
@@ -1214,6 +1605,21 @@ func (s *Service) Snapshot() domain.ServiceState {
 
 func (s *Service) Errors() (error, error, error, error, error) {
 	return s.store.Errors()
+}
+
+func singboxSupportsDNSAction(version string) bool {
+	v := strings.TrimSpace(strings.TrimPrefix(version, "v"))
+	if v == "" {
+		return false
+	}
+	parts := strings.Split(v, ".")
+	major, _ := strconv.Atoi(parts[0])
+	minor := 0
+	if len(parts) > 1 {
+		minor, _ = strconv.Atoi(parts[1])
+	}
+	// 支持 1.13.0+
+	return major > 1 || (major == 1 && minor >= 13)
 }
 
 func (s *Service) RestartXray(activeNodeID string) error {
@@ -1402,6 +1808,15 @@ func (s *Service) IsXrayEnabled() bool {
 }
 
 func (s *Service) EnableXray(activeNodeID string) error {
+	// 检查 xray 是否安装，如果没有则尝试 sing-box
+	if !s.isEngineInstalled(domain.EngineXray) {
+		if s.isEngineInstalled(domain.EngineSingBox) {
+			log.Printf("[Proxy] xray 未安装，使用 sing-box 启动代理")
+			return s.startSingBoxProxy(activeNodeID)
+		}
+		return fmt.Errorf("no proxy engine installed (xray or sing-box)")
+	}
+
 	s.xrayMu.Lock()
 	s.xrayEnabled = true
 	s.xrayMu.Unlock()
@@ -1440,8 +1855,157 @@ func (s *Service) EnableXray(activeNodeID string) error {
 	return nil
 }
 
+// startSingBoxProxy 使用 sing-box 启动 SOCKS 代理（非 TUN 模式）
+func (s *Service) startSingBoxProxy(activeNodeID string) error {
+	// 获取 sing-box 路径
+	binaryPath, err := s.getEngineBinaryPath(domain.EngineSingBox)
+	if err != nil {
+		return fmt.Errorf("sing-box not found: %w", err)
+	}
+
+	// 获取节点
+	nodes := s.ListNodes()
+	if len(nodes) == 0 {
+		return fmt.Errorf("no nodes configured")
+	}
+
+	// 构建配置
+	adapter := &adapters.SingBoxAdapter{}
+	geo := adapters.GeoFiles{
+		ArtifactsDir: artifactsRoot,
+	}
+
+	// 从前端设置读取端口
+	inboundPort := 17890
+	frontendSettings := s.GetFrontendSettings()
+	if proxyPort, ok := frontendSettings["proxy.port"].(float64); ok && proxyPort > 0 {
+		inboundPort = int(proxyPort)
+	}
+
+	// 检查端口是否可用
+	if !isPortAvailable(inboundPort) {
+		log.Printf("[Proxy] 端口 %d 已被占用，尝试清理...", inboundPort)
+		// 尝试先停止现有代理
+		s.StopProxy()
+		// 等待端口释放
+		time.Sleep(500 * time.Millisecond)
+		if !isPortAvailable(inboundPort) {
+			return fmt.Errorf("端口 %d 已被其他程序占用，请检查或更换端口", inboundPort)
+		}
+	}
+
+	profile := domain.ProxyProfile{
+		InboundMode: domain.InboundMixed,
+		InboundPort: inboundPort,
+		DefaultNode: activeNodeID,
+	}
+
+	configBytes, err := adapter.BuildConfig(profile, nodes, geo)
+	if err != nil {
+		return fmt.Errorf("failed to build sing-box config: %w", err)
+	}
+
+	// 写入配置
+	configDir := filepath.Join(artifactsRoot, "core", "singbox")
+	os.MkdirAll(configDir, 0755)
+	configPath := filepath.Join(configDir, "proxy-config.json")
+	if err := os.WriteFile(configPath, configBytes, 0644); err != nil {
+		return fmt.Errorf("failed to write config: %w", err)
+	}
+
+	// 停止现有进程
+	s.StopProxy()
+
+	// 启动 sing-box
+	cmd := exec.Command(binaryPath, "run", "-c", configPath)
+	cmd.Env = append(os.Environ(), "ENABLE_DEPRECATED_SPECIAL_OUTBOUNDS=true")
+
+	// 捕获 stderr 用于错误检测
+	stderrPipeR, stderrPipeW, _ := os.Pipe()
+	cmd.Stderr = stderrPipeW
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start sing-box: %w", err)
+	}
+	stderrPipeW.Close()
+
+	// 使用 channel 收集启动阶段的错误信息
+	startupErrors := make(chan string, 1)
+	go func() {
+		buf := make([]byte, 4096)
+		var errMsg string
+		for {
+			n, err := stderrPipeR.Read(buf)
+			if n > 0 {
+				output := string(buf[:n])
+				log.Printf("[singbox-proxy] %s", output)
+				// 检测 FATAL 错误
+				if strings.Contains(output, "FATAL") {
+					errMsg = output
+				}
+			}
+			if err != nil {
+				break
+			}
+		}
+		if errMsg != "" {
+			select {
+			case startupErrors <- errMsg:
+			default:
+			}
+		}
+		close(startupErrors)
+	}()
+
+	// 等待一段时间，检查进程是否正常启动
+	time.Sleep(800 * time.Millisecond)
+
+	// 检查进程是否仍在运行
+	if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
+		// 进程已退出，收集错误信息
+		select {
+		case errMsg := <-startupErrors:
+			return fmt.Errorf("sing-box 启动失败: %s", errMsg)
+		default:
+			return fmt.Errorf("sing-box 启动后立即退出")
+		}
+	}
+
+	// 再次检查端口是否已被监听（确认 sing-box 成功绑定）
+	if !isPortListening(inboundPort) {
+		// 可能进程还在启动中，再等一下
+		time.Sleep(500 * time.Millisecond)
+		if !isPortListening(inboundPort) {
+			// 进程可能已经退出
+			if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
+				select {
+				case errMsg := <-startupErrors:
+					return fmt.Errorf("sing-box 启动失败: %s", errMsg)
+				default:
+					return fmt.Errorf("sing-box 启动后立即退出")
+				}
+			}
+			log.Printf("[Proxy] 警告: 端口 %d 似乎未被监听，但进程仍在运行", inboundPort)
+		}
+	}
+
+	s.proxyMu.Lock()
+	s.proxyCmd = cmd
+	s.proxyMu.Unlock()
+
+	log.Printf("[Proxy] sing-box 代理启动成功, PID: %d, 端口: %d", cmd.Process.Pid, inboundPort)
+
+	// 应用系统代理
+	if err := s.applySystemProxy(s.SystemProxySettings()); err != nil && !errors.Is(err, ErrProxyUnsupported) {
+		log.Printf("apply system proxy failed: %v", err)
+	}
+
+	return nil
+}
+
 func (s *Service) DisableXray() error {
 	s.terminateXrayProcess(false)
+	s.StopProxy() // 同时停止 sing-box 代理
 
 	if err := s.updateXrayMeta(func(component domain.CoreComponent) (domain.CoreComponent, error) {
 		if component.Meta == nil {
@@ -1649,10 +2213,17 @@ func shouldRetryHTTP11(err error) bool {
 	return false
 }
 
-func downloadResource(source string) ([]byte, string, error) {
+// ProgressCallback 下载进度回调函数类型
+// downloaded: 已下载字节数, total: 总字节数, percent: 百分比(0-100)
+type ProgressCallback func(downloaded, total int64, percent int)
+
+// downloadResourceWithProgress 下载资源并报告进度
+func downloadResourceWithProgress(source string, onProgress ProgressCallback) ([]byte, string, error) {
 	if source == "" {
 		return nil, "", errors.New("empty source url")
 	}
+
+	log.Printf("[Download] 开始下载: %s", source)
 
 	doRequest := func(client *http.Client) (*http.Response, error) {
 		req, reqErr := http.NewRequest(http.MethodGet, source, nil)
@@ -1674,24 +2245,93 @@ func downloadResource(source string) ([]byte, string, error) {
 		}
 	}
 	if err != nil {
+		log.Printf("[Download] 请求失败: %v", err)
 		return nil, "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		log.Printf("[Download] HTTP 状态码错误: %s", resp.Status)
 		return nil, "", fmt.Errorf("unexpected status %s", resp.Status)
 	}
 
-	limited := io.LimitReader(resp.Body, maxDownloadSize+1)
-	data, err := io.ReadAll(limited)
-	if err != nil {
-		return nil, "", err
-	}
-	if int64(len(data)) > maxDownloadSize {
+	// 获取文件大小
+	contentLength := resp.ContentLength
+	log.Printf("[Download] 文件大小: %d bytes (%.2f MB)", contentLength, float64(contentLength)/(1024*1024))
+
+	if contentLength > maxDownloadSize {
 		return nil, "", fmt.Errorf("resource exceeds max size of %d bytes", maxDownloadSize)
 	}
 
-	return data, checksumBytes(data), nil
+	// 使用 buffer 读取并报告进度
+	var buf bytes.Buffer
+	var downloaded int64
+	var lastReportedPercent int = -1 // 上次报告的百分比
+
+	// 每次读取 64KB
+	bufferSize := 64 * 1024
+	buffer := make([]byte, bufferSize)
+
+	for {
+		n, err := resp.Body.Read(buffer)
+		if n > 0 {
+			buf.Write(buffer[:n])
+			downloaded += int64(n)
+
+			// 计算百分比并回调（只有变化时才更新）
+			var percent int
+			if contentLength > 0 {
+				percent = int(float64(downloaded) / float64(contentLength) * 100)
+				if percent > 100 {
+					percent = 100
+				}
+			}
+
+			// 每1%更新一次，或者是最后一次（100%）
+			if onProgress != nil && (percent != lastReportedPercent || percent == 100) {
+				onProgress(downloaded, contentLength, percent)
+				lastReportedPercent = percent
+
+				// 详细日志：每10%记录一次
+				if percent%10 == 0 || percent == 100 {
+					if contentLength > 0 {
+						log.Printf("[Download] 进度: %d%% (%.2f/%.2f MB)",
+							percent,
+							float64(downloaded)/(1024*1024),
+							float64(contentLength)/(1024*1024))
+					} else {
+						log.Printf("[Download] 已下载: %.2f MB", float64(downloaded)/(1024*1024))
+					}
+				}
+			}
+
+			// 检查大小限制
+			if downloaded > maxDownloadSize {
+				log.Printf("[Download] 超过最大下载大小限制")
+				return nil, "", fmt.Errorf("resource exceeds max size of %d bytes", maxDownloadSize)
+			}
+		}
+
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Printf("[Download] 读取数据失败: %v", err)
+			return nil, "", err
+		}
+	}
+
+	data := buf.Bytes()
+	checksum := checksumBytes(data)
+
+	log.Printf("[Download] 下载完成: %d bytes, checksum: %s", len(data), checksum[:16])
+
+	return data, checksum, nil
+}
+
+// downloadResource 下载资源（无进度回调，保留兼容性）
+func downloadResource(source string) ([]byte, string, error) {
+	return downloadResourceWithProgress(source, nil)
 }
 
 func checksumBytes(data []byte) string {
@@ -2118,6 +2758,92 @@ func (s *Service) startMeasurementXray(node domain.Node) (func(), error) {
 	}
 }
 
+func (s *Service) startMeasurementSingBox(node domain.Node) (func(), error) {
+	s.measureMu.Lock()
+	unlocked := false
+	release := func() {
+		if !unlocked {
+			s.measureMu.Unlock()
+			unlocked = true
+		}
+	}
+
+	binaryPath, err := s.getEngineBinaryPath(domain.EngineSingBox)
+	if err != nil {
+		release()
+		return nil, fmt.Errorf("sing-box not found: %w", err)
+	}
+
+	// 构建测速配置
+	adapter := &adapters.SingBoxAdapter{}
+	geo := adapters.GeoFiles{ArtifactsDir: artifactsRoot}
+	profile := domain.ProxyProfile{
+		InboundMode: domain.InboundSOCKS,
+		InboundPort: measurementPort,
+		DefaultNode: node.ID,
+	}
+	configBytes, err := adapter.BuildConfig(profile, []domain.Node{node}, geo)
+	if err != nil {
+		release()
+		return nil, err
+	}
+
+	configDir := filepath.Join(artifactsRoot, "core", "singbox")
+	os.MkdirAll(configDir, 0755)
+	configPath := filepath.Join(configDir, "config-measure.json")
+	if err := os.WriteFile(configPath, configBytes, 0644); err != nil {
+		release()
+		return nil, err
+	}
+
+	cmd := exec.Command(binaryPath, "run", "-c", configPath)
+	cmd.Env = append(os.Environ(), "ENABLE_DEPRECATED_SPECIAL_OUTBOUNDS=true")
+	if err := cmd.Start(); err != nil {
+		release()
+		return nil, fmt.Errorf("start measurement sing-box: %w", err)
+	}
+
+	// Wait for the SOCKS5 port to become ready
+	readyCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var lastErr error
+	for {
+		select {
+		case <-readyCtx.Done():
+			_ = cmd.Process.Kill()
+			go cmd.Wait()
+			release()
+			return nil, fmt.Errorf("sing-box measurement not ready: %w (last error: %v)", readyCtx.Err(), lastErr)
+		default:
+			c, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(measurementPort)), 200*time.Millisecond)
+			if err == nil {
+				_ = c.Close()
+				stop := func() {
+					defer release()
+					if cmd.ProcessState == nil || !cmd.ProcessState.Exited() {
+						_ = cmd.Process.Signal(os.Interrupt)
+						done := make(chan struct{})
+						go func() {
+							_ = cmd.Wait()
+							close(done)
+						}()
+						select {
+						case <-done:
+						case <-time.After(2 * time.Second):
+							_ = cmd.Process.Kill()
+							<-done
+						}
+					}
+					time.Sleep(500 * time.Millisecond)
+				}
+				return stop, nil
+			}
+			lastErr = err
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+}
+
 func (s *Service) prepareNodesForXray(nodes []domain.Node) ([]domain.Node, error) {
 	prepared := make([]domain.Node, 0, len(nodes))
 	for _, node := range nodes {
@@ -2176,8 +2902,7 @@ func ensureShadowsocksHTTPHeaders(node *domain.Node) {
 			hostFromOpts = firstNonEmpty(options["obfs-host"], options["host"])
 			pathFromOpts = firstNonEmpty(options["obfs-uri"], options["path"])
 		}
-		node.Security.Plugin = ""
-		node.Security.PluginOpts = ""
+		// 保留 Plugin 和 PluginOpts，sing-box 需要它们来调用 obfs-local
 	}
 
 	if node.Transport == nil {
@@ -2898,11 +3623,27 @@ func parseShadowsocksLink(link string) (domain.Node, error) {
 		security.Method = user
 		security.Password = pass
 	}
-	if plugin := u.Query().Get("plugin"); plugin != "" {
-		security.Plugin = plugin
-	}
-	if pluginOpts := u.Query().Get("plugin-opts"); pluginOpts != "" {
-		security.PluginOpts = pluginOpts
+	// 解析 plugin 参数
+	if pluginRaw := u.Query().Get("plugin"); pluginRaw != "" {
+		log.Printf("[Plugin] Raw plugin string: %s", pluginRaw)
+		pluginName, pluginOpts := parseShadowsocksPluginOptions(pluginRaw, "")
+		log.Printf("[Plugin] Parsed name: %s, opts: %+v", pluginName, pluginOpts)
+		if pluginName != "" {
+			security.Plugin = pluginName
+			// 将 map 转换为 sing-box 格式的字符串
+			if len(pluginOpts) > 0 {
+				opts := make([]string, 0, len(pluginOpts))
+				for k, v := range pluginOpts {
+					if v != "" {
+						opts = append(opts, k+"="+v)
+					} else {
+						opts = append(opts, k)
+					}
+				}
+				security.PluginOpts = strings.Join(opts, ";")
+				log.Printf("[Plugin] Final pluginOpts: %s", security.PluginOpts)
+			}
+		}
 	}
 	node := domain.Node{
 		Name:     name,
@@ -3062,4 +3803,366 @@ func inferFormatFromPayload(payload string) (domain.ConfigFormat, bool) {
 	default:
 		return "", false
 	}
+}
+
+// TUN Settings
+func (s *Service) GetTUNSettings() domain.TUNSettings {
+	return s.store.GetTUNSettings()
+}
+
+func (s *Service) UpdateTUNSettings(updateFn func(domain.TUNSettings) (domain.TUNSettings, error)) (domain.TUNSettings, error) {
+	oldSettings := s.store.GetTUNSettings()
+
+	updated, err := s.store.UpdateTUNSettings(updateFn)
+	if err != nil {
+		return domain.TUNSettings{}, err
+	}
+
+	// 如果启用状态发生变化，启动/停止 TUN 代理
+	if oldSettings.Enabled != updated.Enabled {
+		if updated.Enabled {
+			// 启动 TUN 模式
+			if err := s.startTUNMode(); err != nil {
+				// 回滚设置
+				_, _ = s.store.UpdateTUNSettings(func(_ domain.TUNSettings) (domain.TUNSettings, error) {
+					return oldSettings, nil
+				})
+				return domain.TUNSettings{}, fmt.Errorf("failed to start TUN mode: %w", err)
+			}
+		} else {
+			// 停止 TUN 模式
+			if err := s.stopTUNMode(); err != nil {
+				log.Printf("failed to stop TUN mode: %v", err)
+			}
+		}
+	}
+
+	return updated, nil
+}
+
+// startTUNMode 启动 TUN 模式代理
+func (s *Service) startTUNMode() error {
+	log.Printf("[TUN] 开始启动 TUN 模式...")
+
+	// 启动前先清理可能存在的残留状态
+	if err := s.cleanupTUN("tun0"); err != nil {
+		log.Printf("[TUN] 清理残留状态失败 (非致命): %v", err)
+	}
+
+	// 强制关闭系统代理，避免冲突
+	log.Printf("[TUN] 正在关闭系统代理以配合 TUN 模式...")
+	if _, err := s.UpdateSystemProxySettings(domain.SystemProxySettings{
+		Enabled:     false,
+		IgnoreHosts: s.store.GetSystemProxySettings().IgnoreHosts,
+	}); err != nil {
+		log.Printf("[TUN] 关闭系统代理失败 (非致命): %v", err)
+	}
+
+	// 检查 TUN 权限是否已配置，未配置则自动配置
+	log.Printf("[TUN] 检查 TUN 权限...")
+	configured, err := s.CheckTUNCapabilities()
+	if err != nil {
+		log.Printf("[TUN] 检查 TUN 权限失败: %v", err)
+		return fmt.Errorf("检查 TUN 权限失败: %w", err)
+	}
+	if !configured {
+		log.Printf("[TUN] TUN 权限未配置，尝试自动配置...")
+		if err := s.SetupTUN(); err != nil {
+			log.Printf("[TUN] 自动配置 TUN 失败: %v", err)
+			return fmt.Errorf("TUN 自动配置失败: %w. 请确保 Vea 以管理员/root 权限运行", err)
+		}
+		log.Printf("[TUN] TUN 自动配置成功")
+	} else {
+		log.Printf("[TUN] TUN 权限已配置")
+	}
+
+	// 检查 sing-box 是否已安装
+	log.Printf("[TUN] 检查 sing-box 安装状态...")
+	singboxComp, err := s.getComponentByKind(domain.ComponentSingBox)
+	if err != nil {
+		log.Printf("[TUN] 获取 sing-box 组件失败: %v", err)
+		return fmt.Errorf("请先在「组件」面板安装 sing-box")
+	}
+	if singboxComp.LastInstalledAt.IsZero() {
+		log.Printf("[TUN] sing-box 未安装")
+		return fmt.Errorf("请先在「组件」面板安装 sing-box")
+	}
+	log.Printf("[TUN] sing-box 已安装: %s (版本: %s)", singboxComp.InstallDir, singboxComp.LastVersion)
+
+	// 获取或创建默认的 TUN Profile
+	log.Printf("[TUN] 获取/创建 TUN Profile...")
+	profileID, err := s.ensureTUNProfile()
+	if err != nil {
+		log.Printf("[TUN] 获取 TUN Profile 失败: %v", err)
+		return err
+	}
+	log.Printf("[TUN] TUN Profile ID: %s", profileID)
+
+	// 启动代理
+	log.Printf("[TUN] 启动代理...")
+	if err := s.StartProxyWithProfile(profileID); err != nil {
+		log.Printf("[TUN] 启动代理失败: %v", err)
+		return fmt.Errorf("启动 TUN 代理失败: %w", err)
+	}
+
+	log.Printf("[TUN] TUN 模式启动成功")
+	return nil
+}
+
+// stopTUNMode 停止 TUN 模式代理
+func (s *Service) stopTUNMode() error {
+	// 检查当前是否有活跃的 TUN Profile
+	activeProfileID := s.store.GetActiveProfile()
+	if activeProfileID == "" {
+		return nil // 没有活跃的代理，无需停止
+	}
+
+	profile, err := s.store.GetProxyProfile(activeProfileID)
+	if err != nil {
+		return nil // Profile 不存在，可能已被删除
+	}
+
+	// 只停止 TUN 模式的代理
+	if profile.InboundMode == domain.InboundTUN {
+		return s.StopProxy()
+	}
+
+	return nil
+}
+
+// ensureTUNProfile 确保存在一个默认的 TUN Profile
+func (s *Service) ensureTUNProfile() (string, error) {
+	// 查找现有的 TUN Profile
+	profiles := s.store.ListProxyProfiles()
+	for _, p := range profiles {
+		if p.InboundMode == domain.InboundTUN && p.Name == "默认 TUN" {
+			log.Printf("[TUN] 找到现有 TUN Profile: %s, DefaultNode: %s", p.ID, p.DefaultNode)
+			// 确保使用最新的默认节点
+			nodes := s.store.ListNodes()
+			log.Printf("[TUN] 当前节点数: %d", len(nodes))
+
+			lastSelected := s.LastSelectedNodeID()
+			// 检查节点是否存在
+			needUpdate := false
+			if p.DefaultNode == "" {
+				needUpdate = true
+				log.Printf("[TUN] DefaultNode 为空")
+			} else {
+				_, err := s.store.GetNode(p.DefaultNode)
+				if err != nil {
+					needUpdate = true
+					log.Printf("[TUN] DefaultNode 节点不存在: %v", err)
+				}
+			}
+
+			// 更新为第一个可用节点
+			if needUpdate && len(nodes) > 0 {
+				p.DefaultNode = pickDefaultNode(nodes, lastSelected)
+				log.Printf("[TUN] 更新 Profile 的 DefaultNode: %s (lastSelected=%s)", p.DefaultNode, lastSelected)
+				_, _ = s.store.UpdateProxyProfile(p.ID, func(_ domain.ProxyProfile) (domain.ProxyProfile, error) {
+					return p, nil
+				})
+			}
+
+			// 如果没有节点，返回错误提示
+			if len(nodes) == 0 {
+				return "", fmt.Errorf("请先添加至少一个节点")
+			}
+			if p.DefaultNode == "" {
+				return "", fmt.Errorf("请先添加至少一个节点")
+			}
+			log.Printf("[TUN] 返回 TUN Profile ID: %s, DefaultNode: %s", p.ID, p.DefaultNode)
+			return p.ID, nil
+		}
+	}
+
+	// 获取默认节点
+	nodes := s.store.ListNodes()
+	log.Printf("[TUN] 创建新 Profile，当前节点数: %d", len(nodes))
+
+	// 即使没有节点，也创建 Profile，但返回友好的错误
+	lastSelected := s.LastSelectedNodeID()
+	var defaultNodeID string
+	if len(nodes) > 0 {
+		defaultNodeID = pickDefaultNode(nodes, lastSelected)
+		log.Printf("[TUN] 使用默认节点: %s (lastSelected=%s)", defaultNodeID, lastSelected)
+	}
+
+	// 创建新的 TUN Profile
+	profile := domain.ProxyProfile{
+		Name:            "默认 TUN",
+		InboundMode:     domain.InboundTUN,
+		PreferredEngine: domain.EngineSingBox,
+		ActualEngine:    domain.EngineSingBox,
+		DefaultNode:     defaultNodeID,
+		TUNSettings: &domain.TUNConfiguration{
+			InterfaceName:          "tun0",
+			MTU:                    9000,
+			Address:                []string{"198.18.0.1/30"}, // 使用 IANA 保留地址段
+			AutoRoute:              true,
+			AutoRedirect:           false, // Linux: 默认禁用，可手动启用
+			StrictRoute:            true,
+			Stack:                  "mixed",
+			DNSHijack:              false, // 不劫持 DNS 路由，通过 sniff 处理
+			EndpointIndependentNat: false, // gvisor: 默认禁用
+			UDPTimeout:             300,   // 5 分钟
+		},
+		ResolvedService: &domain.ResolvedServiceConfiguration{
+			Enabled:    false, // 禁用 resolved service（需要 DBUS 权限）
+			Listen:     "127.0.0.53",
+			ListenPort: 53,
+		},
+		DNSConfig: &domain.DNSConfiguration{
+			UseResolved:            true, // TUN 模式需要 domain_resolver 打破 DNS bootstrap 循环
+			AcceptDefaultResolvers: false,
+			RemoteServers:          []string{"1.1.1.1", "8.8.8.8"}, // UDP DNS，避免 DoH 兼容性问题
+			Strategy:               "prefer_ipv4",
+		},
+	}
+
+	log.Printf("[TUN] 创建 Profile，DefaultNode: %s", profile.DefaultNode)
+	created, err := s.CreateProxyProfile(profile)
+	if err != nil {
+		return "", fmt.Errorf("failed to create TUN profile: %w", err)
+	}
+	log.Printf("[TUN] Profile 已创建: %s, DefaultNode: %s", created.ID, created.DefaultNode)
+
+	// 如果没有节点，返回提示
+	if len(nodes) == 0 {
+		return "", fmt.Errorf("请先添加至少一个节点")
+	}
+
+	return created.ID, nil
+}
+
+func pickDefaultNode(nodes []domain.Node, lastSelected string) string {
+	if lastSelected != "" {
+		for _, n := range nodes {
+			if n.ID == lastSelected {
+				return n.ID
+			}
+		}
+	}
+	if len(nodes) > 0 {
+		return nodes[0].ID
+	}
+	return ""
+}
+
+// Frontend Settings - 存储到文件
+
+const frontendSettingsFile = "data/settings.json"
+
+// GetFrontendSettings 获取前端设置（包含默认值）
+func (s *Service) GetFrontendSettings() map[string]interface{} {
+	// 默认值
+	defaults := map[string]interface{}{
+		"proxy.port": 17890,
+	}
+
+	data, err := os.ReadFile(frontendSettingsFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return defaults
+		}
+		log.Printf("[Settings] 读取前端设置失败: %v", err)
+		return defaults
+	}
+
+	var settings map[string]interface{}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		log.Printf("[Settings] 解析前端设置失败: %v", err)
+		return defaults
+	}
+
+	// 合并默认值
+	for k, v := range defaults {
+		if _, exists := settings[k]; !exists {
+			settings[k] = v
+		}
+	}
+
+	return settings
+}
+
+// SaveFrontendSettings 保存前端设置
+func (s *Service) SaveFrontendSettings(settings map[string]interface{}) error {
+	// 确保目录存在
+	dir := filepath.Dir(frontendSettingsFile)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("创建目录失败: %w", err)
+	}
+
+	data, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化设置失败: %w", err)
+	}
+
+	if err := os.WriteFile(frontendSettingsFile, data, 0644); err != nil {
+		return fmt.Errorf("写入设置文件失败: %w", err)
+	}
+
+	log.Printf("[Settings] 前端设置已保存到 %s", frontendSettingsFile)
+	return nil
+}
+
+// GetIPGeo 获取当前 IP 地理位置信息
+func (s *Service) GetIPGeo() (map[string]interface{}, error) {
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get("http://ipv4.ping0.cc/geo")
+	if err != nil {
+		return nil, fmt.Errorf("请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取响应失败: %w", err)
+	}
+
+	// 解析响应：IP\n位置\nASN\nISP
+	lines := strings.Split(strings.TrimSpace(string(body)), "\n")
+	result := map[string]interface{}{
+		"ip":       "",
+		"location": "",
+		"asn":      "",
+		"isp":      "",
+	}
+
+	if len(lines) >= 1 {
+		result["ip"] = strings.TrimSpace(lines[0])
+	}
+	if len(lines) >= 2 {
+		result["location"] = strings.TrimSpace(lines[1])
+	}
+	if len(lines) >= 3 {
+		result["asn"] = strings.TrimSpace(lines[2])
+	}
+	if len(lines) >= 4 {
+		result["isp"] = strings.TrimSpace(lines[3])
+	}
+
+	return result, nil
+}
+
+// isPortAvailable 检查端口是否可用（未被占用）
+func isPortAvailable(port int) bool {
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return false
+	}
+	ln.Close()
+	return true
+}
+
+// isPortListening 检查端口是否正在被监听
+func isPortListening(port int) bool {
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	conn, err := net.DialTimeout("tcp", addr, 200*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
 }

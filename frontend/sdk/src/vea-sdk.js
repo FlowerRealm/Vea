@@ -22,7 +22,7 @@ class VeaError extends Error {
 
 class VeaClient {
   constructor(options = {}) {
-    this.baseURL = (options.baseURL || 'http://localhost:8080').replace(/\/$/, '')
+    this.baseURL = (options.baseURL || 'http://localhost:18080').replace(/\/$/, '')
     this.timeout = options.timeout || 300000 // 5分钟
     this.headers = options.headers || {}
 
@@ -34,6 +34,8 @@ class VeaClient {
     this.xray = new XrayAPI(this)
     this.traffic = new TrafficAPI(this)
     this.settings = new SettingsAPI(this)
+    this.proxy = new ProxyAPI(this)
+    this.proxyProfiles = new ProxyProfilesAPI(this)
   }
 
   async request(options) {
@@ -287,6 +289,50 @@ class XrayAPI {
   }
 }
 
+class ProxyAPI {
+  constructor(client) {
+    this.client = client
+  }
+
+  async status() {
+    return this.client.get('/proxy/status')
+  }
+
+  async stop() {
+    return this.client.post('/proxy/stop')
+  }
+}
+
+class ProxyProfilesAPI {
+  constructor(client) {
+    this.client = client
+  }
+
+  async list() {
+    return this.client.get('/proxy-profiles')
+  }
+
+  async create(data) {
+    return this.client.post('/proxy-profiles', data)
+  }
+
+  async get(id) {
+    return this.client.get(`/proxy-profiles/${id}`)
+  }
+
+  async update(id, data) {
+    return this.client.put(`/proxy-profiles/${id}`, data)
+  }
+
+  async delete(id) {
+    return this.client.delete(`/proxy-profiles/${id}`)
+  }
+
+  async start(id) {
+    return this.client.post(`/proxy-profiles/${id}/start`)
+  }
+}
+
 class TrafficAPI {
   constructor(client) {
     this.client = client
@@ -299,6 +345,50 @@ class TrafficAPI {
 
   async updateProfile(data) {
     return this.client.put('/traffic/profile', data)
+  }
+}
+
+class ProxyAPI {
+  constructor(client) {
+    this.client = client
+  }
+
+  async status() {
+    return this.client.get('/proxy/status')
+  }
+
+  async stop() {
+    return this.client.post('/proxy/stop')
+  }
+}
+
+class ProxyProfilesAPI {
+  constructor(client) {
+    this.client = client
+  }
+
+  async list() {
+    return this.client.get('/proxy-profiles')
+  }
+
+  async create(data) {
+    return this.client.post('/proxy-profiles', data)
+  }
+
+  async get(id) {
+    return this.client.get(`/proxy-profiles/${id}`)
+  }
+
+  async update(id, data) {
+    return this.client.put(`/proxy-profiles/${id}`, data)
+  }
+
+  async delete(id) {
+    return this.client.delete(`/proxy-profiles/${id}`)
+  }
+
+  async start(id) {
+    return this.client.post(`/proxy-profiles/${id}/start`)
   }
 }
 
@@ -361,6 +451,17 @@ function createAPI(baseURL = '') {
     async delete(path, options = {}) {
       return client.delete(path, options)
     },
+
+    // Expose all client APIs
+    nodes: client.nodes,
+    configs: client.configs,
+    geo: client.geo,
+    components: client.components,
+    xray: client.xray,
+    traffic: client.traffic,
+    settings: client.settings,
+    proxy: client.proxy,
+    proxyProfiles: client.proxyProfiles,
 
     client
   }
@@ -511,7 +612,7 @@ function parseNumber(value) {
 
 function debounce(fn, delay) {
   let timer = null
-  return function(...args) {
+  return function (...args) {
     if (timer) clearTimeout(timer)
     timer = setTimeout(() => fn.apply(this, args), delay)
   }
@@ -519,7 +620,7 @@ function debounce(fn, delay) {
 
 function throttle(fn, delay) {
   let last = 0
-  return function(...args) {
+  return function (...args) {
     const now = Date.now()
     if (now - last >= delay) {
       last = now
