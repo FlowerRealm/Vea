@@ -158,6 +158,13 @@ function startVeaService() {
 
   console.log(`Starting Vea service from: ${veaBinary}`)
 
+  // 确保 vea 有执行权限（AppImage 打包后可能丢失）
+  try {
+    fs.chmodSync(veaBinary, 0o755)
+  } catch (e) {
+    console.log(`chmod failed (may be read-only): ${e.message}`)
+  }
+
   const args = ['--addr', `:${VEA_PORT}`]
   if (isDev) {
     args.push('--dev')

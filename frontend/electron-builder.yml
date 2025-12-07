@@ -11,8 +11,10 @@ directories:
 files:
   - main.js
   - preload.js
+  - settings-schema.js
   - theme/**/*
   - assets/**/*
+  - sdk/dist/**/*
   - "!**/*.map"
 
 extraResources:
@@ -26,28 +28,18 @@ extraResources:
       - "**/*"
 
 mac:
-  target:
-    - target: dmg
-      arch:
-        - arm64
-        - x64
+  target: dmg
+  # arch 由命令行参数控制 (--x64 或 --arm64)
   category: public.app-category.utilities
   icon: assets/icon.icns
   entitlements: entitlements.mac.plist
   entitlementsInherit: entitlements.mac.plist
 
 linux:
-  target:
-    - target: AppImage
-      arch:
-        - x64
-        - arm64
-    - target: deb
-      arch:
-        - x64
-        - arm64
+  target: deb
+  # arch 由命令行参数控制 (--x64 或 --arm64)
   category: Network
-  icon: assets/icon.png
+  icon: assets/icons
   maintainer: FlowerRealm <flower_realm@outlook.com>
 
 win:

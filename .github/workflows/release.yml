@@ -169,19 +169,54 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Build Linux packages
+      - name: Build Linux x64 packages
         working-directory: frontend
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 修改electron-builder配置以支持多架构后端
-          # x64
           cp ../vea-x64 ../vea
+          chmod +x ../vea
+          echo "=== Verifying x64 binary ==="
+          file ../vea
           npm run build:linux -- --x64
+          echo "=== x64 build outputs ==="
+          ls -lh ../release/
 
-          # arm64
+      - name: Preserve x64 artifacts
+        run: |
+          mkdir -p release-x64
+          # electron-builder 对 deb 用 amd64
+          mv release/*x64* release-x64/ 2>/dev/null || true
+          mv release/*amd64* release-x64/ 2>/dev/null || true
+          echo "=== Preserved x64 artifacts ==="
+          ls -lh release-x64/
+
+      - name: Clean for arm64 build
+        run: |
+          rm -rf frontend/node_modules/.cache/electron-builder
+          rm -rf ~/.cache/electron-builder
+          rm -rf release/*
+          rm -f vea
+
+      - name: Build Linux arm64 packages
+        working-directory: frontend
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
           cp ../vea-arm64 ../vea
+          chmod +x ../vea
+          echo "=== Verifying arm64 binary ==="
+          file ../vea
           npm run build:linux -- --arm64
+          echo "=== arm64 build outputs ==="
+          ls -lh ../release/
+
+      - name: Merge all artifacts
+        run: |
+          mv release-x64/* release/ 2>/dev/null || true
+          rm -rf release-x64
+          echo "=== Final release contents ==="
+          ls -lh release/
 
       - name: List build outputs
         working-directory: release
@@ -191,9 +226,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: linux-packages
-          path: |
-            release/*.AppImage
-            release/*.deb
+          path: release/*.deb
           retention-days: 1
 
   # ===================================
@@ -245,22 +278,52 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Build macOS packages
+      - name: Build macOS x64 package
         working-directory: frontend
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # x64
           cp ../vea-x64 ../vea
+          chmod +x ../vea
+          echo "=== Verifying x64 binary ==="
+          file ../vea
           npm run build:mac -- --x64
+          echo "=== x64 build outputs ==="
+          ls -lh ../release/
 
-          # arm64
+      - name: Preserve x64 artifacts
+        run: |
+          mkdir -p release-x64
+          mv release/*x64* release-x64/ 2>/dev/null || true
+          echo "=== Preserved x64 artifacts ==="
+          ls -lh release-x64/
+
+      - name: Clean for arm64 build
+        run: |
+          rm -rf frontend/node_modules/.cache/electron-builder
+          rm -rf ~/Library/Caches/electron-builder
+          rm -rf release/*
+          rm -f vea
+
+      - name: Build macOS arm64 package
+        working-directory: frontend
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
           cp ../vea-arm64 ../vea
+          chmod +x ../vea
+          echo "=== Verifying arm64 binary ==="
+          file ../vea
           npm run build:mac -- --arm64
+          echo "=== arm64 build outputs ==="
+          ls -lh ../release/
 
-      - name: List build outputs
-        working-directory: release
-        run: ls -lh
+      - name: Merge all artifacts
+        run: |
+          mv release-x64/* release/ 2>/dev/null || true
+          rm -rf release-x64
+          echo "=== Final release contents ==="
+          ls -lh release/
 
       - name: Upload macOS packages
         uses: actions/upload-artifact@v4
@@ -354,7 +417,7 @@ jobs:
         working-directory: release-dist
         run: |
           mkdir -p ../dist
-          find . -type f \( -name "*.AppImage" -o -name "*.deb" -o -name "*.dmg" -o -name "*.exe" \) -exec mv {} ../dist/ \;
+          find . -type f \( -name "*.deb" -o -name "*.dmg" -o -name "*.exe" \) -exec mv {} ../dist/ \;
           ls -lh ../dist/
 
       - name: Generate checksums
@@ -376,26 +439,19 @@ jobs:
             ## 下载
 
             ### Linux
-            - **AppImage** (x64/arm64) - 通用格式，无需安装
-            - **deb** (x64/arm64) - Debian/Ubuntu系统
+            - **deb** (x64/arm64) - Debian/Ubuntu 系统
 
             ### macOS
-            - **dmg** (Intel/Apple Silicon) - 支持x64和arm64
+            - **dmg** (Intel/Apple Silicon) - 支持 x64 和 arm64
 
             ### Windows
-            - **exe** (x64) - NSIS安装程序
+            - **exe** (x64) - NSIS 安装程序
 
             ## 安装说明
 
-            ### Linux (AppImage)
-            \`\`\`bash
-            chmod +x Vea-*.AppImage
-            ./Vea-*.AppImage
-            \`\`\`
-
             ### Linux (deb)
             \`\`\`bash
-            sudo dpkg -i vea_*_amd64.deb
+            sudo dpkg -i Vea-*-linux-amd64.deb
             \`\`\`
 
             ### macOS (dmg)
