@@ -294,6 +294,50 @@ class XrayAPI {
   }
 }
 
+class ProxyAPI {
+  constructor(client) {
+    this.client = client;
+  }
+
+  async status() {
+    return this.client.get('/proxy/status')
+  }
+
+  async stop() {
+    return this.client.post('/proxy/stop')
+  }
+}
+
+class ProxyProfilesAPI {
+  constructor(client) {
+    this.client = client;
+  }
+
+  async list() {
+    return this.client.get('/proxy-profiles')
+  }
+
+  async create(data) {
+    return this.client.post('/proxy-profiles', data)
+  }
+
+  async get(id) {
+    return this.client.get(`/proxy-profiles/${id}`)
+  }
+
+  async update(id, data) {
+    return this.client.put(`/proxy-profiles/${id}`, data)
+  }
+
+  async delete(id) {
+    return this.client.delete(`/proxy-profiles/${id}`)
+  }
+
+  async start(id) {
+    return this.client.post(`/proxy-profiles/${id}/start`)
+  }
+}
+
 class TrafficAPI {
   constructor(client) {
     this.client = client;
@@ -342,50 +386,6 @@ class SettingsAPI {
 
   async updateSystemProxy(data) {
     return this.client.put('/settings/system-proxy', data)
-  }
-}
-
-class ProxyAPI {
-  constructor(client) {
-    this.client = client;
-  }
-
-  async status() {
-    return this.client.get('/proxy/status')
-  }
-
-  async stop() {
-    return this.client.post('/proxy/stop')
-  }
-}
-
-class ProxyProfilesAPI {
-  constructor(client) {
-    this.client = client;
-  }
-
-  async list() {
-    return this.client.get('/proxy-profiles')
-  }
-
-  async create(data) {
-    return this.client.post('/proxy-profiles', data)
-  }
-
-  async get(id) {
-    return this.client.get(`/proxy-profiles/${id}`)
-  }
-
-  async update(id, data) {
-    return this.client.put(`/proxy-profiles/${id}`, data)
-  }
-
-  async delete(id) {
-    return this.client.delete(`/proxy-profiles/${id}`)
-  }
-
-  async start(id) {
-    return this.client.post(`/proxy-profiles/${id}/start`)
   }
 }
 
@@ -573,7 +573,7 @@ function parseNumber(value) {
 
 function debounce(fn, delay) {
   let timer = null;
-  return function(...args) {
+  return function (...args) {
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => fn.apply(this, args), delay);
   }
@@ -581,7 +581,7 @@ function debounce(fn, delay) {
 
 function throttle(fn, delay) {
   let last = 0;
-  return function(...args) {
+  return function (...args) {
     const now = Date.now();
     if (now - last >= delay) {
       last = now;

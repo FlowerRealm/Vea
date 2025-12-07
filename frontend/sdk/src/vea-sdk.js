@@ -348,50 +348,6 @@ class TrafficAPI {
   }
 }
 
-class ProxyAPI {
-  constructor(client) {
-    this.client = client
-  }
-
-  async status() {
-    return this.client.get('/proxy/status')
-  }
-
-  async stop() {
-    return this.client.post('/proxy/stop')
-  }
-}
-
-class ProxyProfilesAPI {
-  constructor(client) {
-    this.client = client
-  }
-
-  async list() {
-    return this.client.get('/proxy-profiles')
-  }
-
-  async create(data) {
-    return this.client.post('/proxy-profiles', data)
-  }
-
-  async get(id) {
-    return this.client.get(`/proxy-profiles/${id}`)
-  }
-
-  async update(id, data) {
-    return this.client.put(`/proxy-profiles/${id}`, data)
-  }
-
-  async delete(id) {
-    return this.client.delete(`/proxy-profiles/${id}`)
-  }
-
-  async start(id) {
-    return this.client.post(`/proxy-profiles/${id}/start`)
-  }
-}
-
 class TrafficRulesAPI {
   constructor(client) {
     this.client = client
