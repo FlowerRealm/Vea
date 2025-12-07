@@ -161,6 +161,10 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Set version from input
+        working-directory: frontend
+        run: npm version ${{ github.event.inputs.version }} --no-git-tag-version --allow-same-version
+
       - name: Build Linux packages
         working-directory: frontend
         env:
@@ -229,6 +233,10 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Set version from input
+        working-directory: frontend
+        run: npm version ${{ github.event.inputs.version }} --no-git-tag-version --allow-same-version
+
       - name: Build macOS packages
         working-directory: frontend
         env:
@@ -292,6 +300,10 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
+
+      - name: Set version from input
+        working-directory: frontend
+        run: npm version ${{ github.event.inputs.version }} --no-git-tag-version --allow-same-version
 
       - name: Build Windows package
         working-directory: frontend
