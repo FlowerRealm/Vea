@@ -256,6 +256,96 @@
       flex-direction: column;
     }
 
+    /* Nodes panel: 固定头部 + 列表区滚动 */
+    #panel-nodes {
+      overflow: hidden;
+    }
+
+    #panel-nodes .nodes-table-card {
+      padding: 0;
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+    }
+
+    #panel-nodes #nodes-table thead th {
+      position: sticky;
+      top: 0;
+      background: var(--bg-card);
+      z-index: 1;
+    }
+
+    /* Logs panel: 固定工具栏 + 内容区滚动 */
+    #panel-logs {
+      overflow: hidden;
+    }
+
+    #panel-logs .panel-header {
+      margin-bottom: 24px;
+    }
+
+    #panel-logs .log-card {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .log-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .log-meta {
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+
+    .log-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .log-actions .log-autoscroll {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+      padding-left: 10px;
+      margin-left: 2px;
+      border-left: 1px solid var(--border-subtle);
+    }
+
+    .log-actions .log-label {
+      color: var(--text-secondary);
+      font-size: 12px;
+    }
+
+    .log-container {
+      flex: 1;
+      min-height: 0;
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 12px;
+      overflow: auto;
+    }
+
+    .log-container pre {
+      margin: 0;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.4;
+      white-space: pre;
+      color: var(--text-primary);
+    }
+
     @keyframes fadeUp {
       from {
         opacity: 0;
@@ -394,39 +484,21 @@
       color: var(--text-tertiary);
     }
 
-    /* === Current Node Pill === */
-    .current-node-pill {
-      margin-top: 32px;
-      background: var(--bg-card);
-      border: 1px solid var(--border-subtle);
-      padding: 10px 20px 10px 14px;
-      border-radius: 99px;
-      display: flex;
+    .route-selector {
+      margin-top: 12px;
+      display: inline-flex;
       align-items: center;
-      gap: 12px;
-      font-size: 14px;
+      gap: 8px;
+      font-size: 12px;
       color: var(--text-secondary);
-      transition: 0.2s;
-      cursor: default;
     }
 
-    .current-node-pill:hover {
-      border-color: var(--text-tertiary);
-      background: var(--bg-card-hover);
+    .route-selector select {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
       color: var(--text-primary);
-      transform: translateY(-1px);
-    }
-
-    .node-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--border-highlight);
-    }
-
-    .node-dot.active {
-      background: var(--success);
-      box-shadow: 0 0 10px rgba(39, 201, 63, 0.5);
+      padding: 6px 10px;
     }
 
     /* === Metrics Grid === */
@@ -500,70 +572,74 @@
       font-size: 13px;
     }
 
-    /* === Node Grid & Cards === */
+    /* === Node List === */
     .node-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
       padding-bottom: 24px;
     }
 
-    .node-card {
+    .node-row {
       background: rgba(255, 255, 255, 0.03);
       border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 16px;
-      padding: 20px;
-      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-      position: relative;
-      overflow: hidden;
-      cursor: pointer;
-      display: flex;
-      flex-direction: column;
+      border-radius: 12px;
+      padding: 12px 16px;
+      transition: all 0.2s ease;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
       gap: 16px;
+      cursor: pointer;
       backdrop-filter: blur(10px);
-      will-change: transform;
     }
 
-    .node-card:hover {
-      transform: translateY(-2px);
+    .node-row:hover {
       background: rgba(255, 255, 255, 0.05);
       border-color: rgba(255, 255, 255, 0.15);
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
     }
 
-    .node-card.active-node {
-      border-width: 2px;
-      border-color: var(--primary-color);
-      background: linear-gradient(145deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
-      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15), 0 0 20px rgba(255, 255, 255, 0.1);
-    }
+	    .node-row.active {
+	      background: rgba(255, 255, 255, 0.08);
+	      border-color: rgba(255, 255, 255, 0.35);
+	      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22), 0 8px 32px rgba(0, 0, 0, 0.4);
+	    }
 
-    .node-card-header {
+    .node-row-main {
       display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
     }
 
-    .node-info {
+    .node-row-title {
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 2px;
+      min-width: 0;
     }
 
-    .node-name {
-      font-size: 16px;
+    .node-row-name {
+      font-size: 14px;
       font-weight: 600;
       color: var(--text-primary);
       line-height: 1.4;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
-    .node-meta {
+    .node-row-meta {
       font-size: 12px;
       color: var(--text-tertiary);
       font-family: 'SF Mono', 'JetBrains Mono', monospace;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
-    .node-protocol-badge {
+    .node-row-protocol {
       font-size: 10px;
       padding: 2px 8px;
       border-radius: 12px;
@@ -573,13 +649,13 @@
       font-weight: 600;
       letter-spacing: 0.5px;
       border: 1px solid rgba(255, 255, 255, 0.1);
+      flex-shrink: 0;
     }
 
-    .node-metrics-row {
+    .node-row-metrics {
       display: flex;
-      gap: 16px;
-      padding-top: 12px;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      gap: 12px;
+      align-items: center;
     }
 
     .node-metric {
@@ -617,46 +693,6 @@
       color: #f87171;
     }
 
-    .node-actions-overlay {
-      position: absolute;
-      top: 16px;
-      right: 16px;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.2s;
-    }
-
-    .node-card:hover .node-actions-overlay {
-      opacity: 1;
-      pointer-events: auto;
-    }
-
-    .node-delete-btn {
-      background: rgba(239, 68, 68, 0.15);
-      color: #f87171;
-      border: none;
-      width: 32px;
-      height: 32px;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      transition: all 0.2s;
-      padding: 0;
-    }
-
-    .node-delete-btn svg {
-      width: 18px;
-      height: 18px;
-      stroke: currentColor;
-    }
-
-    .node-delete-btn:hover {
-      background: #ef4444;
-      color: white;
-      transform: scale(1.05);
-    }
 
     /* === Buttons & Inputs === */
     button {
@@ -682,16 +718,27 @@
       font-weight: 600;
     }
 
-    button.primary:hover {
-      background: #fff;
-      box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
-      transform: translateY(-1px);
-    }
+	    button.primary:hover {
+	      background: #fff;
+	      box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+	      transform: translateY(-1px);
+	    }
 
-    input,
-    select,
-    textarea {
-      background: rgba(0, 0, 0, 0.2);
+	    .mini-btn {
+	      padding: 6px 10px;
+	      font-size: 12px;
+	    }
+
+	    .mini-select {
+	      width: auto;
+	      padding: 6px 10px;
+	      font-size: 12px;
+	    }
+
+	    input,
+	    select,
+	    textarea {
+	      background: rgba(0, 0, 0, 0.2);
       border: 1px solid var(--border-subtle);
       color: var(--text-primary);
       padding: 12px 16px;
@@ -1095,6 +1142,465 @@
       scrollbar-width: thin;
       scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
     }
+
+    /* ===== Chain List Editor ===== */
+    .chain-list-container {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      padding: 24px 32px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .chain-list-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 24px;
+      gap: 24px;
+    }
+
+    .chain-list-title h3 {
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin: 0 0 4px 0;
+    }
+
+    .chain-list-title p {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin: 0;
+    }
+
+    .chain-list-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .chain-list-actions .route-selector {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .chain-list-actions .route-selector select {
+      padding: 6px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: var(--radius-sm);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-primary);
+      font-size: 13px;
+    }
+
+    /* 规则列表 */
+    .chain-rules-list {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding-bottom: 16px;
+    }
+
+    .chain-rules-empty {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--text-tertiary);
+      font-size: 14px;
+    }
+
+    /* 规则项 */
+    .chain-rule-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius-md);
+      transition: border-color 0.2s, box-shadow 0.2s, opacity 0.2s;
+      backdrop-filter: blur(10px);
+    }
+
+    .chain-rule-item:hover {
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .chain-rule-item.dragging {
+      opacity: 0.5;
+      border-color: var(--accent);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    }
+
+    .chain-rule-item.drag-over {
+      border-color: var(--accent);
+      background: rgba(59, 130, 246, 0.1);
+    }
+
+    .chain-rule-item.disabled {
+      opacity: 0.5;
+    }
+
+    .chain-rule-drag {
+      cursor: grab;
+      color: var(--text-tertiary);
+      font-size: 16px;
+      padding: 4px;
+      user-select: none;
+    }
+
+    .chain-rule-drag:active {
+      cursor: grabbing;
+    }
+
+    .chain-rule-main {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .chain-rule-target {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+    }
+
+    .chain-rule-target.direct { color: #4ade80; }
+    .chain-rule-target.block { color: #f87171; }
+
+    .chain-rule-info {
+      font-size: 12px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .chain-rule-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .chain-rule-actions {
+      display: flex;
+      gap: 4px;
+    }
+
+    .chain-rule-actions button {
+      width: 28px;
+      height: 28px;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 14px;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .chain-rule-actions button:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text-primary);
+    }
+
+    .chain-rule-actions button.delete:hover {
+      color: #f87171;
+    }
+
+    /* 工具栏 */
+    .chain-list-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      margin-top: 8px;
+    }
+
+    .chain-list-toolbar .toolbar-status {
+      font-size: 12px;
+      color: var(--text-tertiary);
+    }
+
+    .chain-list-toolbar .toolbar-status.dirty {
+      color: #fbbf24;
+    }
+
+    .toolbar-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    /* 按钮样式 */
+    .chain-btn {
+      padding: 8px 16px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: var(--radius-sm);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-primary);
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .chain-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .chain-btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+    }
+
+    .chain-btn.primary:hover {
+      background: #2563eb;
+      border-color: #2563eb;
+    }
+
+    .chain-btn.danger {
+      background: transparent;
+      border-color: #f87171;
+      color: #f87171;
+    }
+
+    .chain-btn.danger:hover {
+      background: #f87171;
+      color: white;
+    }
+
+    /* 规则编辑弹窗 */
+    .chain-rule-dialog {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.6);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .chain-rule-dialog.open {
+      display: flex;
+    }
+
+    .chain-rule-dialog-content {
+      background: var(--bg-card);
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+      width: 90%;
+      max-width: 500px;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .chain-rule-dialog-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 20px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .chain-rule-dialog-header h4 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .chain-rule-dialog-close {
+      width: 28px;
+      height: 28px;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 20px;
+      cursor: pointer;
+      border-radius: var(--radius-sm);
+    }
+
+    .chain-rule-dialog-close:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text-primary);
+    }
+
+    .chain-rule-dialog-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+    }
+
+    .chain-form-group {
+      margin-bottom: 16px;
+    }
+
+    .chain-form-group label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+
+    .chain-form-group input,
+    .chain-form-group select,
+    .chain-form-group textarea {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: var(--radius-sm);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-primary);
+      font-size: 13px;
+      box-sizing: border-box;
+    }
+
+    .chain-form-group textarea {
+      resize: vertical;
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+
+    .rule-chain-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .rule-chain-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .rule-chain-item select {
+      flex: 1;
+    }
+
+    .rule-chain-item button {
+      width: 28px;
+      height: 28px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+
+    .rule-chain-item button:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+      color: var(--text-primary);
+    }
+
+    .rule-chain-item button.danger {
+      background: transparent;
+      border-color: #f87171;
+      color: #f87171;
+    }
+
+    .rule-chain-item button.danger:hover {
+      background: #f87171;
+      color: white;
+    }
+
+    .rule-chain-hint {
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--text-tertiary);
+      line-height: 1.4;
+    }
+
+    .chain-route-section {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .chain-section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 12px;
+    }
+
+    .rule-template-picker {
+      display: flex;
+      gap: 8px;
+    }
+
+    .rule-template-picker select {
+      flex: 1;
+    }
+
+    .chain-rule-dialog-footer {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 16px 20px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    /* Toggle switch */
+    .chain-toggle {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 22px;
+    }
+
+    .chain-toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .chain-toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 22px;
+      transition: 0.2s;
+    }
+
+    .chain-toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 3px;
+      bottom: 3px;
+      background: white;
+      border-radius: 50%;
+      transition: 0.2s;
+    }
+
+    .chain-toggle input:checked + .chain-toggle-slider {
+      background: var(--accent);
+    }
+
+    .chain-toggle input:checked + .chain-toggle-slider:before {
+      transform: translateX(18px);
+    }
   </style>
 </head>
 
@@ -1128,27 +1634,31 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
         <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
       </svg>
-      Nodes
-    </button>
-    <button class="nav-item" data-target="panel2">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-        <polyline points="14 2 14 8 20 8"></polyline>
-        <line x1="16" y1="13" x2="8" y2="13"></line>
-        <line x1="16" y1="17" x2="8" y2="17"></line>
-        <polyline points="10 9 9 9 8 9"></polyline>
-      </svg>
-      Subscriptions
-    </button>
+	      FRouter
+	    </button>
+	    <button class="nav-item" data-target="panel2">
+	      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+	        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+	        <polyline points="14 2 14 8 20 8"></polyline>
+	        <line x1="16" y1="13" x2="8" y2="13"></line>
+	        <line x1="16" y1="17" x2="8" y2="17"></line>
+	        <polyline points="10 9 9 9 8 9"></polyline>
+	      </svg>
+	      Subscriptions
+	    </button>
+	    <button class="nav-item" data-target="panel-nodes">
+	      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+	        <circle cx="12" cy="12" r="3"></circle>
+	        <path d="M12 5v4"></path>
+	        <path d="M12 15v4"></path>
+	        <path d="M5 12h4"></path>
+	        <path d="M15 12h4"></path>
+	      </svg>
+	      节点
+	    </button>
 
-    <div class="sidebar-section-title" style="margin-top: 24px;">系统</div>
-    <button class="nav-item" data-target="panel4">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-      </svg>
-      Traffic Rules
-    </button>
-    <button class="nav-item" data-target="panel3">
+	    <div class="sidebar-section-title" style="margin-top: 24px;">系统</div>
+	    <button class="nav-item" data-target="panel3">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
         <path
           d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
@@ -1156,12 +1666,20 @@
         <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
         <line x1="12" y1="22.08" x2="12" y2="12"></line>
       </svg>
-      Components
-    </button>
-    <div style="flex:1"></div>
-    <button class="nav-item" data-target="panel-settings">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="3"></circle>
+	      Components
+	    </button>
+
+	    <button class="nav-item" data-target="panel-logs">
+	      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+	        <polyline points="4 17 10 11 4 5"></polyline>
+	        <line x1="12" y1="19" x2="20" y2="19"></line>
+	      </svg>
+	      日志
+	    </button>
+
+	    <button class="nav-item" data-target="panel-settings">
+	      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+	        <circle cx="12" cy="12" r="3"></circle>
         <path
           d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
         </path>
@@ -1187,15 +1705,6 @@
             </svg>
           </button>
         </div>
-        <div class="hero-status-text">
-          <div id="proxy-status">已停止</div>
-          <div id="proxy-status-desc">点击启动代理即可启动核心并切换系统代理</div>
-        </div>
-        <div class="current-node-pill">
-          <div class="node-dot"></div>
-          <span id="home-node-name">选择节点</span>
-          <span id="home-node-address" style="display:none; opacity:0.5; font-size:12px;"></span>
-        </div>
       </div>
 
       <div class="metrics-grid">
@@ -1216,21 +1725,9 @@
               <polyline points="7 23 3 19 7 15"></polyline>
               <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
             </svg>
-            Bandwidth
+            Speed
           </div>
           <div class="metric-value" id="home-node-speed">--</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">
-            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="2" y1="12" x2="22" y2="12"></line>
-              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">
-              </path>
-            </svg>
-            Protocol
-          </div>
-          <div class="metric-value" id="home-node-protocol">--</div>
         </div>
         <div class="metric-card" id="tun-status-card">
           <div class="metric-label">
@@ -1274,19 +1771,136 @@
       </div>
     </section>
 
-    <!-- Nodes -->
-    <section id="panel1" class="panel">
-      <div class="panel-header">
-        <div class="panel-title">
-          <h2>节点</h2>
-          <p>管理和监控< your network endpoints.</p>
+    <!-- Chain Editor (Route Rules List) -->
+    <section id="panel-chain" class="panel">
+      <div class="chain-list-container">
+        <!-- 头部 -->
+        <div class="chain-list-header">
+          <div class="chain-list-title">
+            <h3>路由规则</h3>
+            <p>拖拽调整优先级，位置越靠前优先级越高</p>
+          </div>
+          <div class="chain-list-actions">
+            <div class="route-selector">
+              <span>当前 FRouter</span>
+              <select id="chain-route-select"></select>
+            </div>
+            <button id="chain-add-rule" class="chain-btn primary">+ 添加规则</button>
+          </div>
         </div>
-        <div class="panel-actions">
-          <span id="xray-state" style="font-size:12px; color:var(--text-secondary); margin-right:16px;">Core:
-            Unknown</span>
-          <button id="node-refresh">刷新</button>
+
+        <!-- 可排序规则列表 -->
+        <div id="chain-rules-list" class="chain-rules-list">
+          <div class="chain-rules-empty">暂无路由规则，点击"添加规则"创建</div>
+        </div>
+
+        <!-- 工具栏 -->
+        <div class="chain-list-toolbar">
+          <span class="toolbar-status" id="chain-status">已保存</span>
+          <div class="toolbar-actions">
+            <button class="chain-btn" id="chain-back">返回</button>
+            <button class="chain-btn" id="chain-reset">重置</button>
+            <button class="chain-btn primary" id="chain-save">保存</button>
+          </div>
         </div>
       </div>
+
+      <!-- 规则编辑弹窗 -->
+      <div class="chain-rule-dialog" id="rule-edit-dialog">
+        <div class="chain-rule-dialog-content">
+          <div class="chain-rule-dialog-header">
+            <h4 id="rule-dialog-title">编辑规则</h4>
+            <button class="chain-rule-dialog-close" id="rule-dialog-close">&times;</button>
+          </div>
+
+          <div class="chain-rule-dialog-body">
+            <div class="chain-form-group">
+              <label>规则类型</label>
+              <select id="rule-type">
+                <option value="">无条件（默认路径）</option>
+                <option value="route">路由规则</option>
+              </select>
+            </div>
+
+            <!-- 路由规则区域 -->
+            <div id="rule-route-section" class="chain-route-section" style="display:none;">
+              <div class="chain-section-title">路由规则</div>
+
+              <!-- 模板选择器 -->
+              <div class="chain-form-group">
+                <label>快速应用模板</label>
+                <div class="rule-template-picker">
+                  <select id="rule-template-category">
+                    <option value="all">全部分类</option>
+                  </select>
+                  <select id="rule-template-select">
+                    <option value="">选择模板...</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="chain-form-group">
+                <label>匹配域名</label>
+                <textarea id="rule-domains" rows="5" placeholder="每行一个，支持 geosite:cn、domain:example.com 等格式"></textarea>
+              </div>
+              <div class="chain-form-group">
+                <label>匹配 IP</label>
+                <textarea id="rule-ips" rows="5" placeholder="每行一个，支持 geoip:cn、192.168.0.0/16 等格式"></textarea>
+              </div>
+            </div>
+
+            <div class="chain-form-group">
+              <label>匹配后去向</label>
+              <select id="rule-to">
+                <option value="direct">不代理（直连）</option>
+                <option value="block">阻断</option>
+              </select>
+            </div>
+
+            <div class="chain-form-group" id="rule-chain-group" style="display:none;">
+              <label>链式代理（后续节点）</label>
+              <div id="rule-chain-list" class="rule-chain-list"></div>
+              <button class="chain-btn" id="rule-chain-add" type="button">+ 添加节点</button>
+              <div class="rule-chain-hint">第一跳在“匹配后去向”里选择，这里从第 2 跳开始添加。</div>
+            </div>
+
+            <div class="chain-form-group">
+              <label>启用</label>
+              <label class="chain-toggle">
+                <input type="checkbox" id="rule-enabled" checked>
+                <span class="chain-toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="chain-form-group">
+              <label>描述</label>
+              <input type="text" id="rule-description" placeholder="可选：规则描述">
+            </div>
+          </div>
+
+          <div class="chain-rule-dialog-footer">
+            <button class="chain-btn danger" id="rule-delete" style="display:none;">删除</button>
+            <div style="flex:1;"></div>
+            <button class="chain-btn" id="rule-cancel">取消</button>
+            <button class="chain-btn primary" id="rule-save">保存</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+	    <!-- FRouters -->
+	    <section id="panel1" class="panel">
+	      <div class="panel-header">
+	        <div class="panel-title">
+	          <h2>FRouter</h2>
+	          <p>管理和监控你的 FRouter 配置。</p>
+	        </div>
+	        <div class="panel-actions">
+          <span id="xray-state" style="font-size:12px; color:var(--text-secondary); margin-right:16px;">Core:
+            Unknown</span>
+	          <button id="node-refresh">刷新 FRouter</button>
+	        </div>
+	      </div>
 
       <div class="node-toolbar">
         <div id="node-tabs" class="node-tabs"></div>
@@ -1294,45 +1908,78 @@
         <button id="node-bulk-speed">全部测速</button>
         <button class="add-node-button" id="node-add-button">+</button>
       </div>
-      <div id="node-grid" class="node-grid">
-        <div class="card" style="text-align:center; color:var(--text-secondary);">暂无节点</div>
-      </div>
-    </section>
+	      <div id="node-grid" class="node-grid">
+	        <div class="card" style="text-align:center; color:var(--text-secondary);">暂无 FRouter</div>
+	      </div>
+	    </section>
 
     <!-- Configs -->
-    <section id="panel2" class="panel">
-      <div class="panel-header">
-        <div class="panel-title">
-          <h2>订阅</h2>
-          <p>Manage subscription sources and update intervals.</p>
-        </div>
-        <div class="panel-actions">
-          <button id="config-add-button" class="primary">添加订阅源</button>
-          <button id="config-refresh">同步</button>
-        </div>
-      </div>
-      <div class="card" style="padding:0;">
-        <table id="config-table">
-          <thead>
-            <tr>
-              <th>名称</th>
-              <th>格式</th>
-              <th>更新间隔</th>
-              <th>最后同步</th>
-              <th>状态</th>
-              <th style="text-align:right">操作</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </section>
+	    <section id="panel2" class="panel">
+	      <div class="panel-header">
+	        <div class="panel-title">
+	          <h2>订阅</h2>
+	          <p>Manage subscription sources and update intervals.</p>
+	        </div>
+	        <div class="panel-actions">
+	          <button id="config-add-button" class="primary">添加订阅源</button>
+	          <button id="config-refresh">同步</button>
+	        </div>
+	      </div>
+	      <div class="card" style="padding:0;">
+	        <table id="config-table">
+	          <thead>
+	            <tr>
+	              <th>名称</th>
+	              <th>格式</th>
+	              <th>更新间隔</th>
+	              <th>最后同步</th>
+	              <th>状态</th>
+	              <th style="text-align:right">操作</th>
+	            </tr>
+	          </thead>
+	          <tbody></tbody>
+	        </table>
+	      </div>
+	    </section>
 
-    <!-- Components -->
-    <section id="panel3" class="panel">
-      <div class="panel-header">
-        <div class="panel-title">
-          <h2>组件</h2>
+	    <!-- Nodes -->
+	    <section id="panel-nodes" class="panel">
+	      <div class="panel-header">
+	        <div class="panel-title">
+	          <h2>节点</h2>
+	          <p>查看与测量全局节点（独立于 FRouter）。</p>
+	        </div>
+	        <div class="panel-actions">
+	          <button id="nodes-bulk-ping">全部测延迟</button>
+	          <button id="nodes-bulk-speed">全部测速</button>
+	        </div>
+	      </div>
+	      <div class="card nodes-table-card">
+	        <table id="nodes-table">
+	          <thead>
+	            <tr>
+	              <th>名称</th>
+	              <th>协议</th>
+	              <th>地址</th>
+	              <th>延迟</th>
+	              <th>速度</th>
+	              <th style="text-align:right">操作</th>
+	            </tr>
+	          </thead>
+	          <tbody>
+	            <tr>
+	              <td colspan="6" style="text-align:center; color:var(--text-secondary); padding:24px;">暂无节点</td>
+	            </tr>
+	          </tbody>
+	        </table>
+	      </div>
+	    </section>
+
+	    <!-- Components -->
+	    <section id="panel3" class="panel">
+	      <div class="panel-header">
+	        <div class="panel-title">
+	          <h2>组件</h2>
           <p>Core system dependencies and versions.</p>
         </div>
         <div class="panel-actions">
@@ -1357,61 +2004,32 @@
       </div>
     </section>
 
-    <!-- Traffic -->
-    <section id="panel4" class="panel">
-      <div class="panel-header" style="margin-bottom: 24px;">
+    <!-- Logs -->
+    <section id="panel-logs" class="panel">
+      <div class="panel-header">
         <div class="panel-title">
-          <h2>流量规则</h2>
-          <p>Configure routing policies and DNS settings.</p>
-        </div>
-        <div class="panel-actions">
-          <button id="traffic-refresh">Reload Rules</button>
+          <h2>日志</h2>
+          <p>内核（Xray / sing-box）运行日志（独立于终端输出）。</p>
         </div>
       </div>
 
-      <div class="node-toolbar" style="margin-bottom: 24px;">
-        <div class="node-tabs" id="traffic-tabs">
-          <div class="node-tab active" data-tab="global">Global Settings</div>
-          <div class="node-tab" data-tab="rules">Routing Rules</div>
+      <div class="card log-card">
+        <div class="log-toolbar">
+          <div class="log-meta" id="kernel-log-meta">-</div>
+          <div class="log-actions">
+            <button class="mini-btn" id="kernel-log-refresh">刷新</button>
+            <button class="mini-btn" id="kernel-log-copy">复制</button>
+            <div class="log-autoscroll">
+              <span class="log-label">自动滚动</span>
+              <label class="chain-toggle">
+                <input type="checkbox" id="kernel-log-autoscroll" checked>
+                <span class="chain-toggle-slider"></span>
+              </label>
+            </div>
+          </div>
         </div>
-      </div>
-
-      <div id="traffic-content-global">
-        <form id="profile-form" class="card form-grid">
-          <h3 style="grid-column:1/-1; font-size:14px; color:var(--text-primary);">Global Policy</h3>
-          <label><span>Default Exit Node</span><input name="defaultNodeId" type="text" placeholder="UUID"></label>
-          <label><span>DNS Strategy</span>
-            <select name="dnsStrategy">
-              <option value="">自动</option>
-              <option value="ipv4_only">IPv4 Only</option>
-              <option value="ipv6_only">IPv6 Only</option>
-            </select>
-          </label>
-          <label style="grid-column:1/-1"><span>DNS Servers</span><textarea name="dnsServers"
-              placeholder="8.8.8.8"></textarea></label>
-          <div class="form-actions"><button type="submit" class="primary">Apply Policy</button></div>
-        </form>
-      </div>
-
-      <div id="traffic-content-rules" style="display: none;">
-        <div style="margin-bottom: 16px; display: flex; justify-content: flex-end;">
-          <button id="rule-add-button" class="primary">Add Rule</button>
-        </div>
-
-        <div class="card" style="padding:0;">
-          <table id="rule-table">
-            <thead>
-              <tr>
-                <th>名称</th>
-                <th>Exit</th>
-                <th>Match</th>
-                <th>Priority</th>
-                <th>Updated</th>
-                <th style="text-align:right">操作</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+        <div class="log-container" id="kernel-log-container">
+          <pre id="kernel-log-content"></pre>
         </div>
       </div>
     </section>
@@ -1509,6 +2127,7 @@
       </div>
     </section>
   </main>
+
   <div id="node-modal" class="modal">
     <div class="modal-backdrop"></div>
     <div class="modal-content"
@@ -1517,27 +2136,25 @@
         style="position:absolute; top:24px; right:24px; background:none; border:none; color:var(--text-secondary); font-size:20px; cursor:pointer;">×</button>
       <form id="node-form" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; padding:0 24px;">
         <h3 style="grid-column:1/-1; margin:0 0 16px 0; font-size:18px; font-weight:600; color:var(--text-primary);">
-          添加节点</h3>
+          添加 FRouter</h3>
 
-        <!-- Import Link Section -->
         <div
-          style="grid-column:1/-1; padding:16px; background:var(--bg-secondary); border-radius:8px; margin-bottom:8px;">
-          <label style="display:block; margin:0;"><span style="font-weight:500;">导入链接</span><input name="shareLink"
-              type="text" placeholder="支持 vmess://, ss://, vless://, trojan:// 等分享链接" style="margin-top:8px;"></label>
-          <div style="text-align:center; font-size:11px; color:var(--text-tertiary); margin-top:8px;">
-            导入链接后，下方配置将被自动填充</div>
+          style="grid-column:1/-1; padding:16px; background:var(--bg-secondary); border-radius:8px; margin-bottom:8px; font-size:12px; color:var(--text-secondary); line-height:1.6;">
+          这里只创建一个空的 FRouter（含 1 个配置槽）。节点/订阅请在「订阅」面板里拉取或更新。
         </div>
 
         <!-- Basic Settings -->
         <div
-          style="grid-column:1/-1; font-weight:600; font-size:13px; color:var(--text-primary); margin-top:8px; padding-bottom:6px; border-bottom:1px solid var(--border-color);">
-          ✦ 基本配置</div>
-        <label><span>节点名称 *</span><input name="name" type="text" placeholder="香港节点01" required></label>
-        <label><span>服务器地址 *</span><input name="address" type="text" placeholder="example.com" required></label>
-        <label><span>端口 *</span><input name="port" type="number" placeholder="443" required></label>
+          style="display:none; grid-column:1/-1; font-weight:600; font-size:13px; color:var(--text-primary); margin-top:8px; padding-bottom:6px; border-bottom:1px solid var(--border-color);">
+          ✦ 入口配置</div>
+        <label style="grid-column:1/-1;"><span>FRouter 名称 *</span><input name="name" type="text"
+            placeholder="香港线路01" required></label>
+        <div style="display:none">
+        <label><span>入口地址</span><input name="address" type="text" placeholder="example.com"></label>
+        <label><span>入口端口</span><input name="port" type="number" placeholder="443"></label>
         <label style="grid-column:1/-1;">
-          <span>协议 *</span>
-          <select name="protocol" id="protocol-select" required>
+          <span>协议</span>
+          <select name="protocol" id="protocol-select">
             <option value="">-- 选择协议 --</option>
             <option value="shadowsocks">Shadowsocks</option>
             <option value="vmess">VMess</option>
@@ -1680,21 +2297,20 @@
             </select>
           </label>
         </div>
+        </div>
 
         <!-- Other Settings -->
         <div
-          style="grid-column:1/-1; font-weight:600; font-size:13px; color:var(--text-primary); margin-top:8px; padding-bottom:6px; border-bottom:1px solid var(--border-color);">
+          style="display:none; grid-column:1/-1; font-weight:600; font-size:13px; color:var(--text-primary); margin-top:8px; padding-bottom:6px; border-bottom:1px solid var(--border-color);">
           ✦ 其他选项</div>
-        <label style="grid-column:1/3;"><span>标签</span><input name="tags" type="text"
+        <label style="grid-column:1/-1;"><span>FRouter 标签</span><input name="tags" type="text"
             placeholder="香港, IPLC, 游戏"></label>
-        <label style="grid-column:1/-1;"><span>备注</span><textarea name="remarks" rows="2" placeholder="可选备注信息"
-            style="resize:vertical;"></textarea></label>
 
         <div class="form-actions"
-          style="grid-column:1/-1; margin-top:8px; padding-top:16px; border-top:1px solid var(--border-color);">
-          <button type="button" id="node-modal-reset">重置</button>
-          <button type="submit" class="primary">保存节点</button>
-        </div>
+	          style="grid-column:1/-1; margin-top:8px; padding-top:16px; border-top:1px solid var(--border-color);">
+	          <button type="button" id="node-modal-reset">重置</button>
+			          <button type="submit" class="primary">创建 FRouter</button>
+		        </div>
       </form>
     </div>
   </div>
@@ -1721,27 +2337,9 @@
     </div>
   </div>
 
-  <div id="rule-modal" class="modal">
-    <div class="modal-backdrop"></div>
-    <div class="modal-content">
-      <button id="rule-modal-close" class="modal-close"
-        style="position:absolute; top:24px; right:24px; background:none; border:none; color:var(--text-secondary); font-size:20px; cursor:pointer;">×</button>
-      <form id="rule-form" class="form-grid">
-        <h3 style="grid-column:1/-1; margin-bottom:16px; font-size:18px; font-weight:600; color:var(--text-primary);">
-          Add Routing Rule</h3>
-        <label><span>Rule Name</span><input name="name" type="text" required></label>
-        <label><span>Priority</span><input name="priority" type="number" value="10"></label>
-        <label style="grid-column:1/-1"><span>Targets (Domain/IP)</span><textarea name="targets" required
-            placeholder="domain.com"></textarea></label>
-        <label style="grid-column:1/-1"><span>Exit Node ID</span><input name="nodeId" type="text" required></label>
-        <div class="form-actions">
-          <button type="button" id="rule-modal-reset">Reset</button>
-          <button type="submit" class="primary">Add Rule</button>
-        </div>
-      </form>
-    </div>
-  </div>
   <script src="../settings-schema.js"></script>
+  <!-- Rule Templates (保留) -->
+  <script src="../chain-editor/rule-templates.js"></script>
   <script type="module">
     import { createAPI, utils } from '../sdk/dist/vea-sdk.esm.js';
     const { formatTime, formatBytes, formatInterval, escapeHtml, parseNumber, parseList, sleep } = utils;
@@ -1753,7 +2351,7 @@
       let currentPanel = "panel-home";
       let statusTimer = null;
 
-      const api = createAPI('');
+      const api = createAPI('http://127.0.0.1:19080');
 
       function showStatus(message, type = "info", delay = 3200) {
         if (!message) {
@@ -1779,57 +2377,629 @@
         enabled: false,
         ignoreHosts: [...SYSTEM_PROXY_DEFAULTS],
       };
-      const HOME_PING_COOLDOWN = 60000;
-      const HOME_SPEEDTEST_COOLDOWN = 60000;
-      const homePingState = {
-        running: false,
-        lastNodeId: "",
-        lastTriggeredAt: 0,
-      };
-      const homeSpeedtestState = {
-        running: false,
-        lastNodeId: "",
-        lastTriggeredAt: 0,
-      };
-      let nodeTags = [];
-      let currentNodeTab = "全部";
+      let frouterTags = [];
+      let currentFRouterTab = "全部";
 
       let xrayStatus = {
         enabled: false,
         running: false,
-        activeNodeId: "",
         binary: "",
       };
-      let nodesCache = [];
-      let componentsCache = [];
-      let lastSelectedNodeId = "";
-      let preferredNodeId = "";
-      let nodesPollHandle = null;
-      const NODES_POLL_INTERVAL = 1000;
+	      let froutersCache = [];
+	      let nodesCache = [];
+	      let currentFRouterId = "";
+	      let componentsCache = [];
+	      let froutersPollHandle = null;
+	      let nodesPollHandle = null;
+	      let kernelLogsPollHandle = null;
+	      let kernelLogOffset = 0;
+	      let kernelLogSession = 0;
+	      let kernelLogStartedAt = "";
+	      const ANSI_ESC = "\x1b";
+	      const ANSI_ESC_SYMBOL = "␛";
+	      let kernelLogAnsiState = createAnsiState();
+	      let kernelLogAnsiCarry = "";
+	      let kernelLogAutoScroll = true;
+	      let kernelLogsPanelInitialized = false;
+	      let nodesLoadInFlight = false;
+		      let homeAutoTestInFlight = false;
+		      let applyFRouterInFlight = false;
+		      let applyFRouterPendingId = "";
+		      const FROUTERS_POLL_INTERVAL = 1000;
+		      const NODES_POLL_INTERVAL = 100; // 0.1s
+		      const KERNEL_LOGS_POLL_INTERVAL = 800;
+		      const FROUTER_STORAGE_KEY = "vea_selected_frouter_id";
 
-      function ensureNodesPolling() {
-        if (nodesPollHandle) {
+	      function createAnsiState() {
+	        return {
+	          fg: null,
+	          bg: null,
+	          bold: false,
+	          italic: false,
+	          underline: false,
+	        };
+	      }
+
+	      function resetKernelLogRender(pre) {
+	        kernelLogAnsiState = createAnsiState();
+	        kernelLogAnsiCarry = "";
+	        if (pre) pre.innerHTML = "";
+	      }
+
+	      function clampByte(value) {
+	        const n = Number(value);
+	        if (!Number.isFinite(n)) return 0;
+	        if (n < 0) return 0;
+	        if (n > 255) return 255;
+	        return Math.floor(n);
+	      }
+
+	      function xterm256ToCss(n) {
+	        const code = Number(n);
+	        if (!Number.isFinite(code)) return null;
+	        const idx = Math.max(0, Math.min(255, Math.floor(code)));
+
+	        const base16 = [
+	          [0, 0, 0],
+	          [205, 0, 0],
+	          [0, 205, 0],
+	          [205, 205, 0],
+	          [0, 0, 238],
+	          [205, 0, 205],
+	          [0, 205, 205],
+	          [229, 229, 229],
+	          [127, 127, 127],
+	          [255, 0, 0],
+	          [0, 255, 0],
+	          [255, 255, 0],
+	          [92, 92, 255],
+	          [255, 0, 255],
+	          [0, 255, 255],
+	          [255, 255, 255],
+	        ];
+
+	        let rgb = null;
+	        if (idx < 16) {
+	          rgb = base16[idx];
+	        } else if (idx <= 231) {
+	          const c = idx - 16;
+	          const r = Math.floor(c / 36);
+	          const g = Math.floor((c % 36) / 6);
+	          const b = c % 6;
+	          const steps = [0, 95, 135, 175, 215, 255];
+	          rgb = [steps[r], steps[g], steps[b]];
+	        } else {
+	          const v = 8 + (idx - 232) * 10;
+	          rgb = [v, v, v];
+	        }
+	        return `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+	      }
+
+	      function ansiStateToStyle(state) {
+	        if (!state) return "";
+	        let style = "";
+	        if (state.fg) style += `color:${state.fg};`;
+	        if (state.bg) style += `background-color:${state.bg};`;
+	        if (state.bold) style += "font-weight:600;";
+	        if (state.italic) style += "font-style:italic;";
+	        if (state.underline) style += "text-decoration:underline;";
+	        return style;
+	      }
+
+	      function wrapAnsiHtml(escapedText, state) {
+	        if (!escapedText) return "";
+	        const style = ansiStateToStyle(state);
+	        if (!style) return escapedText;
+	        return `<span style="${style}">${escapedText}</span>`;
+	      }
+
+	      function applySgrSequence(params, state) {
+	        const parts = params ? params.split(";") : ["0"];
+	        let i = 0;
+	        while (i < parts.length) {
+	          const raw = parts[i];
+	          const code = raw === "" ? 0 : Number(raw);
+	          if (!Number.isFinite(code)) {
+	            i += 1;
+	            continue;
+	          }
+
+	          if (code === 0) {
+	            state.fg = null;
+	            state.bg = null;
+	            state.bold = false;
+	            state.italic = false;
+	            state.underline = false;
+	            i += 1;
+	            continue;
+	          }
+
+	          if (code === 1) {
+	            state.bold = true;
+	            i += 1;
+	            continue;
+	          }
+	          if (code === 22) {
+	            state.bold = false;
+	            i += 1;
+	            continue;
+	          }
+	          if (code === 3) {
+	            state.italic = true;
+	            i += 1;
+	            continue;
+	          }
+	          if (code === 23) {
+	            state.italic = false;
+	            i += 1;
+	            continue;
+	          }
+	          if (code === 4) {
+	            state.underline = true;
+	            i += 1;
+	            continue;
+	          }
+	          if (code === 24) {
+	            state.underline = false;
+	            i += 1;
+	            continue;
+	          }
+	          if (code === 39) {
+	            state.fg = null;
+	            i += 1;
+	            continue;
+	          }
+	          if (code === 49) {
+	            state.bg = null;
+	            i += 1;
+	            continue;
+	          }
+
+	          if (code >= 30 && code <= 37) {
+	            state.fg = xterm256ToCss(code - 30);
+	            i += 1;
+	            continue;
+	          }
+	          if (code >= 90 && code <= 97) {
+	            state.fg = xterm256ToCss(8 + (code - 90));
+	            i += 1;
+	            continue;
+	          }
+	          if (code >= 40 && code <= 47) {
+	            state.bg = xterm256ToCss(code - 40);
+	            i += 1;
+	            continue;
+	          }
+	          if (code >= 100 && code <= 107) {
+	            state.bg = xterm256ToCss(8 + (code - 100));
+	            i += 1;
+	            continue;
+	          }
+
+	          if (code === 38 || code === 48) {
+	            const isFg = code === 38;
+	            const mode = Number(parts[i + 1]);
+	            if (mode === 5) {
+	              const css = xterm256ToCss(parts[i + 2]);
+	              if (css) {
+	                if (isFg) state.fg = css;
+	                else state.bg = css;
+	              }
+	              i += 3;
+	              continue;
+	            }
+	            if (mode === 2) {
+	              const r = clampByte(parts[i + 2]);
+	              const g = clampByte(parts[i + 3]);
+	              const b = clampByte(parts[i + 4]);
+	              const css = `rgb(${r},${g},${b})`;
+	              if (isFg) state.fg = css;
+	              else state.bg = css;
+	              i += 5;
+	              continue;
+	            }
+	          }
+
+	          i += 1;
+	        }
+	      }
+
+	      function ansiToHtmlChunk(text, state) {
+	        const src = String(text || "");
+	        let out = "";
+	        let segStart = 0;
+	        let i = 0;
+
+	        while (i < src.length) {
+	          const ch = src[i];
+	          if (ch !== ANSI_ESC && ch !== ANSI_ESC_SYMBOL) {
+	            i += 1;
+	            continue;
+	          }
+
+	          if (i > segStart) {
+	            out += wrapAnsiHtml(escapeHtml(src.slice(segStart, i)), state);
+	          }
+
+	          if (i + 1 >= src.length) {
+	            return { html: out, carry: src.slice(i) };
+	          }
+	          if (src[i + 1] !== "[") {
+	            i += 1;
+	            segStart = i;
+	            continue;
+	          }
+
+	          let j = i + 2;
+	          while (j < src.length) {
+	            const c = src[j];
+	            if (c >= "@" && c <= "~") break;
+	            j += 1;
+	          }
+	          if (j >= src.length) {
+	            return { html: out, carry: src.slice(i) };
+	          }
+
+	          const final = src[j];
+	          const params = src.slice(i + 2, j);
+	          if (final === "m") {
+	            applySgrSequence(params, state);
+	          }
+	          i = j + 1;
+	          segStart = i;
+	        }
+
+	        if (segStart < src.length) {
+	          out += wrapAnsiHtml(escapeHtml(src.slice(segStart)), state);
+	        }
+	        return { html: out, carry: "" };
+	      }
+
+	      function appendKernelLogChunk(pre, chunk) {
+	        if (!pre || !chunk) return;
+	        const { html, carry } = ansiToHtmlChunk(kernelLogAnsiCarry + chunk, kernelLogAnsiState);
+	        kernelLogAnsiCarry = carry || "";
+	        if (html) {
+	          pre.insertAdjacentHTML("beforeend", html);
+	        }
+	      }
+
+	      function ensureFRoutersPolling() {
+	        if (froutersPollHandle) {
+	          return;
+	        }
+	        froutersPollHandle = setInterval(() => {
+	          loadFRouters();
+	        }, FROUTERS_POLL_INTERVAL);
+	      }
+
+	      function startNodesPolling() {
+	        if (nodesPollHandle) {
+	          return;
+	        }
+	        nodesPollHandle = setInterval(() => {
+	          if (currentPanel === "panel-nodes") {
+	            loadNodes();
+	          }
+	        }, NODES_POLL_INTERVAL);
+	      }
+
+	      function stopNodesPolling() {
+	        if (!nodesPollHandle) {
+	          return;
+	        }
+	        clearInterval(nodesPollHandle);
+	        nodesPollHandle = null;
+	      }
+
+	      function ensureKernelLogsPanel() {
+	        if (kernelLogsPanelInitialized) {
+	          return;
+	        }
+	        kernelLogsPanelInitialized = true;
+
+	        const refreshBtn = document.getElementById("kernel-log-refresh");
+	        const copyBtn = document.getElementById("kernel-log-copy");
+	        const autoScrollToggle = document.getElementById("kernel-log-autoscroll");
+	        const logContainer = document.getElementById("kernel-log-container");
+
+	        if (autoScrollToggle) {
+	          kernelLogAutoScroll = Boolean(autoScrollToggle.checked);
+	          autoScrollToggle.addEventListener("change", (e) => {
+	            kernelLogAutoScroll = Boolean(e.target.checked);
+	            if (kernelLogAutoScroll && logContainer) {
+	              logContainer.scrollTop = logContainer.scrollHeight;
+	            }
+	          });
+	        }
+
+	        if (refreshBtn) {
+	          refreshBtn.addEventListener("click", async () => {
+	            kernelLogOffset = 0;
+	            kernelLogSession = 0;
+	            kernelLogStartedAt = "";
+	            const pre = document.getElementById("kernel-log-content");
+	            resetKernelLogRender(pre);
+	            await loadKernelLogs();
+	          });
+	        }
+
+	        if (copyBtn) {
+	          copyBtn.addEventListener("click", async () => {
+	            const pre = document.getElementById("kernel-log-content");
+	            const text = pre ? pre.textContent : "";
+	            if (!text) {
+	              showStatus("暂无可复制内容", "info", 1500);
+	              return;
+	            }
+	            try {
+	              await navigator.clipboard.writeText(text);
+	              showStatus("日志已复制到剪贴板", "success", 1600);
+	            } catch (err) {
+	              showStatus(`复制失败：${err.message}`, "error", 3000);
+	            }
+	          });
+	        }
+	      }
+
+	      function startKernelLogsPolling() {
+	        if (kernelLogsPollHandle) {
+	          return;
+	        }
+	        kernelLogsPollHandle = setInterval(() => {
+	          if (currentPanel === "panel-logs") {
+	            loadKernelLogs();
+	          }
+	        }, KERNEL_LOGS_POLL_INTERVAL);
+	      }
+
+	      function stopKernelLogsPolling() {
+	        if (!kernelLogsPollHandle) {
+	          return;
+	        }
+	        clearInterval(kernelLogsPollHandle);
+	        kernelLogsPollHandle = null;
+	      }
+
+	      async function loadKernelLogs() {
+	        const metaEl = document.getElementById("kernel-log-meta");
+	        const pre = document.getElementById("kernel-log-content");
+	        const logContainer = document.getElementById("kernel-log-container");
+	        if (!pre) return;
+
+	        try {
+	          const payload = await api.get(`/proxy/kernel/logs?since=${kernelLogOffset}`);
+	          const data = payload || {};
+	          const session = Number(data.session || 0);
+	          const startedAt = data.startedAt || "";
+	          const lost = Boolean(data.lost);
+	          const chunk = data.text || "";
+
+	          const sessionChanged = session && session !== kernelLogSession;
+	          const startedAtChanged = startedAt && startedAt !== kernelLogStartedAt;
+
+	          const shouldReset = lost || sessionChanged || startedAtChanged || kernelLogOffset === 0;
+	          if (shouldReset) {
+	            resetKernelLogRender(pre);
+	          }
+	          appendKernelLogChunk(pre, chunk);
+
+	          kernelLogSession = session || kernelLogSession;
+	          kernelLogStartedAt = startedAt || kernelLogStartedAt;
+	          if (typeof data.to === "number") {
+	            kernelLogOffset = data.to;
+	          }
+
+	          if (metaEl) {
+	            const parts = [];
+	            if (data.engine) {
+	              parts.push(String(data.engine));
+	            } else {
+	              parts.push("kernel");
+	            }
+		            if (data.running === false) parts.push("stopped");
+		            if (data.pid) parts.push(`pid ${data.pid}`);
+		            if (startedAt) parts.push(`started ${formatTime(startedAt)}`);
+		            if (data.error) parts.push(`error: ${data.error}`);
+		            metaEl.textContent = parts.length ? parts.join(" · ") : "-";
+		          }
+
+	          if (kernelLogAutoScroll && logContainer) {
+	            logContainer.scrollTop = logContainer.scrollHeight;
+	          }
+	        } catch (err) {
+	          if (metaEl) {
+	            metaEl.textContent = `加载失败：${err.message}`;
+	          }
+	        }
+	      }
+
+      function getSavedFRouterId() {
+        try {
+          return localStorage.getItem(FROUTER_STORAGE_KEY) || "";
+        } catch {
+          return "";
+        }
+      }
+
+      function persistFRouterId(frouterId) {
+        try {
+          localStorage.setItem(FROUTER_STORAGE_KEY, frouterId || "");
+        } catch (err) {
+          console.warn("Failed to persist FRouter selection:", err);
+        }
+      }
+
+      function getCurrentFRouter() {
+        if (!Array.isArray(froutersCache) || froutersCache.length === 0) {
+          return null;
+        }
+        if (currentFRouterId) {
+          const found = froutersCache.find((frouter) => frouter.id === currentFRouterId);
+          if (found) return found;
+        }
+        return froutersCache[0] || null;
+      }
+
+      function updateFRouterSelectors() {
+        const current = getCurrentFRouter();
+        const selectedId = current ? current.id : "";
+        if (selectedId && selectedId !== currentFRouterId) {
+          currentFRouterId = selectedId;
+          persistFRouterId(selectedId);
+        }
+        const options = Array.isArray(froutersCache)
+          ? froutersCache
+              .map((frouter) => `<option value="${escapeHtml(frouter.id)}">${escapeHtml(frouter.name || frouter.id)}</option>`)
+              .join("")
+          : "";
+        ["chain-route-select"].forEach((id) => {
+          const select = document.getElementById(id);
+          if (!select) return;
+          select.innerHTML = options || '<option value="">暂无 FRouter</option>';
+          if (selectedId) {
+            select.value = selectedId;
+          }
+        });
+      }
+
+      function setCurrentFRouter(frouterId, { notify = false, reloadGraph = true } = {}) {
+        if (!Array.isArray(froutersCache) || froutersCache.length === 0) {
+          currentFRouterId = "";
+          updateFRouterSelectors();
+          updateHomeFRouterMetrics();
           return;
         }
-        nodesPollHandle = setInterval(() => {
-          loadNodes();
-        }, NODES_POLL_INTERVAL);
+        const next = froutersCache.find((frouter) => frouter.id === frouterId) || froutersCache[0];
+        currentFRouterId = next ? next.id : "";
+        persistFRouterId(currentFRouterId);
+        updateFRouterSelectors();
+        renderFRouters(froutersCache, currentFRouterId);
+        updateHomeFRouterMetrics();
+        if (chainEditorInitialized && chainEditor) {
+          chainEditor.setFRouterId(currentFRouterId);
+          if (reloadGraph) {
+            chainEditor.loadGraph();
+          }
+        }
+        if (notify && next) {
+          showStatus("已切换", "info", 2000);
+        }
+      }
+
+      async function applyFRouterSelection(frouterId, { notify = false } = {}) {
+        const nextId = String(frouterId || "").trim();
+        if (!nextId) return;
+
+        applyFRouterPendingId = nextId;
+        if (applyFRouterInFlight) {
+          return;
+        }
+
+        applyFRouterInFlight = true;
+        try {
+          while (applyFRouterPendingId) {
+            const targetId = applyFRouterPendingId;
+            applyFRouterPendingId = "";
+            await applyFRouterSelectionOnce(targetId, { notify });
+          }
+        } finally {
+          applyFRouterInFlight = false;
+        }
+      }
+
+      async function applyFRouterSelectionOnce(frouterId, { notify = false } = {}) {
+        let status = null;
+        try {
+          status = await api.proxy.status();
+        } catch (err) {
+          if (notify) {
+            showStatus(`获取内核状态失败：${err.message}`, "error", 6000);
+          }
+          return;
+        }
+
+        xrayStatus = status || {};
+        updateXrayUI(xrayStatus);
+
+        const coreRunning = Boolean(status && status.running);
+        if (!coreRunning) {
+          if (notify) {
+            showStatus("内核未运行：已切换 FRouter（下次启动生效）", "info", 2500);
+          }
+          await loadIPGeo();
+          return;
+        }
+
+        const currentRunningId = status && typeof status.frouterId === "string" ? status.frouterId : "";
+        if (currentRunningId && currentRunningId === frouterId) {
+          if (notify) {
+            showStatus("已是当前 FRouter", "info", 1500);
+          }
+          await loadIPGeo();
+          return;
+        }
+
+        const wasSystemProxyEnabled = Boolean(systemProxySettings && systemProxySettings.enabled);
+        const ignoreHosts = collectIgnoreHosts();
+
+        if (notify) {
+          showStatus("正在切换 FRouter…", "info", 2000);
+        }
+
+        // 系统代理开启时，重启内核前必须先关闭系统代理，避免“指向黑洞”断网。
+        if (wasSystemProxyEnabled) {
+          try {
+            await api.put("/settings/system-proxy", {
+              enabled: false,
+              ignoreHosts,
+            });
+          } catch (err) {
+            showStatus(`关闭系统代理失败：${err.message}`, "error", 6000);
+            return;
+          }
+          await loadSystemProxySettings();
+        }
+
+        try {
+          await api.post("/proxy/start", { frouterId });
+        } catch (err) {
+          showStatus(`切换失败：${err.message}`, "error", 6000);
+          await refreshXrayStatus();
+          await loadSystemProxySettings();
+          await loadIPGeo();
+          return;
+        }
+
+        await sleep(500);
+        await refreshXrayStatus();
+
+        if (wasSystemProxyEnabled) {
+          try {
+            await api.put("/settings/system-proxy", {
+              enabled: true,
+              ignoreHosts,
+            });
+          } catch (err) {
+            showStatus(`系统代理未能恢复：${err.message}`, "warn", 6000);
+          }
+          await loadSystemProxySettings();
+        }
+
+        await loadIPGeo();
+        if (notify) {
+          showStatus("FRouter 已切换", "success", 2000);
+        }
       }
 
       async function refreshXrayStatus({ notify = false } = {}) {
         try {
           const status = await api.proxy.status();
-          updateXrayUI(status);
+          xrayStatus = status || {};
+          updateXrayUI(xrayStatus);
 
-          // 更新系统代理状态
-          if (status.running) {
-            // 如果代理运行中，同步系统代理状态
-            const sysProxy = await api.settings.getSystemProxy();
-            updateSystemProxyUI(sysProxy);
-          }
-
-          if (notify && status.running) {
-            showStatus("代理已启动", "success");
+          if (notify && xrayStatus.running) {
+            showStatus("内核已启动", "success");
           }
         } catch (err) {
           console.error("Failed to refresh proxy status:", err);
@@ -1840,44 +3010,29 @@
           status = {};
         }
         const indicator = document.getElementById("xray-state");
-        const proxyStatus = document.getElementById("proxy-status");
-        const proxyDesc = document.getElementById("proxy-status-desc");
         const proxyToggle = document.getElementById("proxy-toggle");
 
-        // 简化的状态显示逻辑
-        const isRunning = Boolean(status.running);
-        const activeProfile = status.activeProfile || "";
-
-        // 调试日志
-        console.log("[updateXrayUI] status:", status, "isRunning:", isRunning);
+        const coreRunning = Boolean(status.running);
+        const systemProxyEnabled = Boolean(systemProxySettings && systemProxySettings.enabled);
 
         if (indicator) {
-          indicator.className = isRunning ? "badge active" : "badge";
-          indicator.textContent = isRunning ? "运行中" : "已停止";
+          indicator.className = coreRunning ? "badge active" : "badge";
+          indicator.textContent = coreRunning ? "运行中" : "已停止";
         }
 
-        if (!proxyStatus && !proxyToggle && !proxyDesc) {
+        if (!proxyToggle) {
           return;
         }
 
         // 根据运行状态更新按钮
-        if (proxyToggle) {
-          console.log("[updateXrayUI] updating button, isRunning:", isRunning);
-          if (isRunning) {
-            proxyToggle.dataset.mode = "stop";
-            proxyToggle.classList.add("active");
-          } else {
-            proxyToggle.dataset.mode = "start";
-            proxyToggle.classList.remove("active");
-          }
-        }
-
-        // 更新状态文字
-        if (proxyStatus) {
-          proxyStatus.textContent = isRunning ? "运行中" : "已停止";
-        }
-        if (proxyDesc) {
-          proxyDesc.textContent = isRunning ? "代理服务正在运行" : "点击启动代理即可启动核心并切换系统代理";
+        if (systemProxyEnabled) {
+          proxyToggle.dataset.mode = "stop";
+          proxyToggle.classList.add("active");
+          proxyToggle.title = "关闭系统代理";
+        } else {
+          proxyToggle.dataset.mode = "start";
+          proxyToggle.classList.remove("active");
+          proxyToggle.title = coreRunning ? "启用系统代理（内核已在后台运行）" : "启用系统代理";
         }
       }
 
@@ -1910,8 +3065,8 @@
 
       async function loadTUNSettings() {
         try {
-          const settings = await api.get("/settings/tun");
-          tunSettingsCache = settings || { enabled: false };
+          const cfg = await api.get("/proxy/config");
+          tunSettingsCache = { enabled: cfg && cfg.inboundMode === "tun" };
           updateTUNToggle(tunSettingsCache);
         } catch (err) {
           console.error("Failed to load TUN settings:", err);
@@ -1954,32 +3109,69 @@
       }
 
       async function updateTUNSetting(enabled) {
-        // 如果要启用 TUN，先检查是否已配置，未配置则自动配置
-        if (enabled) {
-          const configured = tunStatusCache && tunStatusCache.configured;
-          if (!configured) {
-            try {
-              showStatus("正在配置 TUN 模式...", "info", 2000);
-              await api.post("/tun/setup", {});
-              showStatus("TUN 配置成功", "success", 2000);
-              await checkTUNStatus(); // 刷新配置状态
-            } catch (err) {
-              updateTUNToggle(tunSettingsCache || { enabled: false });
-              showStatus(`TUN 配置失败：${err.message}`, "error", 5000);
-              return;
-            }
-          }
-        }
+        const prevEnabled = Boolean(tunSettingsCache && tunSettingsCache.enabled);
 
         try {
-          const updated = await api.put("/settings/tun", { enabled });
-          tunSettingsCache = updated;
-          updateTUNToggle(updated);
+          const updated = await api.put("/proxy/config", { inboundMode: enabled ? "tun" : "mixed" });
+          tunSettingsCache = { enabled: updated && updated.inboundMode === "tun" };
+          updateTUNToggle(tunSettingsCache || { enabled: false });
+
+          // 启用 TUN 时系统代理应该关闭（否则系统会指向一个不存在的本地端口）。
+          if (enabled) {
+            try {
+              const response = await api.put("/settings/system-proxy", {
+                enabled: false,
+                ignoreHosts: collectIgnoreHosts(),
+              });
+              const data = response && response.settings ? response.settings : response;
+              systemProxySettings = {
+                enabled: Boolean(data.enabled),
+                ignoreHosts: Array.isArray(data.ignoreHosts) ? data.ignoreHosts : systemProxySettings.ignoreHosts,
+              };
+              renderSystemProxy(systemProxySettings);
+              updateXrayUI(xrayStatus);
+            } catch (err) {
+              console.warn("Failed to disable system proxy when enabling TUN:", err);
+            }
+          }
+
+          // 变更入站模式需要重启/启动内核，否则不会创建/释放 TUN 网卡。
+          let status = null;
+          try {
+            status = await api.proxy.status();
+            xrayStatus = status || xrayStatus;
+          } catch {
+            status = null;
+          }
+
+          const shouldStart = enabled || (status && status.running);
+          if (shouldStart) {
+            const selectedFRouter = getCurrentFRouter();
+            const frouterId = selectedFRouter && selectedFRouter.id
+              ? selectedFRouter.id
+              : (updated && updated.frouterId ? updated.frouterId : "");
+            if (!frouterId) {
+              throw new Error("请先选择一个 FRouter");
+            }
+            showStatus(enabled ? "正在启动 TUN 内核..." : "正在重启内核...", "info", 2000);
+            await api.post("/proxy/start", { frouterId });
+          }
+
+          await refreshXrayStatus();
+          await loadSystemProxySettings();
+          await loadIPGeo();
           showStatus(`TUN 模式已${enabled ? '启用' : '禁用'}`, "success", 2000);
         } catch (err) {
-          showStatus(`更新 TUN 设置失败：${err.message}`, "error", 4000);
-          // 恢复开关状态
-          updateTUNToggle(tunSettingsCache || { enabled: false });
+          showStatus(`更新 TUN 设置失败：${err.message}`, "error", 6000);
+
+          // 恢复开关状态（并回滚配置，避免 UI/后端不一致）
+          tunSettingsCache = { enabled: prevEnabled };
+          updateTUNToggle(tunSettingsCache);
+          try {
+            await api.put("/proxy/config", { inboundMode: prevEnabled ? "tun" : "mixed" });
+          } catch {
+            // ignore
+          }
         }
       }
 
@@ -2069,65 +3261,105 @@
       }
 
       // Panel loaders
-      let activeNodeId = "";
 
-      async function loadNodes({ notify = false } = {}) {
-        try {
-          const payload = await api.get("/nodes");
-          const nodes = Array.isArray(payload.nodes) ? payload.nodes : [];
-          const serverActiveNodeId = typeof payload.activeNodeId === "string" ? payload.activeNodeId : "";
-          const recentSelectedId = typeof payload.lastSelectedNodeId === "string" ? payload.lastSelectedNodeId : "";
-          nodesCache = nodes;
-          lastSelectedNodeId = recentSelectedId;
+		      async function loadFRouters({ notify = false } = {}) {
+		        try {
+		          const payload = await api.get("/frouters");
+	          const frouters = Array.isArray(payload.frouters) ? payload.frouters : [];
+	          froutersCache = frouters;
 
-          // Try to restore from localStorage first
-          const savedNodeId = localStorage.getItem("vea_selected_node_id");
+	          if (!currentFRouterId) {
+	            currentFRouterId = getSavedFRouterId();
+	          }
+	          if (currentFRouterId && !froutersCache.find((frouter) => frouter.id === currentFRouterId)) {
+	            currentFRouterId = "";
+	          }
 
-          const hasNode = (id) => !!id && nodes.some((node) => node && node.id === id);
-
-          // Priority: localStorage > recentSelectedId > serverActiveNodeId > first node
-          if (savedNodeId && hasNode(savedNodeId)) {
-            preferredNodeId = savedNodeId;
-          } else if (hasNode(recentSelectedId)) {
-            preferredNodeId = recentSelectedId;
-          } else if (hasNode(serverActiveNodeId)) {
-            preferredNodeId = serverActiveNodeId;
-          } else if (nodes.length > 0 && nodes[0] && nodes[0].id) {
-            preferredNodeId = nodes[0].id;
-          } else {
-            preferredNodeId = "";
+          const current = getCurrentFRouter();
+          if (current && current.id) {
+            currentFRouterId = current.id;
+            persistFRouterId(currentFRouterId);
           }
 
-          activeNodeId = serverActiveNodeId || preferredNodeId;
+	          updateFRouterTabs(frouters);
+	          renderFRouters(frouters, currentFRouterId);
+	          updateFRouterSelectors();
+	          updateHomeFRouterMetrics();
+	          refreshXrayStatus();
+	          if (notify) {
+	            showStatus("FRouter 列表已刷新", "success");
+	          }
+	        } catch (err) {
+	          showStatus(`加载 FRouter 失败：${err.message}`, "error", 6000);
+	          froutersCache = [];
+	          currentFRouterId = "";
+	          updateFRouterSelectors();
+	          updateHomeFRouterMetrics();
+		        }
+		      }
 
-          // Save to localStorage
-          if (activeNodeId) {
-            localStorage.setItem("vea_selected_node_id", activeNodeId);
+          async function loadNodes() {
+            if (nodesLoadInFlight) {
+              return;
+            }
+            nodesLoadInFlight = true;
+            try {
+              const payload = await api.get("/nodes");
+              nodesCache = Array.isArray(payload.nodes) ? payload.nodes : [];
+              if (currentPanel === "panel-nodes") {
+                renderOrUpdateNodesPanel(nodesCache);
+              }
+            } catch (err) {
+              console.error("加载节点失败:", err);
+              if (currentPanel === "panel-nodes") {
+                showStatus(`加载节点失败：${err.message}`, "error", 6000);
+              }
+            } finally {
+              nodesLoadInFlight = false;
+            }
           }
+		
+		      async function autoTestHomePanel({ notify = false } = {}) {
+		        const frouter = getCurrentFRouter();
+		        const id = frouter && frouter.id ? frouter.id : "";
+		        if (!id) return;
 
-          updateNodeTabs(nodes);
-          renderNodes(nodes, activeNodeId);
-          updateHomeNodeStatus();
-          refreshXrayStatus();
-          if (notify) {
-            showStatus("节点列表已刷新", "success");
-          }
-          if (currentPanel === "panel-home") {
-            autoMeasureCurrentNode();
-          }
-        } catch (err) {
-          showStatus(`加载节点失败：${err.message}`, "error", 6000);
-          nodesCache = [];
-          updateHomeNodeStatus();
-        }
-      }
+	        if (homeAutoTestInFlight) {
+	          return;
+	        }
+	        homeAutoTestInFlight = true;
 
-      function updateNodeTabs(nodes) {
+	        let queued = false;
+	        try {
+	          await api.post(`/frouters/${id}/ping`);
+	          queued = true;
+	        } catch (err) {
+	          console.error("主页自动测延迟失败:", err);
+	          if (notify) {
+	            showStatus(`自动测延迟失败：${err.message}`, "error", 4000);
+	          }
+	        }
+	        try {
+	          await api.post(`/frouters/${id}/speedtest`);
+	          queued = true;
+	        } catch (err) {
+	          console.error("主页自动测速失败:", err);
+	          if (notify) {
+	            showStatus(`自动测速失败：${err.message}`, "error", 4000);
+	          }
+	        }
+	        if (notify && queued) {
+	          showStatus("已自动开始测速/测延迟", "info", 2000);
+	        }
+	        homeAutoTestInFlight = false;
+	      }
+
+      function updateFRouterTabs(frouters) {
         if (!nodeTabs) return;
         const tags = new Set();
-        nodes.forEach((node) => {
-          if (Array.isArray(node.tags)) {
-            node.tags.forEach((tag) => {
+        frouters.forEach((frouter) => {
+          if (Array.isArray(frouter.tags)) {
+            frouter.tags.forEach((tag) => {
               const trimmed = String(tag || "").trim();
               if (trimmed) {
                 tags.add(trimmed);
@@ -2136,111 +3368,264 @@
           }
         });
         const sorted = ["全部", ...Array.from(tags).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"))];
-        nodeTags = sorted;
-        if (!nodeTags.includes(currentNodeTab)) {
-          currentNodeTab = "全部";
+        frouterTags = sorted;
+        if (!frouterTags.includes(currentFRouterTab)) {
+          currentFRouterTab = "全部";
         }
-        nodeTabs.innerHTML = nodeTags
+        nodeTabs.innerHTML = frouterTags
           .map((tag) => {
-            const active = tag === currentNodeTab ? "active" : "";
+            const active = tag === currentFRouterTab ? "active" : "";
+            return `<div class=\"node-tab ${active}\" data-tag=\"${escapeHtml(tag)}\">${escapeHtml(tag)}</div>`;
           })
           .join("");
-      }
+	      }
 
-      let lastRenderedNodesHash = "";
+	      let lastRenderedFRoutersHash = "";
+	      let lastRenderedNodesStructureHash = "";
 
-      function renderNodes(nodes, currentId = "") {
-        if (!nodeGrid) return;
-        let filtered = nodes;
-        if (currentNodeTab !== "全部") {
-          filtered = nodes.filter((node) => Array.isArray(node.tags) && node.tags.includes(currentNodeTab));
+	      function nodesStructureHash(nodes) {
+	        const all = Array.isArray(nodes) ? nodes : [];
+	        if (all.length === 0) return "";
+	        return all
+	          .map((n) => {
+	            const id = (n && n.id) || "";
+	            const name = (n && n.name) || "";
+	            const proto = (n && n.protocol) || "";
+	            const addr = (n && n.address) || "";
+	            const port = (n && n.port) || "";
+	            return `${id}|${name}|${proto}|${addr}|${port}`;
+	          })
+	          .join(";");
+	      }
+
+	      function getNodeLatencyDisplay(n) {
+	        let value = "--";
+	        let cls = "";
+	        let title = "";
+	        if (n && n.lastLatencyError) {
+	          value = "Error";
+	          cls = "poor";
+	          title = n.lastLatencyError;
+	        } else if (n && typeof n.lastLatencyMs === "number" && n.lastLatencyMs > 0) {
+	          value = `${n.lastLatencyMs}ms`;
+	          if (n.lastLatencyMs < 100) cls = "good";
+	          else if (n.lastLatencyMs < 300) cls = "fair";
+	          else cls = "poor";
+	        }
+	        return { value, cls, title };
+	      }
+
+	      function getNodeSpeedDisplay(n) {
+	        let value = "--";
+	        let cls = "";
+	        let title = "";
+	        if (n && n.lastSpeedError) {
+	          value = "Error";
+	          cls = "poor";
+	          title = n.lastSpeedError;
+	        } else if (n && typeof n.lastSpeedMbps === "number" && n.lastSpeedMbps > 0) {
+	          const fixed = n.lastSpeedMbps >= 10 ? n.lastSpeedMbps.toFixed(1) : n.lastSpeedMbps.toFixed(2);
+	          value = `${fixed} Mbps`;
+	          if (n.lastSpeedMbps > 5) cls = "good";
+	          else if (n.lastSpeedMbps > 1) cls = "fair";
+	          else cls = "poor";
+	        }
+	        return { value, cls, title };
+	      }
+
+	      function renderOrUpdateNodesPanel(nodes) {
+	        const all = Array.isArray(nodes) ? nodes : [];
+	        if (all.length === 0) {
+	          lastRenderedNodesStructureHash = "";
+	          renderNodesPanel(all);
+	          return;
+	        }
+
+	        const nextHash = nodesStructureHash(all);
+	        if (nextHash !== lastRenderedNodesStructureHash) {
+	          lastRenderedNodesStructureHash = nextHash;
+	          renderNodesPanel(all);
+	          return;
+	        }
+
+	        updateNodesMetrics(all);
+	      }
+
+	      function updateNodesMetrics(nodes) {
+	        const tbody = document.querySelector("#nodes-table tbody");
+	        if (!tbody) return;
+
+	        const rowMap = new Map();
+	        tbody.querySelectorAll('tr[data-id]').forEach((row) => {
+	          const id = row.dataset.id || "";
+	          if (id) rowMap.set(id, row);
+	        });
+	        if (rowMap.size !== nodes.length) {
+	          renderNodesPanel(nodes);
+	          return;
+	        }
+
+	        for (const n of nodes) {
+	          const id = (n && n.id) || "";
+	          if (!id) continue;
+	          const row = rowMap.get(id);
+	          if (!row) {
+	            renderNodesPanel(nodes);
+	            return;
+	          }
+
+	          const latencyEl = row.querySelector('[data-metric="latency"]');
+	          const speedEl = row.querySelector('[data-metric="speed"]');
+	          if (!latencyEl || !speedEl) {
+	            renderNodesPanel(nodes);
+	            return;
+	          }
+
+	          const latency = getNodeLatencyDisplay(n);
+	          latencyEl.textContent = latency.value;
+	          latencyEl.className = `node-metric-value${latency.cls ? " " + latency.cls : ""}`;
+	          latencyEl.title = latency.title || "";
+
+	          const speed = getNodeSpeedDisplay(n);
+	          speedEl.textContent = speed.value;
+	          speedEl.className = `node-metric-value${speed.cls ? " " + speed.cls : ""}`;
+	          speedEl.title = speed.title || "";
+	        }
+	      }
+	      function renderNodesPanel(nodes) {
+	        const tbody = document.querySelector("#nodes-table tbody");
+	        if (!tbody) return;
+
+	        const all = Array.isArray(nodes) ? nodes : [];
+	        if (all.length === 0) {
+	          tbody.innerHTML = `
+	            <tr>
+	              <td colspan="6" style="text-align:center; color:var(--text-secondary); padding:24px;">暂无节点</td>
+	            </tr>
+	          `;
+	          return;
+	        }
+
+	        tbody.innerHTML = all
+	          .map((n) => {
+	            const id = n.id || "";
+	            const name = n.name || n.id || "未命名节点";
+	            const proto = (n.protocol || "").toUpperCase() || "UNKNOWN";
+	            const addr = n.address ? `${n.address}:${n.port || ""}` : "-";
+
+	            const latency = getNodeLatencyDisplay(n);
+	            const speed = getNodeSpeedDisplay(n);
+
+	            return `
+	              <tr data-id="${escapeHtml(id)}">
+	                <td title="${escapeHtml(id)}">${escapeHtml(name)}</td>
+	                <td><span class="node-row-protocol">${escapeHtml(proto)}</span></td>
+	                <td><span class="text-truncate" title="${escapeHtml(addr)}">${escapeHtml(addr)}</span></td>
+	                <td><span class="node-metric-value ${latency.cls}" data-metric="latency" title="${escapeHtml(latency.title)}">${escapeHtml(latency.value)}</span></td>
+	                <td><span class="node-metric-value ${speed.cls}" data-metric="speed" title="${escapeHtml(speed.title)}">${escapeHtml(speed.value)}</span></td>
+	                <td style="text-align:right">
+	                  <button class="mini-btn" data-action="ping-node">测延迟</button>
+	                  <button class="mini-btn" data-action="speedtest-node">测速</button>
+	                </td>
+	              </tr>
+	            `;
+	          })
+	          .join("");
+	      }
+
+	      function renderFRouters(frouters, currentId = "") {
+	        if (!nodeGrid) return;
+	        let filtered = frouters;
+        if (currentFRouterTab !== "全部") {
+          filtered = frouters.filter((frouter) => Array.isArray(frouter.tags) && frouter.tags.includes(currentFRouterTab));
         }
-        if (!Array.isArray(nodes) || nodes.length === 0) {
-          nodeGrid.innerHTML = '<div class="empty-card">暂无节点</div>';
-          lastRenderedNodesHash = "empty";
+        if (!Array.isArray(frouters) || frouters.length === 0) {
+          nodeGrid.innerHTML = '<div class="empty-card">暂无 FRouter</div>';
+          lastRenderedFRoutersHash = "empty";
           return;
         }
 
         if (!Array.isArray(filtered) || filtered.length === 0) {
-          nodeGrid.innerHTML = '<div class="empty-card">当前标签下暂无节点</div>';
-          lastRenderedNodesHash = "empty-filtered";
+          nodeGrid.innerHTML = '<div class="empty-card">当前标签下暂无 FRouter</div>';
+          lastRenderedFRoutersHash = "empty-filtered";
           return;
         }
 
-        // Create a hash of the current state to detect changes
-        const stateHash = JSON.stringify(filtered.map(n => ({
-          id: n.id,
-          name: n.name,
-          address: n.address,
-          port: n.port,
-          protocol: n.protocol,
-          lastLatencyMs: n.lastLatencyMs,
-          lastSpeedMbps: n.lastSpeedMbps,
-          lastSpeedError: n.lastSpeedError
-        }))) + currentId + currentNodeTab;
+        const stateHash = JSON.stringify(filtered.map(r => ({
+          id: r.id,
+          name: r.name,
+          tags: r.tags,
+          edges: r.chainProxy && Array.isArray(r.chainProxy.edges) ? r.chainProxy.edges.length : 0,
+          slots: r.chainProxy && Array.isArray(r.chainProxy.slots) ? r.chainProxy.slots.length : 0,
+          lastLatencyMs: r.lastLatencyMs,
+          lastSpeedMbps: r.lastSpeedMbps,
+          lastSpeedError: r.lastSpeedError
+        }))) + currentId + currentFRouterTab;
 
-        // Only re-render if data has changed
-        if (stateHash === lastRenderedNodesHash) {
+        if (stateHash === lastRenderedFRoutersHash) {
           return;
         }
-        lastRenderedNodesHash = stateHash;
+        lastRenderedFRoutersHash = stateHash;
 
         nodeGrid.innerHTML = filtered
-          .map((node) => {
-            const rowId = escapeHtml(node.id);
-            const isActive = currentId && node.id === currentId;
-            const protocol = escapeHtml(node.protocol || "unknown");
+          .map((frouter) => {
+            const rowId = escapeHtml(frouter.id);
+            const edgeCount = frouter.chainProxy && Array.isArray(frouter.chainProxy.edges) ? frouter.chainProxy.edges.length : 0;
+            const slotCount = frouter.chainProxy && Array.isArray(frouter.chainProxy.slots) ? frouter.chainProxy.slots.length : 0;
+            const tagText = Array.isArray(frouter.tags) && frouter.tags.length
+              ? frouter.tags.join(" · ")
+              : "无标签";
 
-            // Latency formatting
-            let latencyValue = "Ping";
-            let latencyClass = "";
-            if (typeof node.lastLatencyMs === "number" && node.lastLatencyMs > 0) {
-              latencyValue = `${node.lastLatencyMs}ms`;
-              if (node.lastLatencyMs < 100) latencyClass = "good";
-              else if (node.lastLatencyMs < 300) latencyClass = "fair";
-              else latencyClass = "poor";
-            }
+	            let latencyValue = "Ping";
+	            let latencyClass = "";
+	            const latencyTitle = frouter.lastLatencyError
+	              ? `延迟失败：${frouter.lastLatencyError}`
+	              : "测延迟";
+	            if (typeof frouter.lastLatencyMs === "number" && frouter.lastLatencyMs > 0) {
+	              latencyValue = `${frouter.lastLatencyMs}ms`;
+	              if (frouter.lastLatencyMs < 100) latencyClass = "good";
+	              else if (frouter.lastLatencyMs < 300) latencyClass = "fair";
+	              else latencyClass = "poor";
+	            }
 
-            // Speed formatting
-            let speedValue = "Speed";
-            let speedClass = "";
-            if (node.lastSpeedError) {
-              speedValue = "Error";
-              speedClass = "poor";
-            } else if (typeof node.lastSpeedMbps === "number" && node.lastSpeedMbps > 0) {
-              const fixed = node.lastSpeedMbps >= 10 ? node.lastSpeedMbps.toFixed(1) : node.lastSpeedMbps.toFixed(2);
-              speedValue = `${fixed} MB/s`;
-              if (node.lastSpeedMbps > 5) speedClass = "good";
-              else if (node.lastSpeedMbps > 1) speedClass = "fair";
+	            let speedValue = "Speed";
+	            let speedClass = "";
+	            const speedTitle = frouter.lastSpeedError
+	              ? `测速失败：${frouter.lastSpeedError}`
+	              : "测速";
+	            if (frouter.lastSpeedError) {
+	              speedValue = "Error";
+	              speedClass = "poor";
+	            } else if (typeof frouter.lastSpeedMbps === "number" && frouter.lastSpeedMbps > 0) {
+              const fixed = frouter.lastSpeedMbps >= 10 ? frouter.lastSpeedMbps.toFixed(1) : frouter.lastSpeedMbps.toFixed(2);
+              speedValue = `${fixed} Mbps`;
+              if (frouter.lastSpeedMbps > 5) speedClass = "good";
+              else if (frouter.lastSpeedMbps > 1) speedClass = "fair";
               else speedClass = "poor";
             }
 
+            const selectedClass = frouter.id === currentId ? "active" : "";
+
             return `
-          <div class="node-card ${isActive ? "active-node" : ""}" data-id="${rowId}">
-            <div class="node-card-header">
-              <div class="node-info">
-                <div class="node-name">${escapeHtml(node.name)}</div>
-                <div class="node-meta">${escapeHtml(node.address)}:${escapeHtml(node.port)}</div>
+          <div class="node-row ${selectedClass}" data-id="${rowId}">
+            <div class="node-row-main">
+              <div class="node-row-title">
+		                <div class="node-row-name">${escapeHtml(frouter.name || "未命名 FRouter")}</div>
+                <div class="node-row-meta">边: ${edgeCount} · 槽: ${slotCount} · ${escapeHtml(tagText)}</div>
               </div>
-              <div class="node-protocol-badge">${protocol}</div>
+              <div class="node-row-protocol">ROUTE</div>
             </div>
 
-            <div class="node-metrics-row">
-              <div class="node-metric" data-action="ping-node" title="Test Latency">
-                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
-                <span class="node-metric-value ${latencyClass}">${latencyValue}</span>
-              </div>
-              <div class="node-metric" data-action="speed-node" title="Test Speed">
-                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
-                <span class="node-metric-value ${speedClass}">${speedValue}</span>
-              </div>
-            </div>
-
-            <div class="node-actions-overlay">
-              <button class="node-delete-btn" data-action="delete-node" title="Delete Node">
-                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-              </button>
-            </div>
+	            <div class="node-row-metrics">
+	              <div class="node-metric" data-action="ping-route" title="${escapeHtml(latencyTitle)}">
+	                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+	                <span class="node-metric-value ${latencyClass}">${latencyValue}</span>
+	              </div>
+	              <div class="node-metric" data-action="speed-route" title="${escapeHtml(speedTitle)}">
+	                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+	                <span class="node-metric-value ${speedClass}">${speedValue}</span>
+	              </div>
+	            </div>
           </div>
         `;
           })
@@ -2296,7 +3681,6 @@
       }
 
       async function loadSystemProxySettings({ notify = false } = {}) {
-        if (!systemProxyIgnoreInput) return;
         try {
           const payload = await api.get("/settings/system-proxy");
           const data = payload && payload.settings ? payload.settings : payload;
@@ -2327,167 +3711,59 @@
           .filter(Boolean);
       }
 
-      function updateHomeNodeStatus() {
-        if (!homeNodeName || !homeNodeLatency || !homeNodeSpeed) return;
-
-        let node = null;
-        if (Array.isArray(nodesCache) && nodesCache.length > 0) {
-          const targetId = resolveHomeNodeId();
-          if (targetId) {
-            node = nodesCache.find((item) => item.id === targetId) || null;
-          }
-          if (!node) {
-            node = nodesCache[0];
-          }
+      function summarizeHomeFRouterMetrics() {
+        const route = getCurrentFRouter();
+        if (!route) {
+          return { latencyMs: null, speedMbps: null, speedError: "" };
         }
+        const latencyMs = typeof route.lastLatencyMs === "number" && route.lastLatencyMs > 0
+          ? route.lastLatencyMs
+          : null;
+        const speedError = route.lastSpeedError || "";
+        const speedMbps = !speedError && typeof route.lastSpeedMbps === "number" && route.lastSpeedMbps > 0
+          ? route.lastSpeedMbps
+          : null;
+        return { latencyMs, speedMbps, speedError };
+      }
 
-        if (!node) {
-          homeNodeName.textContent = "Select a Node";
-          if (homeNodeAddress) homeNodeAddress.textContent = "-";
-          homeNodeLatency.textContent = "--";
-          homeNodeSpeed.textContent = "--";
-          if (homeNodeUpdated) homeNodeUpdated.textContent = "-";
+      function updateHomeFRouterMetrics() {
+        const latencyEl = document.getElementById("home-node-latency");
+        const speedEl = document.getElementById("home-node-speed");
+        if (!latencyEl || !speedEl) return;
+
+        const { latencyMs, speedMbps, speedError } = summarizeHomeFRouterMetrics();
+
+        latencyEl.textContent = typeof latencyMs === "number" ? `${latencyMs}ms` : "--";
+
+        if (speedError) {
+          speedEl.textContent = "Error";
+          speedEl.title = speedError;
           return;
         }
 
-        homeNodeName.textContent = escapeHtml(node.name || "-");
-        if (homeNodeAddress) {
-          homeNodeAddress.textContent = node.address ? `${escapeHtml(node.address)}:${escapeHtml(String(node.port || ""))}` : "-";
-        }
-
-        const latency = typeof node.lastLatencyMs === "number" && node.lastLatencyMs > 0 ? `${node.lastLatencyMs} ms` : "--";
-        let speed;
-        if (node.lastSpeedError) {
-          speed = `Error`;
-        } else if (typeof node.lastSpeedMbps === "number" && node.lastSpeedMbps > 0) {
-          speed = `${node.lastSpeedMbps >= 10 ? node.lastSpeedMbps.toFixed(1) : node.lastSpeedMbps.toFixed(2)} MB/s`;
+        speedEl.title = "";
+        if (typeof speedMbps === "number") {
+          const fixed = speedMbps >= 10 ? speedMbps.toFixed(1) : speedMbps.toFixed(2);
+          speedEl.textContent = `${fixed} Mbps`;
         } else {
-          speed = "--";
-        }
-        homeNodeLatency.textContent = latency;
-        homeNodeSpeed.textContent = speed;
-
-        if (homeNodeUpdated) {
-          const timestamps = [node.lastLatencyAt, node.lastSpeedAt].filter(Boolean);
-          const updated = timestamps.length > 0 ? timestamps.sort().slice(-1)[0] : null;
-          homeNodeUpdated.textContent = updated ? formatTime(updated) : "-";
+          speedEl.textContent = "--";
         }
       }
 
-      function resolveHomeNodeId() {
-        if (!Array.isArray(nodesCache) || nodesCache.length === 0) {
-          return "";
-        }
-        if (xrayStatus && xrayStatus.activeNodeId) {
-          const active = nodesCache.find((item) => item.id === xrayStatus.activeNodeId);
-          if (active && active.id) {
-            return active.id;
-          }
-        }
-        if (preferredNodeId) {
-          const preferred = nodesCache.find((item) => item.id === preferredNodeId);
-          if (preferred && preferred.id) {
-            return preferred.id;
-          }
-        }
-        const first = nodesCache[0];
-        return (first && first.id) || "";
-      }
-
-      async function autoPingCurrentNode(targetId, { force = false } = {}) {
-        const nodeId = targetId || resolveHomeNodeId();
-        if (!nodeId) {
-          return false;
-        }
-        const now = Date.now();
-        if (!force) {
-          if (homePingState.running && now - homePingState.lastTriggeredAt < HOME_PING_COOLDOWN) {
-            return false;
-          }
-          if (homePingState.lastNodeId === nodeId && now - homePingState.lastTriggeredAt < HOME_PING_COOLDOWN) {
-            return false;
-          }
-          const node = Array.isArray(nodesCache) ? nodesCache.find((item) => item.id === nodeId) : null;
-          if (node) {
-            const lastLatencyAt = node.lastLatencyAt ? Date.parse(node.lastLatencyAt) : NaN;
-            if (!Number.isNaN(lastLatencyAt) && now - lastLatencyAt < HOME_PING_COOLDOWN) {
-              return false;
-            }
-          }
-        }
-        homePingState.running = true;
-        homePingState.lastNodeId = nodeId;
-        homePingState.lastTriggeredAt = now;
-        try {
-          await api.post(`/nodes/${nodeId}/ping`);
-          return true;
-        } catch (err) {
-          showStatus(`延迟任务失败：${err.message}`, "error", 6000);
-          return false;
-        } finally {
-          homePingState.running = false;
-        }
-      }
-
-      async function autoSpeedtestCurrentNode(targetId, { force = false } = {}) {
-        const nodeId = targetId || resolveHomeNodeId();
-        if (!nodeId) {
-          return false;
-        }
-        const now = Date.now();
-        if (!force) {
-          if (homeSpeedtestState.running && now - homeSpeedtestState.lastTriggeredAt < HOME_SPEEDTEST_COOLDOWN) {
-            return false;
-          }
-          if (homeSpeedtestState.lastNodeId === nodeId && now - homeSpeedtestState.lastTriggeredAt < HOME_SPEEDTEST_COOLDOWN) {
-            return false;
-          }
-          const node = Array.isArray(nodesCache) ? nodesCache.find((item) => item.id === nodeId) : null;
-          if (node && (!node.lastSpeedError || node.lastSpeedError.length === 0)) {
-            const lastSpeedAt = node.lastSpeedAt ? Date.parse(node.lastSpeedAt) : NaN;
-            if (!Number.isNaN(lastSpeedAt) && now - lastSpeedAt < HOME_SPEEDTEST_COOLDOWN) {
-              return false;
-            }
-          }
-        }
-        homeSpeedtestState.running = true;
-        homeSpeedtestState.lastNodeId = nodeId;
-        homeSpeedtestState.lastTriggeredAt = now;
-        try {
-          await api.post(`/nodes/${nodeId}/speedtest`);
-          return true;
-        } catch (err) {
-          showStatus(`测速任务失败：${err.message}`, "error", 6000);
-          return false;
-        } finally {
-          homeSpeedtestState.running = false;
-        }
-      }
-
-      async function autoMeasureCurrentNode({ force = false } = {}) {
-        const targetId = resolveHomeNodeId();
-        if (!targetId) {
-          return;
-        }
-        const pingTriggered = await autoPingCurrentNode(targetId, { force });
-        if (pingTriggered) {
-          await sleep(200);
-        }
-        await autoSpeedtestCurrentNode(targetId, { force });
-      }
-
-      async function loadHomePanel({ notify = false } = {}) {
-        await Promise.all([
+	      async function loadHomePanel({ notify = false } = {}) {
+	        await Promise.all([
+	          loadFRouters(),
           loadNodes(),
           loadComponents(),
+          loadIPGeo(),
           refreshXrayStatus({ notify }),
           loadSystemProxySettings({ notify }),
           checkTUNStatus({ notify }),
           loadTUNSettings()
-        ]);
-        updateHomeNodeStatus();
-        await autoMeasureCurrentNode({ force: true });
-      }
+	        ]);
+	        updateHomeFRouterMetrics();
+	        autoTestHomePanel({ notify: true });
+	      }
 
       async function handleProxyToggle() {
         if (!proxyToggleButton || proxyToggleButton.disabled) return;
@@ -2499,24 +3775,36 @@
               enabled: false,
               ignoreHosts: collectIgnoreHosts(),
             });
-            await api.post("/xray/stop");
+            const data = response && response.settings ? response.settings : response;
+            systemProxySettings = {
+              enabled: Boolean(data.enabled),
+              ignoreHosts: Array.isArray(data.ignoreHosts) ? data.ignoreHosts : systemProxySettings.ignoreHosts,
+            };
             if (response && response.message) {
-              showStatus(`代理已停止，但系统代理清除失败: ${response.message}`, "warn", 4000);
+              showStatus(`系统代理已关闭，但提示: ${response.message}`, "warn", 4000);
             } else {
-              showStatus("代理已停止", "info");
+              showStatus("系统代理已关闭", "info");
             }
           } else {
-            const payload = {};
-            if (activeNodeId) {
-              payload.activeNodeId = activeNodeId;
+            let status = null;
+            try {
+              status = await api.proxy.status();
+              xrayStatus = status || xrayStatus;
+            } catch {
+              status = null;
             }
-            if (Object.keys(payload).length > 0) {
-              await api.post("/xray/start", payload);
-            } else {
-              await api.post("/xray/start");
+
+            // 内核未运行：先启动内核（不依赖系统代理）
+            if (!status || !status.running) {
+              const selectedFRouter = getCurrentFRouter();
+              const frouterId = selectedFRouter && selectedFRouter.id ? selectedFRouter.id : "";
+              if (!frouterId) {
+                throw new Error("请先选择一个 FRouter");
+              }
+              await api.post("/proxy/start", { frouterId });
+              // 等待核心完全启动后再启用系统代理
+              await new Promise((r) => setTimeout(r, 500));
             }
-            // 等待核心完全启动后再启用系统代理
-            await new Promise(r => setTimeout(r, 500));
             const response = await api.put("/settings/system-proxy", {
               enabled: true,
               ignoreHosts: collectIgnoreHosts(),
@@ -2532,31 +3820,70 @@
             if (response && response.message) {
               showStatus(response.message, "warn", 4000);
             } else {
-              showStatus("代理已启动", "success");
+              showStatus("系统代理已启用", "success");
             }
           }
         } catch (err) {
-          showStatus(`代理操作失败：${err.message}`, "error", 6000);
+          showStatus(`操作失败：${err.message}`, "error", 6000);
         } finally {
           proxyToggleButton.disabled = false;
           await refreshXrayStatus();
           await loadSystemProxySettings();
+          await loadIPGeo();
         }
       }
 
       // 组件安装轮询定时器
       let componentPollTimer = null;
 
+      const CORE_COMPONENT_UPDATE_INTERVAL_NS = 12 * 60 * 60 * 1000000000;
+
+      function normalizeComponents(components) {
+        const list = Array.isArray(components) ? components : [];
+
+        const xray = list.find((item) => item && item.kind === "xray") || {
+          id: "",
+          name: "Xray",
+          kind: "xray",
+          autoUpdateInterval: CORE_COMPONENT_UPDATE_INTERVAL_NS,
+          lastInstalledAt: "",
+          installDir: "",
+          lastVersion: "",
+          checksum: "",
+          lastSyncError: "",
+          meta: { repo: "XTLS/Xray-core" },
+        };
+
+        const singbox = list.find((item) => item && item.kind === "singbox") || {
+          id: "",
+          name: "sing-box",
+          kind: "singbox",
+          autoUpdateInterval: CORE_COMPONENT_UPDATE_INTERVAL_NS,
+          lastInstalledAt: "",
+          installDir: "",
+          lastVersion: "",
+          checksum: "",
+          lastSyncError: "",
+          meta: { repo: "SagerNet/sing-box" },
+        };
+
+        const rest = list.filter((item) => {
+          if (!item || typeof item !== "object") return false;
+          if (item.kind === "xray") return item !== xray;
+          if (item.kind === "singbox") return item !== singbox;
+          return true;
+        });
+
+        return [xray, singbox, ...rest];
+      }
+
       function renderComponents(components) {
         const tbody = document.querySelector("#component-table tbody");
         if (!tbody) return;
-        if (!Array.isArray(components) || components.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无组件</td></tr>';
-          return;
-        }
+        const normalized = normalizeComponents(components);
 
         // 检查是否有组件正在安装
-        const installing = components.some(c => c.installStatus === 'downloading' || c.installStatus === 'extracting');
+        const installing = normalized.some(c => c.installStatus === 'downloading' || c.installStatus === 'extracting');
         if (installing && !componentPollTimer) {
           componentPollTimer = setInterval(() => loadComponents(), 1000);
         } else if (!installing && componentPollTimer) {
@@ -2564,7 +3891,7 @@
           componentPollTimer = null;
         }
 
-        tbody.innerHTML = components
+        tbody.innerHTML = normalized
           .map((component) => {
             const id = escapeHtml(component.id || "");
             const name = escapeHtml(component.name || "-");
@@ -2629,7 +3956,7 @@
         try {
           const components = await api.get("/components");
           componentsCache = Array.isArray(components) ? components : [];
-          renderComponents(components);
+          renderComponents(componentsCache);
           await refreshXrayStatus();
           if (notify) {
             showStatus("组件列表已刷新", "success");
@@ -2637,6 +3964,7 @@
         } catch (err) {
           showStatus(`加载组件失败：${err.message}`, "error", 6000);
           componentsCache = [];
+          renderComponents([]);
           await refreshXrayStatus();
         }
       }
@@ -2675,74 +4003,777 @@
         }
       }
 
-      async function loadTraffic({ notify = false } = {}) {
-        try {
-          const [profile, rules] = await Promise.all([api.get("/traffic/profile"), api.get("/traffic/rules")]);
-          renderTrafficProfile(profile);
-          renderTrafficRules(rules);
-          if (notify) {
-            showStatus("流量策略已刷新", "success");
+      // ===== Chain List Editor (路由规则列表) =====
+      let chainListEditor = null;
+      let chainEditorInitialized = false;
+
+      class ChainListEditor {
+        constructor(container, apiClient) {
+          this.container = container;
+          this.api = apiClient;
+          this.frouterId = '';
+          this.edges = [];
+          this.detourEdges = [];
+          this.slots = [];
+          this.nodes = [];
+          this.dirty = false;
+          this.draggedItem = null;
+          this.editingEdgeId = null;
+        }
+
+        setFRouterId(id) {
+          this.frouterId = id;
+        }
+
+        async init() {
+          await this.loadNodes();
+          await this.loadGraph();
+          this.bindEvents();
+          this.initRuleTemplates();
+        }
+
+        async loadNodes() {
+          try {
+            const payload = await this.api.get('/nodes');
+            this.nodes = Array.isArray(payload.nodes) ? payload.nodes : [];
+          } catch (err) {
+            console.error('加载节点失败:', err);
+            this.nodes = [];
           }
-        } catch (err) {
-          showStatus(`加载流量策略失败：${err.message}`, "error", 6000);
+        }
+
+        async loadGraph() {
+          try {
+            const path = this.frouterId
+              ? `/frouters/${encodeURIComponent(this.frouterId)}/graph`
+              : '/graph';
+            const data = await this.api.get(path);
+            const allEdges = Array.isArray(data.edges) ? data.edges : [];
+            this.edges = allEdges.filter(e => (e?.from || '') === 'local');
+            this.detourEdges = allEdges.filter(e => (e?.from || '') !== 'local');
+            this.slots = Array.isArray(data.slots) ? data.slots : [];
+            this.sortEdgesByPriority();
+            this.render();
+            this.dirty = false;
+            this.updateStatus();
+          } catch (err) {
+            console.error('加载图数据失败:', err);
+            this.edges = [];
+            this.detourEdges = [];
+            this.slots = [];
+            this.render();
+          }
+        }
+
+        sortEdgesByPriority() {
+          this.edges.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+        }
+
+        render() {
+          const list = this.container.querySelector('#chain-rules-list');
+          if (!list) return;
+
+          if (this.edges.length === 0) {
+            list.innerHTML = '<div class="chain-rules-empty">暂无路由规则，点击"添加规则"创建</div>';
+            return;
+          }
+
+          list.innerHTML = this.edges.map((edge, index) => this.renderRuleItem(edge, index)).join('');
+        }
+
+        renderRuleItem(edge, index) {
+          const target = this.getChainDisplay(edge);
+          const targetClass = edge.to === 'direct' ? 'direct' : (edge.to === 'block' ? 'block' : '');
+          const ruleInfo = this.getRuleInfo(edge);
+          const disabledClass = edge.enabled === false ? 'disabled' : '';
+
+          return `
+            <div class="chain-rule-item ${disabledClass}" data-edge-id="${escapeHtml(edge.id)}" data-index="${index}" draggable="true">
+              <div class="chain-rule-drag">⋮⋮</div>
+              <div class="chain-rule-main">
+                <div class="chain-rule-target ${targetClass}">${escapeHtml(target)}</div>
+                <div class="chain-rule-info">${escapeHtml(ruleInfo)}</div>
+              </div>
+              <div class="chain-rule-meta">
+                <label class="chain-toggle">
+                  <input type="checkbox" ${edge.enabled !== false ? 'checked' : ''} data-action="toggle">
+                  <span class="chain-toggle-slider"></span>
+                </label>
+              </div>
+              <div class="chain-rule-actions">
+                <button data-action="edit" title="编辑">✎</button>
+                <button class="delete" data-action="delete" title="删除">×</button>
+              </div>
+            </div>
+          `;
+        }
+
+        getTargetDisplay(to) {
+          if (to === 'direct') return '不代理（直连）';
+          if (to === 'block') return '阻断';
+          if (to && to.startsWith('slot-')) {
+            const slot = this.slots.find(s => s.id === to);
+            return slot?.name || to;
+          }
+          const node = this.nodes.find(n => n.id === to);
+          return node?.name || to || '未知';
+        }
+
+        getChainDisplay(edge) {
+          const to = (edge?.to && String(edge.to)) || '';
+          if (to === 'direct' || to === 'block') {
+            return this.getTargetDisplay(to);
+          }
+          const via = Array.isArray(edge?.via) ? edge.via : [];
+          const hops = [to, ...via]
+            .map(v => (v && String(v).trim()) || '')
+            .filter(Boolean);
+          if (hops.length === 0) return '未知';
+          return hops.map(id => this.getTargetDisplay(id)).join(' → ');
+        }
+
+        fillRuleToSelect(selectEl, currentValue) {
+          if (!selectEl) return;
+
+          const value = (currentValue && String(currentValue)) || 'direct';
+          const nodes = Array.isArray(this.nodes) ? [...this.nodes] : [];
+          const slots = Array.isArray(this.slots) ? [...this.slots] : [];
+
+          nodes.sort((a, b) => {
+            const an = (a?.name || a?.id || '').toString();
+            const bn = (b?.name || b?.id || '').toString();
+            return an.localeCompare(bn);
+          });
+
+          slots.sort((a, b) => {
+            const an = (a?.name || a?.id || '').toString();
+            const bn = (b?.name || b?.id || '').toString();
+            return an.localeCompare(bn);
+          });
+
+          const options = [];
+          const seen = new Set();
+          const pushOpt = (val, label) => {
+            const v = (val && String(val)) || '';
+            if (!v || seen.has(v)) return;
+            options.push({ value: v, label: (label && String(label)) || v });
+            seen.add(v);
+          };
+
+          const hasValue = (v) => {
+            if (v === 'direct' || v === 'block') return true;
+            return nodes.some(n => n?.id === v) || slots.some(s => s?.id === v);
+          };
+          if (value && !hasValue(value)) {
+            pushOpt(value, `未知: ${value}`);
+          }
+
+          for (const n of nodes) {
+            const id = n?.id;
+            if (!id) continue;
+            pushOpt(id, n?.name || id);
+          }
+
+          for (const s of slots) {
+            const id = s?.id;
+            if (!id) continue;
+            const bound = s?.boundNodeId;
+            let suffix = '';
+            if (bound) {
+              const bn = nodes.find(n => n?.id === bound);
+              suffix = bn ? `（已绑定: ${bn?.name || bound}）` : `（已绑定: ${bound}）`;
+            } else {
+              suffix = '（未绑定）';
+            }
+            pushOpt(id, `${s?.name || id}${suffix}`);
+          }
+
+          pushOpt('direct', '不代理（直连）');
+          pushOpt('block', '阻断');
+
+          selectEl.innerHTML = options
+            .map(opt => `<option value="${escapeHtml(opt.value)}">${escapeHtml(opt.label)}</option>`)
+            .join('');
+          selectEl.value = value;
+        }
+
+        fillChainHopSelect(selectEl, currentValue) {
+          if (!selectEl) return;
+
+          const value = (currentValue && String(currentValue)) || '';
+          const nodes = Array.isArray(this.nodes) ? [...this.nodes] : [];
+          const slots = Array.isArray(this.slots) ? [...this.slots] : [];
+
+          nodes.sort((a, b) => {
+            const an = (a?.name || a?.id || '').toString();
+            const bn = (b?.name || b?.id || '').toString();
+            return an.localeCompare(bn);
+          });
+
+          slots.sort((a, b) => {
+            const an = (a?.name || a?.id || '').toString();
+            const bn = (b?.name || b?.id || '').toString();
+            return an.localeCompare(bn);
+          });
+
+          const options = [];
+          const seen = new Set();
+          const pushOpt = (val, label) => {
+            const v = (val && String(val)) || '';
+            if (!v || seen.has(v)) return;
+            options.push({ value: v, label: (label && String(label)) || v });
+            seen.add(v);
+          };
+
+          const hasValue = (v) => {
+            return nodes.some(n => n?.id === v) || slots.some(s => s?.id === v);
+          };
+          if (value && !hasValue(value)) {
+            pushOpt(value, `未知: ${value}`);
+          }
+
+          for (const n of nodes) {
+            const id = n?.id;
+            if (!id) continue;
+            pushOpt(id, n?.name || id);
+          }
+
+          for (const s of slots) {
+            const id = s?.id;
+            if (!id) continue;
+            const bound = s?.boundNodeId;
+            let suffix = '';
+            if (bound) {
+              const bn = nodes.find(n => n?.id === bound);
+              suffix = bn ? `（已绑定: ${bn?.name || bound}）` : `（已绑定: ${bound}）`;
+            } else {
+              suffix = '（未绑定）';
+            }
+            pushOpt(id, `${s?.name || id}${suffix}`);
+          }
+
+          selectEl.innerHTML = options
+            .map(opt => `<option value="${escapeHtml(opt.value)}">${escapeHtml(opt.label)}</option>`)
+            .join('');
+
+          if (value && seen.has(value)) {
+            selectEl.value = value;
+            return;
+          }
+          if (options.length > 0) {
+            selectEl.value = options[0].value;
+          }
+        }
+
+        appendChainHopRow(listEl, currentValue) {
+          if (!listEl) return;
+          const row = document.createElement('div');
+          row.className = 'rule-chain-item';
+          const select = document.createElement('select');
+          select.className = 'rule-chain-hop';
+          this.fillChainHopSelect(select, currentValue);
+          const delBtn = document.createElement('button');
+          delBtn.type = 'button';
+          delBtn.className = 'danger';
+          delBtn.textContent = '×';
+          delBtn.dataset.action = 'chain-remove';
+          row.appendChild(select);
+          row.appendChild(delBtn);
+          listEl.appendChild(row);
+        }
+
+        renderChainEditor(edge) {
+          const group = this.container.querySelector('#rule-chain-group');
+          const list = this.container.querySelector('#rule-chain-list');
+          const toSelect = this.container.querySelector('#rule-to');
+          if (!group || !list || !toSelect) return;
+
+          const to = toSelect.value || edge?.to || 'direct';
+          const show = to !== 'direct' && to !== 'block';
+          group.style.display = show ? 'block' : 'none';
+
+          list.innerHTML = '';
+          const via = Array.isArray(edge?.via) ? edge.via : [];
+          for (const hop of via) {
+            this.appendChainHopRow(list, hop);
+          }
+        }
+
+        getRuleInfo(edge) {
+          if (!edge.ruleType || edge.ruleType === '') {
+            return edge.description || '默认（匹配所有流量）';
+          }
+          if (edge.ruleType === 'route') {
+            return (edge.description && String(edge.description).trim()) || '自定义';
+          }
+          return (edge.description && String(edge.description).trim()) || '自定义';
+        }
+
+        bindEvents() {
+          const list = this.container.querySelector('#chain-rules-list');
+          if (list) {
+            list.addEventListener('dragstart', (e) => this.onDragStart(e));
+            list.addEventListener('dragover', (e) => this.onDragOver(e));
+            list.addEventListener('dragend', (e) => this.onDragEnd(e));
+            list.addEventListener('drop', (e) => this.onDrop(e));
+            list.addEventListener('click', (e) => this.onItemClick(e));
+            list.addEventListener('change', (e) => this.onToggleChange(e));
+          }
+
+          const dialog = this.container.querySelector('#rule-edit-dialog');
+          if (dialog) {
+            dialog.addEventListener('click', (e) => {
+              if (e.target === dialog) this.closeEditDialog();
+            });
+          }
+          this.container.querySelector('#rule-dialog-close')?.addEventListener('click', () => this.closeEditDialog());
+          this.container.querySelector('#rule-cancel')?.addEventListener('click', () => this.closeEditDialog());
+          this.container.querySelector('#rule-save')?.addEventListener('click', () => this.saveEditDialog());
+          this.container.querySelector('#rule-delete')?.addEventListener('click', () => this.deleteCurrentRule());
+
+          this.container.querySelector('#rule-type')?.addEventListener('change', (e) => {
+            const section = this.container.querySelector('#rule-route-section');
+            if (section) section.style.display = e.target.value === 'route' ? 'block' : 'none';
+          });
+
+          this.container.querySelector('#rule-to')?.addEventListener('change', (e) => {
+            const group = this.container.querySelector('#rule-chain-group');
+            if (!group) return;
+            const v = e.target.value;
+            const show = v !== 'direct' && v !== 'block';
+            group.style.display = show ? 'block' : 'none';
+          });
+
+          this.container.querySelector('#rule-chain-add')?.addEventListener('click', () => {
+            const list = this.container.querySelector('#rule-chain-list');
+            if (!list) return;
+            const selects = list.querySelectorAll('.rule-chain-hop');
+            const last = selects.length > 0 ? selects[selects.length - 1].value : '';
+            this.appendChainHopRow(list, last);
+          });
+
+          this.container.querySelector('#rule-chain-list')?.addEventListener('click', (e) => {
+            if (e.target?.dataset?.action !== 'chain-remove') return;
+            e.target.closest('.rule-chain-item')?.remove();
+          });
+        }
+
+        onDragStart(e) {
+          const item = e.target.closest('.chain-rule-item');
+          if (!item) return;
+          this.draggedItem = item;
+          item.classList.add('dragging');
+          e.dataTransfer.effectAllowed = 'move';
+        }
+
+        onDragOver(e) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          const item = e.target.closest('.chain-rule-item');
+          if (!item || item === this.draggedItem) return;
+          const list = this.container.querySelector('#chain-rules-list');
+          list.querySelectorAll('.chain-rule-item').forEach(i => i.classList.remove('drag-over'));
+          item.classList.add('drag-over');
+        }
+
+        onDragEnd(e) {
+          this.container.querySelectorAll('.chain-rule-item').forEach(i => {
+            i.classList.remove('dragging', 'drag-over');
+          });
+          this.draggedItem = null;
+        }
+
+        onDrop(e) {
+          e.preventDefault();
+          const dropTarget = e.target.closest('.chain-rule-item');
+          if (!dropTarget || !this.draggedItem || dropTarget === this.draggedItem) return;
+
+          const fromIndex = parseInt(this.draggedItem.dataset.index);
+          const toIndex = parseInt(dropTarget.dataset.index);
+
+          const [moved] = this.edges.splice(fromIndex, 1);
+          this.edges.splice(toIndex, 0, moved);
+
+          this.recalculatePriorities();
+          this.render();
+          this.markDirty();
+        }
+
+        recalculatePriorities() {
+          const base = 100;
+          this.edges.forEach((edge, index) => {
+            edge.priority = base - index;
+          });
+        }
+
+        onItemClick(e) {
+          const action = e.target.closest('[data-action]')?.dataset.action;
+          const item = e.target.closest('.chain-rule-item');
+          if (!item || !action) return;
+          if (action === 'toggle') return;
+
+          const edgeId = item.dataset.edgeId;
+          if (action === 'edit') {
+            this.openEditDialog(edgeId);
+          } else if (action === 'delete') {
+            this.deleteRule(edgeId);
+          }
+        }
+
+        onToggleChange(e) {
+          if (e.target.dataset?.action !== 'toggle' && !e.target.closest('[data-action="toggle"]')) {
+            if (e.target.type !== 'checkbox') return;
+          }
+          const item = e.target.closest('.chain-rule-item');
+          if (!item) return;
+
+          const edgeId = item.dataset.edgeId;
+          const edge = this.edges.find(ed => ed.id === edgeId);
+          if (edge) {
+            edge.enabled = e.target.checked;
+            this.markDirty();
+            this.render();
+          }
+        }
+
+        addRule() {
+          const newEdge = {
+            id: `rule-${crypto.randomUUID()}`,
+            from: 'local',
+            to: 'direct',
+            via: [],
+            priority: this.edges.length > 0 ? Math.max(...this.edges.map(e => e.priority || 0)) + 10 : 100,
+            enabled: true,
+            ruleType: '',
+            routeRule: null,
+            description: ''
+          };
+          this.edges.unshift(newEdge);
+          this.recalculatePriorities();
+          this.render();
+          this.markDirty();
+          this.openEditDialog(newEdge.id);
+        }
+
+        deleteRule(edgeId) {
+          if (!confirm('确定要删除此规则？')) return;
+          this.edges = this.edges.filter(e => e.id !== edgeId);
+          this.recalculatePriorities();
+          this.render();
+          this.markDirty();
+        }
+
+        openEditDialog(edgeId) {
+          const edge = this.edges.find(e => e.id === edgeId);
+          if (!edge) return;
+
+          this.editingEdgeId = edgeId;
+          const dialog = this.container.querySelector('#rule-edit-dialog');
+          const title = this.container.querySelector('#rule-dialog-title');
+          const deleteBtn = this.container.querySelector('#rule-delete');
+
+          if (title) title.textContent = edge.id.startsWith('rule-') && this.edges.indexOf(edge) === 0 ? '添加规则' : '编辑规则';
+          if (deleteBtn) deleteBtn.style.display = 'block';
+
+          const toSelect = this.container.querySelector('#rule-to');
+          const typeSelect = this.container.querySelector('#rule-type');
+          const enabledCheck = this.container.querySelector('#rule-enabled');
+          const descInput = this.container.querySelector('#rule-description');
+          const domainsInput = this.container.querySelector('#rule-domains');
+          const ipsInput = this.container.querySelector('#rule-ips');
+          const routeSection = this.container.querySelector('#rule-route-section');
+
+          if (toSelect) this.fillRuleToSelect(toSelect, edge.to || 'direct');
+          if (typeSelect) typeSelect.value = edge.ruleType || '';
+          if (enabledCheck) enabledCheck.checked = edge.enabled !== false;
+          if (descInput) descInput.value = edge.description || '';
+          if (domainsInput) domainsInput.value = (edge.routeRule?.domains || []).join('\n');
+          if (ipsInput) ipsInput.value = (edge.routeRule?.ips || []).join('\n');
+          if (routeSection) routeSection.style.display = edge.ruleType === 'route' ? 'block' : 'none';
+          this.renderChainEditor(edge);
+
+          dialog?.classList.add('open');
+        }
+
+        closeEditDialog() {
+          this.editingEdgeId = null;
+          const dialog = this.container.querySelector('#rule-edit-dialog');
+          dialog?.classList.remove('open');
+        }
+
+        saveEditDialog() {
+          const edge = this.edges.find(e => e.id === this.editingEdgeId);
+          if (!edge) return;
+
+          const toSelect = this.container.querySelector('#rule-to');
+          const typeSelect = this.container.querySelector('#rule-type');
+          const enabledCheck = this.container.querySelector('#rule-enabled');
+          const descInput = this.container.querySelector('#rule-description');
+          const domainsInput = this.container.querySelector('#rule-domains');
+          const ipsInput = this.container.querySelector('#rule-ips');
+
+          edge.to = toSelect?.value || 'direct';
+          edge.ruleType = typeSelect?.value || '';
+          edge.enabled = enabledCheck?.checked !== false;
+          edge.description = descInput?.value || '';
+          if (edge.to === 'direct' || edge.to === 'block') {
+            edge.via = [];
+          } else {
+            const hopSelects = Array.from(this.container.querySelectorAll('#rule-chain-list .rule-chain-hop'));
+            edge.via = hopSelects
+              .map(sel => (sel?.value || '').trim())
+              .filter(v => v && v !== 'direct' && v !== 'block' && v !== 'local');
+          }
+
+          if (edge.ruleType === 'route') {
+            const domains = (domainsInput?.value || '').split('\n').map(s => s.trim()).filter(Boolean);
+            const ips = (ipsInput?.value || '').split('\n').map(s => s.trim()).filter(Boolean);
+            edge.routeRule = { domains, ips };
+          } else {
+            edge.routeRule = null;
+          }
+
+          this.render();
+          this.markDirty();
+          this.closeEditDialog();
+        }
+
+        deleteCurrentRule() {
+          if (this.editingEdgeId) {
+            this.closeEditDialog();
+            this.deleteRule(this.editingEdgeId);
+          }
+        }
+
+        async saveGraph() {
+          try {
+            const path = this.frouterId
+              ? `/frouters/${encodeURIComponent(this.frouterId)}/graph`
+              : '/graph';
+
+            const data = {
+              edges: [...this.edges, ...this.detourEdges],
+              slots: this.slots,
+              positions: {}
+            };
+
+            await this.api.put(path, data);
+            this.dirty = false;
+            this.updateStatus();
+            return { success: true };
+          } catch (err) {
+            console.error('保存失败:', err);
+            return { success: false, error: err.message };
+          }
+        }
+
+        markDirty() {
+          this.dirty = true;
+          this.updateStatus();
+        }
+
+        updateStatus() {
+          const statusEl = this.container.querySelector('#chain-status');
+          if (statusEl) {
+            statusEl.textContent = this.dirty ? '有未保存的更改' : '已保存';
+            statusEl.className = `toolbar-status ${this.dirty ? 'dirty' : ''}`;
+          }
+        }
+
+        initRuleTemplates() {
+          const categorySelect = this.container.querySelector('#rule-template-category');
+          const templateSelect = this.container.querySelector('#rule-template-select');
+          const applyBtn = this.container.querySelector('#rule-template-apply');
+
+          if (!categorySelect || !templateSelect) return;
+
+          const categories = typeof getTemplateCategories === 'function' ? getTemplateCategories() : [];
+          categorySelect.innerHTML = '<option value="all">全部分类</option>';
+          for (const cat of categories) {
+            const opt = document.createElement('option');
+            opt.value = cat.id;
+            opt.textContent = `${cat.icon} ${cat.name}`;
+            categorySelect.appendChild(opt);
+          }
+
+          const updateTemplateSelect = (categoryId) => {
+            const templates = typeof getTemplatesByCategory === 'function' ? getTemplatesByCategory(categoryId) : [];
+            templateSelect.innerHTML = '<option value="">选择模板...</option>';
+            for (const tmpl of templates) {
+              const opt = document.createElement('option');
+              opt.value = tmpl.id;
+              opt.textContent = `${tmpl.icon} ${tmpl.name}`;
+              opt.title = tmpl.description;
+              templateSelect.appendChild(opt);
+            }
+          };
+
+          updateTemplateSelect('all');
+          categorySelect.addEventListener('change', (e) => updateTemplateSelect(e.target.value));
+
+          const applyTemplate = (templateId) => {
+            if (!templateId) return;
+
+            const template = typeof getTemplateById === 'function' ? getTemplateById(templateId) : null;
+            if (!template || !template.rule) {
+              showStatus('模板数据无效', 'error', 2000);
+              return;
+            }
+
+            const toSelect = this.container.querySelector('#rule-to');
+            if (toSelect && (template.action === 'direct' || template.action === 'block')) {
+              toSelect.value = template.action;
+            }
+
+            const domainsInput = this.container.querySelector('#rule-domains');
+            const ipsInput = this.container.querySelector('#rule-ips');
+            const descInput = this.container.querySelector('#rule-description');
+
+            if (domainsInput) {
+              const domains = Array.isArray(template.rule.domains) ? template.rule.domains : [];
+              domainsInput.value = domains.join('\n');
+            }
+
+            if (ipsInput) {
+              const ips = Array.isArray(template.rule.ips) ? template.rule.ips : [];
+              ipsInput.value = ips.join('\n');
+            }
+
+            if (descInput) {
+              const prev = String(descInput.value || '').trim();
+              if (!prev || prev.startsWith('模板:')) {
+                descInput.value = `模板: ${template.name}`;
+              }
+            }
+
+            showStatus(`已应用模板: ${template.name}`, 'success', 2000);
+          };
+
+          templateSelect.addEventListener('change', (e) => {
+            applyTemplate(e.target.value);
+          });
+
+          if (applyBtn) {
+            applyBtn.addEventListener('click', () => {
+              if (!templateSelect.value) {
+                showStatus('请先选择一个模板', 'error', 2000);
+                return;
+              }
+              applyTemplate(templateSelect.value);
+            });
+          }
         }
       }
 
-      function renderTrafficProfile(profile) {
-        const form = document.getElementById("profile-form");
-        form.defaultNodeId.value = profile.defaultNodeId || "";
-        form.dnsStrategy.value = (profile.dns && profile.dns.strategy) || "";
-        form.dnsServers.value = (profile.dns && profile.dns.servers ? profile.dns.servers.join("\n") : "");
+      async function initChainEditor() {
+        if (chainEditorInitialized) return;
+
+        const container = document.getElementById('panel-chain');
+        if (!container) return;
+
+        const chainApi = {
+          get: async (path) => api.get(path),
+          put: async (path, data) => api.put(path, data),
+          post: async (path, data) => api.post(path, data)
+        };
+
+        chainListEditor = new ChainListEditor(container, chainApi);
+        const current = getCurrentFRouter();
+        chainListEditor.setFRouterId(current ? current.id : "");
+        await chainListEditor.init();
+        chainEditorInitialized = true;
+
+        document.getElementById('chain-save')?.addEventListener('click', async () => {
+          const result = await chainListEditor.saveGraph();
+          if (result.success) {
+            showStatus('配置已保存', 'success');
+          } else {
+            showStatus('保存失败: ' + result.error, 'error', 5000);
+          }
+        });
+
+        document.getElementById('chain-reset')?.addEventListener('click', async () => {
+          if (confirm('确定要重置为上次保存的配置吗？')) {
+            await chainListEditor.loadGraph();
+            showStatus('已重置', 'info');
+          }
+        });
+
+        document.getElementById('chain-add-rule')?.addEventListener('click', () => {
+          chainListEditor.addRule();
+        });
+
+        console.log('[ChainListEditor] 初始化完成');
       }
 
-      function renderTrafficRules(rules) {
-        const tbody = document.querySelector("#rule-table tbody");
-        if (!Array.isArray(rules) || rules.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="6" class="empty">暂无规则</td></tr>';
+		      const loaders = {
+		        "panel-home": () => loadHomePanel(),
+		        panel1: loadFRouters,
+		        panel2: loadConfigs,
+		        "panel-nodes": () => {
+		          startNodesPolling();
+		          return loadNodes();
+		        },
+		        panel3: () => loadComponents(),
+		        "panel-logs": () => {
+		          ensureKernelLogsPanel();
+		          startKernelLogsPolling();
+		          return loadKernelLogs();
+		        },
+		        "panel-chain": initChainEditor,
+	        "panel-settings": async () => {
+	          await loadSystemProxySettings();
+	        },
+      };
+
+      function openChainEditorPanel() {
+        const target = "panel-chain";
+        if (currentPanel === "panel-nodes") {
+          stopNodesPolling();
+        }
+        if (currentPanel === "panel-logs") {
+          stopKernelLogsPolling();
+        }
+        if (target === currentPanel) {
+          loaders[target]?.();
           return;
         }
-        tbody.innerHTML = rules
-          .map((rule) => {
-            const targets =
-              Array.isArray(rule.targets) && rule.targets.length
-                ? rule.targets.map((target) => `<span class="tag">${escapeHtml(target)}</span>`).join("")
-                : '<span class="muted">-</span>';
-            return `
-          <tr data-id="${escapeHtml(rule.id)}">
-            <td>${escapeHtml(rule.name)}</td>
-            <td>${escapeHtml(rule.nodeId)}</td>
-            <td><div class="tags">${targets}</div></td>
-            <td>${escapeHtml(rule.priority ?? "-")}</td>
-            <td>${formatTime(rule.updatedAt)}</td>
-            <td>
-              <button class="danger" data-action="delete-rule">删除</button>
-            </td>
-          </tr>
-        `;
-          })
-          .join("");
+        currentPanel = target;
+        menu.querySelectorAll("button").forEach((btn) => btn.classList.remove("active"));
+        // Chain Editor 作为 FRouter 面板的一部分：保持左侧高亮在 FRouter
+        const activeBtn = menu.querySelector('button[data-target="panel1"]');
+        if (activeBtn) activeBtn.classList.add("active");
+        panels.forEach((panel) => {
+          panel.classList.toggle("active", panel.id === target);
+        });
+        loaders[target]?.();
       }
-
-      const loaders = {
-        "panel-home": () => loadHomePanel(),
-        panel1: loadNodes,
-        panel2: loadConfigs,
-        panel3: () => loadComponents(),
-        panel4: loadTraffic,
-        "panel-settings": () => loadSystemProxySettings(),
-      };
 
       menu.addEventListener("click", (event) => {
         const button = event.target.closest("button[data-target]");
         if (!button) return;
         const target = button.dataset.target;
         if (target === currentPanel) return;
+
+        const prevPanel = currentPanel;
+        if (prevPanel === "panel-nodes" && target !== "panel-nodes") {
+          stopNodesPolling();
+        }
+        if (prevPanel === "panel-logs" && target !== "panel-logs") {
+          stopKernelLogsPolling();
+        }
         currentPanel = target;
         menu.querySelectorAll("button").forEach((btn) => btn.classList.remove("active"));
         button.classList.add("active");
         panels.forEach((panel) => {
           panel.classList.toggle("active", panel.id === target);
         });
+        if (target === "panel-nodes") {
+          startNodesPolling();
+        }
+        if (target === "panel-logs") {
+          startKernelLogsPolling();
+        }
         loaders[target]?.();
       });
 
@@ -2751,13 +4782,125 @@
       const nodeAddButton = document.getElementById("node-add-button");
       const nodeModal = document.getElementById("node-modal");
       const nodeModalClose = document.getElementById("node-modal-close");
-      const nodeModalReset = document.getElementById("node-modal-reset");
-      const nodeModalBackdrop = nodeModal ? nodeModal.querySelector(".modal-backdrop") : null;
-      const nodeForm = document.getElementById("node-form");
-      document.getElementById("node-refresh").addEventListener("click", () => loadNodes({ notify: true }));
-      document.getElementById("config-refresh").addEventListener("click", () => loadConfigs({ notify: true }));
-      document.getElementById("traffic-refresh").addEventListener("click", () => loadTraffic({ notify: true }));
-      document.getElementById("component-refresh").addEventListener("click", () => loadComponents({ notify: true }));
+	      const nodeModalReset = document.getElementById("node-modal-reset");
+		      const nodeModalBackdrop = nodeModal ? nodeModal.querySelector(".modal-backdrop") : null;
+		      const nodeForm = document.getElementById("node-form");
+		      const chainRouteSelect = document.getElementById("chain-route-select");
+	      const nodeRefreshBtn = document.getElementById("node-refresh");
+	      nodeRefreshBtn.addEventListener("click", () => loadFRouters({ notify: true }));
+	      document.getElementById("config-refresh").addEventListener("click", () => loadConfigs({ notify: true }));
+	      document.getElementById("component-refresh").addEventListener("click", () => loadComponents({ notify: true }));
+
+	      const nodesTable = document.getElementById("nodes-table");
+	      if (nodesTable) {
+	        nodesTable.addEventListener("click", async (event) => {
+	          const button = event.target.closest("button[data-action]");
+	          if (!button) return;
+	          const row = button.closest("tr[data-id]");
+	          if (!row) return;
+	          const id = row.dataset.id;
+	          if (!id) return;
+
+	          const action = button.dataset.action;
+	          try {
+	            if (action === "ping-node") {
+	              await api.post(`/nodes/${id}/ping`, {});
+	              showStatus("节点延迟任务已提交", "info");
+	            } else if (action === "speedtest-node") {
+	              await api.post(`/nodes/${id}/speedtest`, {});
+	              showStatus("节点测速任务已提交", "info");
+	            }
+
+	            setTimeout(() => {
+	              if (currentPanel === "panel-nodes") {
+	                loadNodes();
+	              }
+	            }, 1200);
+	          } catch (err) {
+	            showStatus(`节点操作失败：${err.message}`, "error", 6000);
+	          }
+	        });
+	      }
+
+	      const nodesBulkPingButton = document.getElementById("nodes-bulk-ping");
+	      if (nodesBulkPingButton) {
+	        nodesBulkPingButton.addEventListener("click", async () => {
+	          if (!Array.isArray(nodesCache) || nodesCache.length === 0) {
+	            showStatus("暂无节点", "error");
+	            return;
+	          }
+	          try {
+	            await api.post("/nodes/bulk/ping", {});
+	            showStatus("批量延迟任务已排队", "info");
+	            setTimeout(() => currentPanel === "panel-nodes" && loadNodes(), 1200);
+	            setTimeout(() => currentPanel === "panel-nodes" && loadNodes(), 3000);
+	          } catch (err) {
+	            showStatus(`批量测延迟失败：${err.message}`, "error", 6000);
+	          }
+	        });
+	      }
+
+	      const nodesBulkSpeedButton = document.getElementById("nodes-bulk-speed");
+	      if (nodesBulkSpeedButton) {
+	        nodesBulkSpeedButton.addEventListener("click", async () => {
+	          if (!Array.isArray(nodesCache) || nodesCache.length === 0) {
+	            showStatus("暂无节点", "error");
+	            return;
+	          }
+	          try {
+	            await api.post("/nodes/bulk/speedtest", {});
+	            showStatus("批量测速任务已排队", "info");
+	            setTimeout(() => currentPanel === "panel-nodes" && loadNodes(), 1200);
+	            setTimeout(() => currentPanel === "panel-nodes" && loadNodes(), 5000);
+	          } catch (err) {
+	            showStatus(`批量测速失败：${err.message}`, "error", 6000);
+	          }
+	        });
+	      }
+
+		      function ensureFRouterContextMenu() {
+		        let menu = document.getElementById("frouter-context-menu");
+		        if (menu) return menu;
+
+	        menu = document.createElement("div");
+	        menu.id = "frouter-context-menu";
+	        // 复用 chain-editor.css 的右键菜单样式
+	        menu.className = "slot-context-menu";
+	        menu.innerHTML = `
+	          <div class="slot-context-menu-item" data-action="open-chain">链路编辑</div>
+	        `;
+	        document.body.appendChild(menu);
+
+	        menu.addEventListener("click", (e) => {
+	          const item = e.target.closest(".slot-context-menu-item[data-action]");
+	          if (!item) return;
+	          menu.classList.remove("visible");
+
+	          const action = item.dataset.action;
+	          const frouterId = menu.dataset.frouterId || "";
+	          if (action === "open-chain") {
+	            if (frouterId) setCurrentFRouter(frouterId, { notify: false });
+	            openChainEditorPanel();
+	          }
+	        });
+
+	        document.addEventListener("click", () => menu.classList.remove("visible"));
+	        window.addEventListener("blur", () => menu.classList.remove("visible"));
+	        return menu;
+	      }
+
+      document.getElementById("chain-back")?.addEventListener("click", () => {
+        const btn = menu.querySelector('button[data-target="panel1"]');
+        if (btn) {
+          btn.click();
+          return;
+        }
+        currentPanel = "panel1";
+        panels.forEach((panel) => {
+          panel.classList.toggle("active", panel.id === "panel1");
+        });
+        loaders.panel1?.();
+      });
 
       // TUN status click handler
       const tunStatusValue = document.getElementById("tun-status-value");
@@ -2777,14 +4920,14 @@
       const systemProxySaveButton = document.getElementById("system-proxy-save");
       const systemProxyResetButton = document.getElementById("system-proxy-reset");
       const proxyToggleButton = document.getElementById("proxy-toggle");
-      const homeNodeName = document.getElementById("home-node-name");
-      const homeNodeAddress = document.getElementById("home-node-address");
-      const homeNodeLatency = document.getElementById("home-node-latency");
-      const homeNodeSpeed = document.getElementById("home-node-speed");
-      const homeNodeProtocol = document.getElementById("home-node-protocol");
-      const homeNodeUpdated = document.getElementById("home-node-updated");
       if (proxyToggleButton) {
         proxyToggleButton.addEventListener("click", handleProxyToggle);
+      }
+
+      if (chainRouteSelect) {
+        chainRouteSelect.addEventListener("change", (event) => {
+          setCurrentFRouter(event.target.value, { notify: true });
+        });
       }
 
       function openNodeModal() {
@@ -2907,223 +5050,94 @@
         });
       }
 
-      if (nodeForm) {
-        nodeForm.addEventListener("submit", async (event) => {
-          event.preventDefault();
-          const form = event.target;
+	      if (nodeForm) {
+	        nodeForm.addEventListener("submit", async (event) => {
+	          event.preventDefault();
+	          const form = event.target;
+	          const frouterName = form.name.value.trim();
+	          const tags = parseList(form.tags.value);
 
-          // Check for share link first
-          const shareLink = form.shareLink.value.trim();
-          if (shareLink) {
-            try {
-              await api.post("/nodes", { shareLink });
-              form.reset();
-              showStatus("节点添加成功", "success");
-              closeNodeModal();
-              await loadNodes();
-            } catch (err) {
-              showStatus(`添加节点失败：${err.message}`, "error", 6000);
-            }
-            return;
-          }
+		          if (!frouterName) {
+		            showStatus("请填写 FRouter 名称", "error");
+		            return;
+		          }
 
-          // Build payload from form fields
-          const protocol = form.protocol.value.trim();
-          if (!protocol) {
-            showStatus("请选择协议", "error");
-            return;
-          }
-
-          const payload = {
-            name: form.name.value.trim(),
-            address: form.address.value.trim(),
-            port: parseNumber(form.port.value),
-            protocol: protocol,
-            tags: parseList(form.tags.value),
-            remarks: form.remarks.value.trim() || "",
-          };
-
-          if (!payload.name || !payload.address || !payload.port) {
-            showStatus("请完整填写节点信息", "error");
-            return;
-          }
-
-          // Protocol-specific settings
-          if (protocol === "shadowsocks") {
-            payload.password = form.ss_password.value.trim();
-            payload.method = form.ss_method.value;
-          } else if (protocol === "vmess" || protocol === "vless") {
-            payload.uuid = form.vmess_uuid.value.trim();
-            if (protocol === "vmess") {
-              payload.alterId = parseNumber(form.vmess_alterid.value) || 0;
-              payload.security = form.vmess_security.value;
-            } else if (protocol === "vless") {
-              payload.flow = form.vless_flow.value || "";
-            }
-          } else if (protocol === "trojan") {
-            payload.password = form.trojan_password.value.trim();
-          } else if (protocol === "http" || protocol === "socks5") {
-            payload.username = form.proxy_username.value.trim() || "";
-            payload.password = form.proxy_password.value.trim() || "";
-          }
-
-          // Network settings
-          payload.network = form.network.value || "tcp";
-          payload.tls = form.tls.value || "";
-
-          // Network-specific settings
-          if (payload.network === "ws") {
-            payload.path = form.ws_path.value.trim() || "/";
-            payload.host = form.ws_host.value.trim() || "";
-          } else if (payload.network === "h2") {
-            payload.path = form.h2_path.value.trim() || "/";
-            payload.host = form.h2_host.value.trim() || "";
-          } else if (payload.network === "grpc") {
-            payload.serviceName = form.grpc_service.value.trim() || "";
-          }
-
-          // TLS settings
-          if (payload.tls) {
-            payload.sni = form.tls_sni.value.trim() || "";
-            payload.fingerprint = form.tls_fingerprint.value || "";
-          }
-
-          try {
-            await api.post("/nodes", payload);
-            form.reset();
-            updateFieldVisibility(); // Reset field visibility
-            showStatus("节点添加成功", "success");
-            closeNodeModal();
-            await loadNodes();
-          } catch (err) {
-            showStatus(`添加节点失败：${err.message}`, "error", 6000);
-          }
+		          try {
+		            await api.post("/frouters", { name: frouterName, tags });
+		            form.reset();
+		            showStatus("FRouter 添加成功", "success");
+		            closeNodeModal();
+		            await loadFRouters();
+		          } catch (err) {
+		            showStatus(`添加 FRouter 失败：${err.message}`, "error", 6000);
+		          }
         });
       }
 
-      function updateHomeNodeStatus() {
-        if (!homeNodeName || !homeNodeLatency || !homeNodeSpeed) return;
-
-        let node = null;
-        if (Array.isArray(nodesCache) && nodesCache.length > 0) {
-          const targetId = resolveHomeNodeId();
-          if (targetId) {
-            node = nodesCache.find((item) => item.id === targetId) || null;
-          }
-          if (!node) {
-            node = nodesCache[0];
-          }
-        }
-
-        if (!node) {
-          homeNodeName.textContent = "选择节点";
-          if (homeNodeAddress) homeNodeAddress.textContent = "-";
-          homeNodeLatency.textContent = "--";
-          homeNodeSpeed.textContent = "--";
-          if (homeNodeProtocol) homeNodeProtocol.textContent = "--";
-          if (homeNodeUpdated) homeNodeUpdated.textContent = "-";
-          return;
-        }
-
-        homeNodeName.textContent = escapeHtml(node.name || "-");
-        if (homeNodeAddress) {
-          homeNodeAddress.textContent = node.address ? `${escapeHtml(node.address)}:${escapeHtml(String(node.port || ""))}` : "-";
-        }
-
-        const latency = typeof node.lastLatencyMs === "number" && node.lastLatencyMs > 0 ? `${node.lastLatencyMs} ms` : "--";
-        let speed;
-        if (node.lastSpeedError) {
-          speed = `Error`;
-        } else if (typeof node.lastSpeedMbps === "number" && node.lastSpeedMbps > 0) {
-          speed = `${node.lastSpeedMbps >= 10 ? node.lastSpeedMbps.toFixed(1) : node.lastSpeedMbps.toFixed(2)} MB/s`;
-        } else {
-          speed = "--";
-        }
-        homeNodeLatency.textContent = latency;
-        homeNodeSpeed.textContent = speed;
-
-        // Display protocol
-        if (homeNodeProtocol) {
-          const protocol = node.protocol ? escapeHtml(node.protocol).toUpperCase() : "--";
-          homeNodeProtocol.textContent = protocol;
-        }
-
-        if (homeNodeUpdated) {
-          const timestamps = [node.lastLatencyAt, node.lastSpeedAt].filter(Boolean);
-          const updated = timestamps.length > 0 ? timestamps.sort().slice(-1)[0] : null;
-          homeNodeUpdated.textContent = updated ? formatTime(updated) : "-";
-        }
-      }
-
-      if (nodeGrid) {
-        nodeGrid.addEventListener("click", async (event) => {
-          const card = event.target.closest(".node-card[data-id]");
-          if (!card) return;
-          const id = card.dataset.id;
+	      if (nodeGrid) {
+	        nodeGrid.addEventListener("click", async (event) => {
+	          const row = event.target.closest(".node-row[data-id]");
+	          if (!row) return;
+	          const id = row.dataset.id;
           const actionTarget = event.target.closest("[data-action]");
-          const action = actionTarget ? actionTarget.dataset.action : "select-node";
+          const action = actionTarget ? actionTarget.dataset.action : null;
+          if (!action) {
+            setCurrentFRouter(id, { notify: false });
+            await applyFRouterSelection(id, { notify: true });
+            return;
+          }
           try {
-            if (action === "delete-node") {
-              if (!confirm("确认删除该节点？")) return;
-              await api.delete(`/nodes/${id}`);
-              showStatus("节点已删除", "success");
-              await loadNodes();
-            } else if (action === "ping-node") {
-              await api.post(`/nodes/${id}/ping`);
+            if (action === "ping-route") {
+              await api.post(`/frouters/${id}/ping`);
               showStatus("延迟任务已排队", "info");
-              await loadNodes();
-            } else if (action === "speed-node") {
-              await api.post(`/nodes/${id}/speedtest`);
+              await loadFRouters();
+            } else if (action === "speed-route") {
+              await api.post(`/frouters/${id}/speedtest`);
               showStatus("测速任务已排队", "info");
-              await loadNodes();
-            } else if (action === "select-node") {
-              await api.post(`/nodes/${id}/select`);
-              localStorage.setItem("vea_selected_node_id", id);
-              showStatus("已切换当前节点", "success");
-              await loadNodes();
+              await loadFRouters();
             }
           } catch (err) {
             showStatus(`操作失败：${err.message}`, "error", 6000);
-          }
-        });
-      }
+	          }
+	        });
+
+	        nodeGrid.addEventListener("dblclick", (event) => {
+	          const row = event.target.closest(".node-row[data-id]");
+	          if (!row) return;
+	          if (event.target.closest("[data-action]")) return;
+	          setCurrentFRouter(row.dataset.id, { notify: false });
+	          openChainEditorPanel();
+	        });
+
+	        nodeGrid.addEventListener("contextmenu", (event) => {
+	          const row = event.target.closest(".node-row[data-id]");
+	          if (!row) return;
+	          event.preventDefault();
+
+	          const id = row.dataset.id;
+	          setCurrentFRouter(id, { notify: false, reloadGraph: false });
+
+	          const menu = ensureFRouterContextMenu();
+	          menu.dataset.frouterId = id;
+
+	          const maxLeft = Math.max(0, window.innerWidth - 200);
+	          const maxTop = Math.max(0, window.innerHeight - 120);
+	          menu.style.left = `${Math.min(event.clientX, maxLeft)}px`;
+	          menu.style.top = `${Math.min(event.clientY, maxTop)}px`;
+	          menu.classList.add("visible");
+	        });
+	      }
 
       if (nodeTabs) {
         nodeTabs.addEventListener("click", (event) => {
           const button = event.target.closest(".node-tab[data-tag]");
           if (!button) return;
           const tag = button.dataset.tag;
-          if (tag === currentNodeTab) return;
-          currentNodeTab = tag;
+          if (tag === currentFRouterTab) return;
+          currentFRouterTab = tag;
           nodeTabs.querySelectorAll(".node-tab").forEach((tab) => tab.classList.remove("active"));
           button.classList.add("active");
-          renderNodes(nodesCache, activeNodeId);
-        });
-      }
-
-      // Traffic Tabs Logic
-      const trafficTabs = document.getElementById("traffic-tabs");
-      if (trafficTabs) {
-        trafficTabs.addEventListener("click", (event) => {
-          const button = event.target.closest(".node-tab[data-tab]");
-          if (!button) return;
-          const tabName = button.dataset.tab;
-
-          // Update active tab state
-          trafficTabs.querySelectorAll(".node-tab").forEach(t => t.classList.remove("active"));
-          button.classList.add("active");
-
-          // Show/Hide content
-          const globalContent = document.getElementById("traffic-content-global");
-          const rulesContent = document.getElementById("traffic-content-rules");
-
-          if (tabName === "global") {
-            if (globalContent) globalContent.style.display = "block";
-            if (rulesContent) rulesContent.style.display = "none";
-          } else {
-            if (globalContent) globalContent.style.display = "none";
-            if (rulesContent) rulesContent.style.display = "block";
-          }
+          renderFRouters(froutersCache, currentFRouterId);
         });
       }
 
@@ -3195,52 +5209,64 @@
             form.reset();
             showStatus("配置添加成功", "success");
             closeConfigModal();
-            await Promise.all([loadConfigs(), loadNodes()]);
+            await Promise.all([loadConfigs(), loadFRouters(), loadNodes()]);
           } catch (err) {
             showStatus(`添加配置失败：${err.message}`, "error", 6000);
           }
         });
       }
 
-      function getSelectedNodeIds() {
+      function getSelectedFRouterIds() {
         if (!nodeGrid) return [];
-        return Array.from(nodeGrid.querySelectorAll(".node-card[data-id]"))
+        return Array.from(nodeGrid.querySelectorAll(".node-row[data-id]"))
           .map((card) => card.dataset.id)
           .filter(Boolean);
       }
 
-      document.getElementById("node-bulk-ping").addEventListener("click", async () => {
-        const ids = getSelectedNodeIds();
+      async function runBulkSpeedTest({ notify = true } = {}) {
+        const ids = getSelectedFRouterIds();
         if (ids.length === 0) {
-          showStatus("请先勾选节点", "error");
+	          if (notify) {
+	            showStatus("暂无可测试 FRouter", "error");
+	          }
           return;
         }
         try {
-          await api.post("/nodes/bulk/ping", { ids });
+          await api.post("/frouters/reset-speed", { ids });
+          await loadFRouters();
+          for (const id of ids) {
+            await api.post(`/frouters/${id}/speedtest`);
+          }
+          if (notify) {
+            showStatus("批量测速任务已排队", "info");
+          }
+          await loadFRouters();
+        } catch (err) {
+          if (notify) {
+            showStatus(`批量测速失败：${err.message}`, "error", 6000);
+          } else {
+            console.error("自动测速失败:", err);
+          }
+        }
+      }
+
+      document.getElementById("node-bulk-ping").addEventListener("click", async () => {
+        const ids = getSelectedFRouterIds();
+        if (ids.length === 0) {
+	          showStatus("暂无可测试 FRouter", "error");
+	          return;
+	        }
+        try {
+          await api.post("/frouters/bulk/ping", { ids });
           showStatus("批量延迟任务已排队", "info");
-          await loadNodes();
+          await loadFRouters();
         } catch (err) {
           showStatus(`批量延迟失败：${err.message}`, "error", 6000);
         }
       });
 
       document.getElementById("node-bulk-speed").addEventListener("click", async () => {
-        const ids = getSelectedNodeIds();
-        if (ids.length === 0) {
-          showStatus("请先勾选节点", "error");
-          return;
-        }
-        try {
-          await api.post("/nodes/reset-speed", { ids });
-          await loadNodes();
-          for (const id of ids) {
-            await api.post(`/nodes/${id}/speedtest`);
-          }
-          showStatus("批量测速任务已排队", "info");
-          await loadNodes();
-        } catch (err) {
-          showStatus(`批量测速失败：${err.message}`, "error", 6000);
-        }
+        await runBulkSpeedTest({ notify: true });
       });
 
       document.getElementById("config-table").addEventListener("click", async (event) => {
@@ -3254,17 +5280,16 @@
           if (action === "refresh-config") {
             await api.post(`/configs/${id}/refresh`);
             showStatus("配置刷新完成", "success");
-            await Promise.all([loadConfigs(), loadNodes()]);
+            await Promise.all([loadConfigs(), loadFRouters(), loadNodes()]);
           } else if (action === "pull-nodes") {
-            const nodes = await api.post(`/configs/${id}/pull-nodes`);
-            renderNodes(nodes);
-            showStatus(`订阅节点已同步（${nodes.length}）`, "success");
-            await Promise.all([loadConfigs(), loadNodes()]);
+            await api.post(`/configs/${id}/pull-nodes`);
+            showStatus("订阅节点已同步", "success");
+            await Promise.all([loadConfigs(), loadFRouters(), loadNodes()]);
           } else if (action === "delete-config") {
             if (!confirm("确认删除该配置？")) return;
             await api.delete(`/configs/${id}`);
             showStatus("配置已删除", "success");
-            await Promise.all([loadConfigs(), loadNodes()]);
+            await Promise.all([loadConfigs(), loadFRouters(), loadNodes()]);
           }
         } catch (err) {
           showStatus(`操作失败：${err.message}`, "error", 6000);
@@ -3445,7 +5470,7 @@
             // 防抖：300ms 内只保存一次
             if (saveTimeout) clearTimeout(saveTimeout);
             saveTimeout = setTimeout(async () => {
-              await settingsManager.saveToAPI();
+              await settingsManager.saveToAPI(api.client.baseURL);
             }, 300);
           });
         }
@@ -3453,7 +5478,7 @@
 
       // 从后端 API 加载已保存的设置
       (async function loadSettingsFromAPI() {
-        await settingsManager.loadFromAPI('http://localhost:18080');
+        await settingsManager.loadFromAPI(api.client.baseURL);
         renderAllSettings();
       })();
 
@@ -3500,112 +5525,11 @@
         });
       });
 
-      document.getElementById("profile-form").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const form = event.target;
-        const payload = {
-          defaultNodeId: form.defaultNodeId.value.trim(),
-          dns: {
-            strategy: form.dnsStrategy.value.trim(),
-            servers: parseList(form.dnsServers.value),
-          },
-        };
-        try {
-          const updated = await api.put("/traffic/profile", payload);
-          renderTrafficProfile(updated);
-          showStatus("默认出口与 DNS 已更新", "success");
-        } catch (err) {
-          showStatus(`更新失败：${err.message}`, "error", 6000);
-        }
-      });
-
-      const ruleModal = document.getElementById("rule-modal");
-      const ruleAddButton = document.getElementById("rule-add-button");
-      const ruleModalClose = document.getElementById("rule-modal-close");
-      const ruleModalBackdrop = ruleModal?.querySelector(".modal-backdrop");
-      const ruleModalReset = document.getElementById("rule-modal-reset");
-      const ruleForm = document.getElementById("rule-form");
-
-      function openRuleModal() {
-        if (!ruleModal) return;
-        ruleModal.classList.add("open");
-        if (ruleForm) ruleForm.reset();
-      }
-
-      function closeRuleModal() {
-        if (!ruleModal) return;
-        ruleModal.classList.remove("open");
-      }
-
-      if (ruleAddButton) {
-        ruleAddButton.addEventListener("click", openRuleModal);
-      }
-      if (ruleModalClose) {
-        ruleModalClose.addEventListener("click", closeRuleModal);
-      }
-      if (ruleModalBackdrop) {
-        ruleModalBackdrop.addEventListener("click", closeRuleModal);
-      }
-      document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape" && ruleModal?.classList.contains("open")) {
-          closeRuleModal();
-        }
-      });
-      if (ruleModalReset && ruleForm) {
-        ruleModalReset.addEventListener("click", () => {
-          ruleForm.reset();
-        });
-      }
-
-      if (ruleForm) {
-        ruleForm.addEventListener("submit", async (event) => {
-          event.preventDefault();
-          const form = event.target;
-          const payload = {
-            name: form.name.value.trim(),
-            priority: parseNumber(form.priority.value),
-            targets: parseList(form.targets.value),
-            nodeId: form.nodeId.value.trim(),
-          };
-          if (!payload.name || !payload.targets.length || !payload.nodeId) {
-            showStatus("请完整填写规则信息", "error");
-            return;
-          }
-          try {
-            await api.post("/traffic/rules", payload);
-            form.reset();
-            showStatus("路由规则添加成功", "success");
-            closeRuleModal();
-            await loadTrafficRules();
-          } catch (err) {
-            showStatus(`添加规则失败：${err.message}`, "error", 6000);
-          }
-        });
-      }
-
-      document.getElementById("rule-table").addEventListener("click", async (event) => {
-        const button = event.target.closest("button[data-action]");
-        if (!button) return;
-        const tr = button.closest("tr[data-id]");
-        if (!tr) return;
-        const id = tr.dataset.id;
-        const action = button.dataset.action;
-        if (action !== "delete-rule") return;
-        try {
-          if (!confirm("确认删除该分流规则？")) return;
-          await api.delete(`/traffic/rules/${id}`);
-          showStatus("规则已删除", "success");
-          await loadTraffic();
-        } catch (err) {
-          showStatus(`删除失败：${err.message}`, "error", 6000);
-        }
-      });
-
       // Initial load
+      loadFRouters();
       loadNodes();
-      loadIPGeo();
       loaders[currentPanel]?.();
-      ensureNodesPolling();
+      ensureFRoutersPolling();
     })();
 
     // 窗口控制按钮事件

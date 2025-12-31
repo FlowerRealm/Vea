@@ -55,11 +55,11 @@ frontend/
 - **主题文件 (theme/)**：
   - 自包含的HTML主题文件（HTML/CSS/JS）
   - 通过 ES Module 导入 SDK
-  - 直接调用 HTTP API (localhost:8080)
+  - 直接调用 HTTP API (localhost:19080)
 
 - **后端服务**：
   - Go 编译的 Vea 服务
-  - 监听在 :8080
+  - 监听在 :19080
   - 打包时内嵌到 app 的 resources 目录
 
 ## 工作原理
@@ -98,8 +98,8 @@ node electron/test-main-logic.js
 
 # 2. 验证 Go 后端
 make build
-./vea --addr :8080 &
-curl http://localhost:8080/
+./vea --addr :19080 &
+curl http://localhost:19080/
 pkill vea
 
 # 3. 验证 SDK 路径
@@ -131,7 +131,7 @@ ls -lh frontend/sdk/dist/vea-sdk.esm.js
 
 2. **首次启动可能较慢**：Go 服务需要初始化，窗口会在服务就绪后才显示。
 
-3. **端口占用**：如果 8080 端口已被占用，需要手动停止其他服务。
+3. **端口占用**：如果 19080 端口已被占用，需要手动停止其他服务。
 
 4. **打包体积**：Electron 本身约 ~150MB，Go 二进制约 10MB。
 

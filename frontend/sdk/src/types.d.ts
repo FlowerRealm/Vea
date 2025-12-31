@@ -7,7 +7,7 @@
 // 数据模型
 // ============================================================================
 
-export type NodeProtocol = 'vless' | 'trojan' | 'shadowsocks' | 'vmess'
+export type NodeProtocol = 'vless' | 'trojan' | 'shadowsocks' | 'vmess' | 'hysteria2' | 'tuic'
 
 export interface NodeSecurity {
   uuid?: string
@@ -51,14 +51,62 @@ export interface Node {
   transport?: NodeTransport
   tls?: NodeTLS
   sourceConfigId?: string
-  uploadBytes: number
-  downloadBytes: number
   lastLatencyMs: number
   lastLatencyAt: string
+  lastLatencyError?: string
   lastSpeedMbps: number
   lastSpeedAt: string
   lastSpeedError?: string
-  lastSelectedAt: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ChainProxySettings {
+  edges: any[]
+  positions?: Record<string, { x: number; y: number }>
+  slots?: any[]
+  updatedAt?: string
+}
+
+export interface FRouterGraphNodeInfo {
+  id: string
+  name: string
+  protocol: string
+  address: string
+  port: number
+}
+
+export interface FRouterGraphRequest {
+  edges: any[]
+  positions?: Record<string, { x: number; y: number }>
+  slots?: any[]
+}
+
+export interface FRouterGraphResponse {
+  edges: any[]
+  positions?: Record<string, { x: number; y: number }>
+  slots?: any[]
+  nodes: FRouterGraphNodeInfo[]
+  updatedAt?: string
+}
+
+export interface ValidateGraphResponse {
+  valid: boolean
+  errors: string[]
+  warnings: string[]
+}
+
+export interface FRouter {
+  id: string
+  name: string
+  chainProxy: ChainProxySettings
+  tags?: string[]
+  lastLatencyMs: number
+  lastLatencyAt: string
+  lastLatencyError?: string
+  lastSpeedMbps: number
+  lastSpeedAt: string
+  lastSpeedError?: string
   createdAt: string
   updatedAt: string
 }
@@ -76,8 +124,6 @@ export interface Config {
   autoUpdateInterval: number
   lastSyncedAt: string
   expireAt?: string | null
-  uploadBytes: number
-  downloadBytes: number
   createdAt: string
   updatedAt: string
 }
@@ -99,7 +145,7 @@ export interface GeoResource {
   updatedAt: string
 }
 
-export type CoreComponentKind = 'xray' | 'geo' | 'generic'
+export type CoreComponentKind = 'xray' | 'singbox' | 'geo' | 'generic'
 
 export interface CoreComponent {
   id: string
@@ -114,29 +160,11 @@ export interface CoreComponent {
   checksum: string
   lastSyncError: string
   meta?: Record<string, string>
+  accessories?: string[]
+  installStatus?: string
+  installProgress?: number
+  installMessage?: string
   createdAt: string
-  updatedAt: string
-}
-
-export interface DNSSetting {
-  strategy: string
-  servers: string[]
-}
-
-export interface TrafficRule {
-  id: string
-  name: string
-  targets: string[]
-  nodeId: string
-  priority: number
-  createdAt: string
-  updatedAt: string
-}
-
-export interface TrafficProfile {
-  defaultNodeId: string
-  dns: DNSSetting
-  rules: TrafficRule[]
   updatedAt: string
 }
 
@@ -146,21 +174,43 @@ export interface SystemProxySettings {
   updatedAt: string
 }
 
-export interface XrayStatus {
-  enabled: boolean
-  running: boolean
-  activeNodeId: string
-  binary: string
-  config: string
+export type InboundMode = 'socks' | 'http' | 'mixed' | 'tun'
+
+export type CoreEngineKind = 'xray' | 'singbox' | 'auto'
+
+export interface CoreEngineInfo {
+  kind: CoreEngineKind
+  binaryPath: string
+  version: string
+  capabilities: string[]
+  installed: boolean
+}
+
+export interface ProxyConfig {
+  inboundMode: InboundMode
+  inboundPort: number
+  inboundConfig?: Record<string, any>
+  tunSettings?: Record<string, any>
+  resolvedService?: Record<string, any>
+  dnsConfig?: Record<string, any>
+  logConfig?: Record<string, any>
+  performanceConfig?: Record<string, any>
+  xrayConfig?: Record<string, any>
+  preferredEngine: CoreEngineKind
+  frouterId: string
+  updatedAt: string
 }
 
 export interface ServiceState {
+  schemaVersion?: string
   nodes: Node[]
+  frouters: FRouter[]
   configs: Config[]
   geoResources: GeoResource[]
   components: CoreComponent[]
-  trafficProfile: TrafficProfile
   systemProxy: SystemProxySettings
+  proxyConfig: ProxyConfig
+  frontendSettings?: Record<string, any>
   generatedAt: string
 }
 
@@ -168,29 +218,16 @@ export interface ServiceState {
 // 请求/响应类型
 // ============================================================================
 
-export interface NodeShareLinkRequest {
-  shareLink: string
-}
-
-export interface NodeManualRequest {
+export interface FRouterCreateRequest {
   name: string
-  address: string
-  port: number
-  protocol: NodeProtocol
+  chainProxy?: ChainProxySettings
   tags?: string[]
 }
 
-export interface NodeUpdateRequest {
+export interface FRouterUpdateRequest {
   name: string
-  address: string
-  port: number
-  protocol: NodeProtocol
+  chainProxy?: ChainProxySettings
   tags?: string[]
-}
-
-export interface TrafficRequest {
-  uploadBytes: number
-  downloadBytes: number
 }
 
 export interface ConfigImportRequest {
@@ -227,25 +264,6 @@ export interface ComponentRequest {
   autoUpdateIntervalMinutes?: number
 }
 
-export interface XrayStartOptions {
-  activeNodeId?: string
-}
-
-export interface TrafficProfileRequest {
-  defaultNodeId?: string
-  dns?: {
-    strategy?: string
-    servers?: string[]
-  }
-}
-
-export interface TrafficRuleRequest {
-  name: string
-  targets: string[]
-  nodeId: string
-  priority?: number
-}
-
 export interface SystemProxyRequest {
   enabled: boolean
   ignoreHosts: string[]
@@ -253,8 +271,10 @@ export interface SystemProxyRequest {
 
 export interface NodesListResponse {
   nodes: Node[]
-  activeNodeId: string
-  lastSelectedNodeId: string
+}
+
+export interface FRoutersListResponse {
+  frouters: FRouter[]
 }
 
 export interface SystemProxyResponse {
@@ -281,18 +301,20 @@ export class VeaError extends Error {
 // API 接口
 // ============================================================================
 
-export interface NodesAPI {
-  list(): Promise<NodesListResponse>
-  create(data: NodeShareLinkRequest | NodeManualRequest): Promise<Node>
-  update(id: string, data: NodeUpdateRequest): Promise<Node>
+export interface FRoutersAPI {
+  list(): Promise<FRoutersListResponse>
+  create(data: FRouterCreateRequest): Promise<FRouter>
+  update(id: string, data: FRouterUpdateRequest): Promise<FRouter>
   delete(id: string): Promise<null>
-  resetTraffic(id: string): Promise<Node>
-  incrementTraffic(id: string, traffic: TrafficRequest): Promise<Node>
   ping(id: string): Promise<null>
   speedtest(id: string): Promise<null>
-  select(id: string): Promise<null>
+  measureLatency(id: string): Promise<null>
+  measureSpeed(id: string): Promise<null>
   bulkPing(ids?: string[]): Promise<null>
   resetSpeed(ids?: string[]): Promise<null>
+  getGraph(id: string): Promise<FRouterGraphResponse>
+  saveGraph(id: string, data: FRouterGraphRequest): Promise<FRouter>
+  validateGraph(id: string, data: FRouterGraphRequest): Promise<ValidateGraphResponse>
 }
 
 export interface ConfigsAPI {
@@ -301,8 +323,13 @@ export interface ConfigsAPI {
   update(id: string, data: ConfigUpdateRequest): Promise<Config>
   delete(id: string): Promise<null>
   refresh(id: string): Promise<Config>
-  pullNodes(id: string): Promise<Node[]>
-  incrementTraffic(id: string, traffic: TrafficRequest): Promise<Config>
+  pullNodes(id: string): Promise<NodesListResponse>
+}
+
+export interface NodesAPI {
+  list(): Promise<NodesListResponse>
+  ping(id: string): Promise<null>
+  speedtest(id: string): Promise<null>
 }
 
 export interface GeoAPI {
@@ -321,23 +348,12 @@ export interface ComponentsAPI {
   install(id: string): Promise<CoreComponent>
 }
 
-export interface XrayAPI {
-  status(): Promise<XrayStatus>
-  start(options?: XrayStartOptions): Promise<null>
-  stop(): Promise<null>
-}
-
-export interface TrafficRulesAPI {
-  list(): Promise<TrafficRule[]>
-  create(data: TrafficRuleRequest): Promise<TrafficRule>
-  update(id: string, data: TrafficRuleRequest): Promise<TrafficRule>
-  delete(id: string): Promise<null>
-}
-
-export interface TrafficAPI {
-  rules: TrafficRulesAPI
-  getProfile(): Promise<TrafficProfile>
-  updateProfile(data: TrafficProfileRequest): Promise<TrafficProfile>
+export interface ProxyAPI {
+  getConfig(): Promise<any>
+  updateConfig(data: any): Promise<any>
+  status(): Promise<any>
+  start(data?: any): Promise<any>
+  stop(): Promise<any>
 }
 
 export interface SettingsAPI {
@@ -375,12 +391,12 @@ export class VeaClient {
   isNode: boolean
 
   nodes: NodesAPI
+  frouters: FRoutersAPI
   configs: ConfigsAPI
   geo: GeoAPI
   components: ComponentsAPI
-  xray: XrayAPI
-  traffic: TrafficAPI
   settings: SettingsAPI
+  proxy: ProxyAPI
 
   constructor(options?: VeaClientOptions)
 
@@ -427,7 +443,7 @@ export interface RetryOptions {
 export function retry<T>(fn: () => Promise<T>, options?: RetryOptions): Promise<T>
 
 // ============================================================================
-// 简化 API 对象（兼容现有前端）
+// 简化 API 对象（给前端用）
 // ============================================================================
 
 export interface SimpleAPI {
@@ -436,32 +452,19 @@ export interface SimpleAPI {
   post(path: string, body?: any, options?: any): Promise<any>
   put(path: string, body?: any, options?: any): Promise<any>
   delete(path: string, options?: any): Promise<any>
+
+  nodes: NodesAPI
+  frouters: FRoutersAPI
+  configs: ConfigsAPI
+  geo: GeoAPI
+  components: ComponentsAPI
+  settings: SettingsAPI
+  proxy: ProxyAPI
+
   client: VeaClient
 }
 
 export function createAPI(baseURL?: string): SimpleAPI
-
-// ============================================================================
-// 节点管理器
-// ============================================================================
-
-export interface NodeManagerUpdate {
-  nodes: Node[]
-  activeNodeId: string
-  lastSelectedNodeId: string
-}
-
-export interface NodeManager {
-  getNodes(): Node[]
-  getActiveNodeId(): string
-  getLastSelectedNodeId(): string
-  refresh(): Promise<NodesListResponse>
-  startPolling(): void
-  stopPolling(): void
-  onUpdate(callback: (update: NodeManagerUpdate) => void): () => void
-}
-
-export function createNodeManager(client: VeaClient, interval?: number): NodeManager
 
 // ============================================================================
 // 默认导出
