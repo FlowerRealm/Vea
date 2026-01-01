@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"vea/backend/domain"
@@ -75,13 +76,8 @@ func (s *Service) Create(ctx context.Context, cfg domain.Config) (domain.Config,
 		return domain.Config{}, err
 	}
 
-	// 如果有 payload，解析并创建节点
-	if created.Payload != "" {
-		nodes, _ := node.ParseMultipleLinks(created.Payload)
-		if len(nodes) > 0 {
-			s.nodeService.ReplaceNodesForConfig(ctx, created.ID, nodes)
-		}
-	}
+	// 解析并同步节点（解析失败/为空时清空旧节点）
+	s.syncNodesFromPayload(ctx, created.ID, created.Payload)
 
 	return created, nil
 }
@@ -124,11 +120,8 @@ func (s *Service) Sync(ctx context.Context, id string) error {
 	// 更新内容
 	s.repo.UpdateSyncStatus(ctx, id, payload, checksum, nil)
 
-	// 解析并更新节点
-	nodes, _ := node.ParseMultipleLinks(payload)
-	if len(nodes) > 0 {
-		s.nodeService.ReplaceNodesForConfig(ctx, id, nodes)
-	}
+	// 解析并更新节点（解析失败/为空时清空旧节点）
+	s.syncNodesFromPayload(ctx, id, payload)
 
 	return nil
 }
@@ -153,6 +146,28 @@ func (s *Service) SyncAll(ctx context.Context) {
 }
 
 // ========== 内部方法 ==========
+
+func (s *Service) syncNodesFromPayload(ctx context.Context, configID, payload string) {
+	if s.nodeService == nil || strings.TrimSpace(configID) == "" {
+		return
+	}
+
+	nodes, errs := node.ParseMultipleLinks(payload)
+	if len(errs) > 0 {
+		log.Printf("[ConfigSync] parse errors for %s: %d", configID, len(errs))
+	}
+
+	if len(nodes) == 0 {
+		if _, err := s.nodeService.ReplaceNodesForConfig(ctx, configID, nil); err != nil {
+			log.Printf("[ConfigSync] clear nodes failed for %s: %v", configID, err)
+		}
+		return
+	}
+
+	if _, err := s.nodeService.ReplaceNodesForConfig(ctx, configID, nodes); err != nil {
+		log.Printf("[ConfigSync] update nodes failed for %s: %v", configID, err)
+	}
+}
 
 func (s *Service) downloadConfig(sourceURL string) (payload, checksum string, err error) {
 	// 使用订阅专用 User-Agent

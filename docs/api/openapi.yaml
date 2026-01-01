@@ -720,6 +720,28 @@ paths:
                 type: object
                 additionalProperties: true
 
+  /proxy/kernel/logs:
+    get:
+      tags: [proxy]
+      summary: 获取内核日志
+      description: 按字节偏移读取内核日志片段
+      operationId: getKernelLogs
+      parameters:
+        - name: since
+          in: query
+          description: 从该字节偏移开始读取（默认为 0）
+          required: false
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功返回日志片段
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KernelLogSnapshot'
+
   /proxy/stop:
     post:
       tags: [proxy]
@@ -1577,6 +1599,40 @@ components:
         updatedAt:
           type: string
           format: date-time
+
+    KernelLogSnapshot:
+      type: object
+      description: 内核日志片段
+      properties:
+        session:
+          type: integer
+          format: int64
+        engine:
+          type: string
+        running:
+          type: boolean
+        pid:
+          type: integer
+        startedAt:
+          type: string
+          format: date-time
+        path:
+          type: string
+        from:
+          type: integer
+          format: int64
+        to:
+          type: integer
+          format: int64
+        end:
+          type: integer
+          format: int64
+        lost:
+          type: boolean
+        text:
+          type: string
+        error:
+          type: string
 
     SystemProxySettings:
       type: object

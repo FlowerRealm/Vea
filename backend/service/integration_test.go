@@ -153,6 +153,7 @@ func TestE2E_ProxyToCloudflare(t *testing.T) {
 	// 创建测试用的存储与服务
 	eventBus := events.NewBus()
 	memStore := memory.NewStore(eventBus)
+	nodeRepo := memory.NewNodeRepo(memStore)
 	frouterRepo := memory.NewFRouterRepo(memStore)
 	componentRepo := memory.NewComponentRepo(memStore)
 	settingsRepo := memory.NewSettingsRepo(memStore)
@@ -171,11 +172,11 @@ func TestE2E_ProxyToCloudflare(t *testing.T) {
 		t.Fatalf("更新组件失败: %v", err)
 	}
 
-	frouterSvc := frouter.NewService(frouterRepo)
-	proxySvc := proxysvc.NewService(frouterRepo, componentRepo, settingsRepo)
+	frouterSvc := frouter.NewService(frouterRepo, nodeRepo)
+	proxySvc := proxysvc.NewService(frouterRepo, nodeRepo, componentRepo, settingsRepo)
 
 	// 添加指向本地服务端的节点
-	node := domain.Node{
+	node, err := nodeRepo.Create(context.Background(), domain.Node{
 		Name:     "本地测试节点",
 		Address:  "127.0.0.1",
 		Port:     serverPort,
@@ -184,12 +185,13 @@ func TestE2E_ProxyToCloudflare(t *testing.T) {
 			UUID:       testUUID,
 			Encryption: "none",
 		},
+	})
+	if err != nil {
+		t.Fatalf("创建节点失败: %v", err)
 	}
-	node.ID = uuid.NewString()
 
 	frouter := domain.FRouter{
-		Name:  "本地测试 FRouter",
-		Nodes: []domain.Node{node},
+		Name: "本地测试 FRouter",
 		ChainProxy: domain.ChainProxySettings{
 			Slots: []domain.SlotNode{
 				{ID: "slot-1", Name: "配置槽"},
@@ -208,7 +210,7 @@ func TestE2E_ProxyToCloudflare(t *testing.T) {
 	if err != nil {
 		t.Fatalf("创建 FRouter 失败: %v", err)
 	}
-	t.Logf("创建 FRouter: ID=%s, 节点=%d", createdFRouter.ID, len(createdFRouter.Nodes))
+	t.Logf("创建 FRouter: ID=%s", createdFRouter.ID)
 
 	proxyCfg := domain.ProxyConfig{
 		InboundMode:     domain.InboundSOCKS,

@@ -368,6 +368,25 @@ func (a *XrayAdapter) buildRouting(compiled nodegroup.CompiledFRouter, tagMap ma
 		rules = append(rules, rule)
 	}
 
+	// 默认规则（广告拦截 + 私有/国内直连），放在用户规则之后。
+	rules = append(rules,
+		map[string]interface{}{
+			"type":        "field",
+			"domain":      []string{"geosite:category-ads-all"},
+			"outboundTag": xrayBlockTag,
+		},
+		map[string]interface{}{
+			"type":        "field",
+			"domain":      []string{"geosite:cn", "geosite:private"},
+			"outboundTag": xrayDirectTag,
+		},
+		map[string]interface{}{
+			"type":        "field",
+			"ip":          []string{"geoip:cn", "geoip:private"},
+			"outboundTag": xrayDirectTag,
+		},
+	)
+
 	defaultTag, err := xrayOutboundTag(compiled.Default, tagMap)
 	if err != nil {
 		return nil, err

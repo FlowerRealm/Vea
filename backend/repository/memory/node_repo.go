@@ -191,7 +191,8 @@ func (r *NodeRepo) ReplaceNodesForConfig(_ context.Context, configID string, nod
 	}
 
 	// Upsert 当前节点集合
-	for _, node := range next {
+	for i := range next {
+		node := next[i]
 		if existing, ok := r.store.Nodes()[node.ID]; ok {
 			node.CreatedAt = existing.CreatedAt
 			node.LastLatencyMS = existing.LastLatencyMS
@@ -200,6 +201,7 @@ func (r *NodeRepo) ReplaceNodesForConfig(_ context.Context, configID string, nod
 			node.LastSpeedMbps = existing.LastSpeedMbps
 			node.LastSpeedAt = existing.LastSpeedAt
 			node.LastSpeedError = existing.LastSpeedError
+			next[i] = node
 			r.store.Nodes()[node.ID] = node
 			eventsToPublish = append(eventsToPublish, events.NodeEvent{
 				EventType: events.EventNodeUpdated,

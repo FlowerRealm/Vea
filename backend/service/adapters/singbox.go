@@ -512,6 +512,11 @@ func (a *SingBoxAdapter) buildRoute(plan nodegroup.RuntimePlan, geo GeoFiles, ta
 		rules = append(rules, entry.ToSingBoxRule())
 	}
 
+	// 默认规则（广告拦截 + 私有/国内直连），放在用户规则之后，避免覆盖显式配置。
+	if defaults := ruleSetManager.BuildDefaultRoutingRules("direct"); len(defaults) > 0 {
+		rules = append(rules, defaults...)
+	}
+
 	route := map[string]interface{}{
 		"rules":                   rules,
 		"final":                   defaultTag,
