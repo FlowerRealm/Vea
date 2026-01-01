@@ -245,4 +245,4 @@ docs/
 ---
 
 **更新时间**: 2025-12-25
-**版本**: v2.0.0 (sing-box integration)
+**版本**: v2.1.0 (arch v2 + sing-box integration)

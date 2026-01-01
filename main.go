@@ -24,6 +24,7 @@ import (
 	"vea/backend/service/nodes"
 	"vea/backend/service/proxy"
 	"vea/backend/service/shared"
+	"vea/backend/tasks"
 
 	"github.com/gin-gonic/gin"
 )
@@ -71,11 +72,26 @@ func main() {
 	memStore := memory.NewStore(eventBus)
 
 	// 3. 加载状态（严格版本校验）
-	if state, err := persist.LoadV2(*statePath); err != nil {
+	hasStateFile := true
+	if _, err := os.Stat(*statePath); err != nil {
+		if os.IsNotExist(err) {
+			hasStateFile = false
+		}
+	}
+
+	state, err := persist.LoadV2(*statePath)
+	if err != nil {
 		log.Printf("load snapshot failed: %v", err)
-	} else {
-		memStore.LoadState(state)
+		log.Printf("拒绝启动以避免覆盖 state 文件: %s", *statePath)
+		log.Printf("请移动/删除该文件或修正 schemaVersion 后重试")
+		os.Exit(1)
+	}
+
+	memStore.LoadState(state)
+	if hasStateFile {
 		log.Printf("state loaded from %s", *statePath)
+	} else {
+		log.Printf("未找到状态文件 %s，将以空状态启动", *statePath)
 	}
 
 	// 4. 创建仓储层
@@ -122,6 +138,14 @@ func main() {
 	if err := componentSvc.EnsureDefaultComponents(context.Background()); err != nil {
 		log.Printf("ensure default components failed: %v", err)
 	}
+
+	// 7.2 确保默认 Geo 资源存在
+	if err := geoSvc.EnsureDefaultResources(context.Background()); err != nil {
+		log.Printf("ensure default geo resources failed: %v", err)
+	}
+
+	// 7.3 启动后台任务（订阅/Geo/组件自动更新）
+	tasks.NewScheduler(configSvc, geoSvc, componentSvc).Start(ctx)
 
 	// 8. 创建路由
 	router := api.NewRouter(facade)

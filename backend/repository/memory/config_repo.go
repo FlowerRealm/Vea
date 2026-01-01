@@ -107,15 +107,34 @@ func (r *ConfigRepo) Update(ctx context.Context, id string, cfg domain.Config) (
 func (r *ConfigRepo) Delete(ctx context.Context, id string) error {
 	r.store.Lock()
 
-	if _, ok := r.store.Configs()[id]; !ok {
+	cfg, ok := r.store.Configs()[id]
+	if !ok {
 		r.store.Unlock()
 		return repository.ErrConfigNotFound
 	}
 
-	// 删除关联的节点
+	eventsToPublish := make([]events.Event, 0, 8)
+
+	// 删除关联的节点与 FRouter（订阅型资源必须随 config 一起清理）
+	for nodeID, node := range r.store.Nodes() {
+		if node.SourceConfigID == id {
+			delete(r.store.Nodes(), nodeID)
+			eventsToPublish = append(eventsToPublish, events.NodeEvent{
+				EventType: events.EventNodeDeleted,
+				NodeID:    nodeID,
+				Node:      node,
+			})
+		}
+	}
+
 	for frouterID, frouter := range r.store.FRouters() {
 		if frouter.SourceConfigID == id {
 			delete(r.store.FRouters(), frouterID)
+			eventsToPublish = append(eventsToPublish, events.FRouterEvent{
+				EventType: events.EventFRouterDeleted,
+				FRouterID: frouterID,
+				FRouter:   frouter,
+			})
 		}
 	}
 
@@ -126,7 +145,11 @@ func (r *ConfigRepo) Delete(ctx context.Context, id string) error {
 	r.store.PublishEvent(events.ConfigEvent{
 		EventType: events.EventConfigDeleted,
 		ConfigID:  id,
+		Config:    cfg,
 	})
+	for _, event := range eventsToPublish {
+		r.store.PublishEvent(event)
+	}
 
 	return nil
 }

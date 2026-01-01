@@ -333,17 +333,35 @@ func (f *Facade) UpdateFRouter(id string, updateFn func(domain.FRouter) (domain.
 #### 版本校验 (`persist/migrator.go`)
 
 ```go
-const SchemaVersion = "2.0.0"
-
 func (m *Migrator) Migrate(data []byte) (domain.ServiceState, error) {
-    state, err := parseState(data)
-    if err != nil {
+    // 先只解析 schemaVersion，避免直接丢字段导致不可逆数据丢失
+    var meta struct {
+        SchemaVersion string `json:"schemaVersion,omitempty"`
+    }
+    if err := json.Unmarshal(data, &meta); err != nil {
         return domain.ServiceState{}, err
     }
-    if state.SchemaVersion != SchemaVersion {
-        return domain.ServiceState{}, fmt.Errorf("unsupported schemaVersion %s (expected %s)", state.SchemaVersion, SchemaVersion)
+
+    // 兼容旧 state.json：历史版本未写入 schemaVersion
+    if meta.SchemaVersion == "" {
+        var state domain.ServiceState
+        if err := json.Unmarshal(data, &state); err != nil {
+            return domain.ServiceState{}, err
+        }
+        state.SchemaVersion = SchemaVersion
+        return state, nil
     }
-    return state, nil
+
+    switch meta.SchemaVersion {
+    case SchemaVersion:
+        var state domain.ServiceState
+        if err := json.Unmarshal(data, &state); err != nil {
+            return domain.ServiceState{}, err
+        }
+        return state, nil
+    default:
+        return domain.ServiceState{}, fmt.Errorf("unsupported schemaVersion %s (expected %s)", meta.SchemaVersion, SchemaVersion)
+    }
 }
 ```
 
@@ -353,18 +371,29 @@ func (m *Migrator) Migrate(data []byte) (domain.ServiceState, error) {
 func (s *SnapshotterV2) Schedule() {
     s.mu.Lock()
     if s.pending {
+        s.dirty = true
         s.mu.Unlock()
         return
     }
     s.pending = true
+    s.dirty = false
     s.mu.Unlock()
 
     go func() {
-        time.Sleep(s.debounce)  // 默认 200ms
-        s.doSave()
-        s.mu.Lock()
-        s.pending = false
-        s.mu.Unlock()
+        for {
+            time.Sleep(s.debounce)  // 默认 200ms
+            _ = s.save()
+
+            s.mu.Lock()
+            if s.dirty {
+                s.dirty = false
+                s.mu.Unlock()
+                continue
+            }
+            s.pending = false
+            s.mu.Unlock()
+            return
+        }
     }()
 }
 ```

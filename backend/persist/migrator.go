@@ -65,7 +65,17 @@ func (m *Migrator) Migrate(data []byte) (domain.ServiceState, error) {
 		return domain.ServiceState{}, fmt.Errorf("failed to parse state: %w", err)
 	}
 	if meta.SchemaVersion == "" {
-		return domain.ServiceState{}, fmt.Errorf("schemaVersion is required; expected %s", SchemaVersion)
+		// 兼容历史 state.json：早期版本未写入 schemaVersion。
+		// 这里按当前结构尽力解析（未知字段会被忽略），避免启动即“读不了 -> 覆盖空 state”的灾难。
+		var state domain.ServiceState
+		if err := json.Unmarshal(data, &state); err != nil {
+			return domain.ServiceState{}, fmt.Errorf("failed to parse legacy state: %w", err)
+		}
+		state.SchemaVersion = SchemaVersion
+		if state.GeneratedAt.IsZero() {
+			state.GeneratedAt = time.Now()
+		}
+		return state, nil
 	}
 
 	switch meta.SchemaVersion {

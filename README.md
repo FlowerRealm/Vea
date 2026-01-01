@@ -9,9 +9,9 @@ Vea 是一个基于 Electron 的桌面应用，用于管理 Xray/sing-box 代理
 
 ## 功能亮点
 
-- FRouter 中心：管理 FRouter（包含节点集合），粘贴 vmess/vless/trojan/ss 分享链接即可导入，支持测速、延迟测试与链路配置。
-- 配置管理：导入 Xray JSON 或订阅链接，跟踪自动刷新周期、流量统计与到期时间。
-- Geo 与核心组件：定时刷新 GeoIP/GeoSite，按需下载/安装 Xray 核心并记录校验值。
+- FRouter 中心：管理 FRouter（链式代理图/路由定义）；节点为独立资源，通过订阅/导入生成；支持测速、延迟测试与链路配置。
+- 配置管理：导入 Xray JSON 或订阅链接，跟踪自动刷新周期与到期时间。
+- Geo 与核心组件：后台定时刷新 GeoIP/GeoSite，按需下载/安装 Xray/sing-box 核心并记录校验值。
 - ProxyConfig：选择入站模式（SOCKS/HTTP/Mixed/TUN）、绑定 FRouter、引擎偏好与 TUN 配置，并启动/停止代理。
 - 前端控制台：`/` 提供极简 UI，可快速操作 FRouter、ProxyConfig、配置、Geo 与组件。
 

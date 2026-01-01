@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"time"
 
@@ -143,7 +144,9 @@ func (s *Service) SyncAll(ctx context.Context) {
 		if cfg.SourceURL != "" && cfg.AutoUpdateInterval > 0 {
 			// 检查是否需要同步
 			if time.Since(cfg.LastSyncedAt) >= cfg.AutoUpdateInterval {
-				s.Sync(ctx, cfg.ID)
+				if err := s.Sync(ctx, cfg.ID); err != nil {
+					log.Printf("[ConfigSync] sync failed for %s: %v", cfg.ID, err)
+				}
 			}
 		}
 	}

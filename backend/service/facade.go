@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"vea/backend/domain"
+	"vea/backend/persist"
 	"vea/backend/repository"
 	"vea/backend/service/component"
 	configsvc "vea/backend/service/config"
@@ -62,10 +64,30 @@ func (f *Facade) Errors() (nodeNotFound, frouterNotFound, configNotFound, geoNot
 
 // Snapshot 获取完整状态快照
 func (f *Facade) Snapshot() domain.ServiceState {
-	if snap, ok := f.repos.(repository.Snapshottable); ok {
-		return snap.Snapshot()
+	ctx := context.Background()
+
+	nodes, _ := f.nodes.List(ctx)
+	frouters, _ := f.frouter.List(ctx)
+	configs, _ := f.config.List(ctx)
+	geoResources, _ := f.geo.List(ctx)
+	components, _ := f.component.List(ctx)
+
+	systemProxy, _ := f.repos.Settings().GetSystemProxy(ctx)
+	proxyConfig, _ := f.repos.Settings().GetProxyConfig(ctx)
+	frontendSettings, _ := f.repos.Settings().GetFrontend(ctx)
+
+	return domain.ServiceState{
+		SchemaVersion:    persist.SchemaVersion,
+		Nodes:            nodes,
+		FRouters:         frouters,
+		Configs:          configs,
+		GeoResources:     geoResources,
+		Components:       components,
+		SystemProxy:      systemProxy,
+		ProxyConfig:      proxyConfig,
+		FrontendSettings: frontendSettings,
+		GeneratedAt:      time.Now(),
 	}
-	return domain.ServiceState{}
 }
 
 // ========== FRouter 操作 ==========

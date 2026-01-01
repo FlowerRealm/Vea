@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -122,7 +123,9 @@ func (s *Service) SyncAll(ctx context.Context) {
 
 	for _, geo := range resources {
 		if geo.SourceURL != "" {
-			s.Sync(ctx, geo.ID)
+			if err := s.Sync(ctx, geo.ID); err != nil {
+				log.Printf("[GeoSync] sync failed for %s: %v", geo.ID, err)
+			}
 		}
 	}
 }
