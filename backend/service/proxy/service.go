@@ -28,6 +28,29 @@ var (
 	ErrProxyNotRunning    = errors.New("proxy not running")
 )
 
+type EngineNotInstalledError struct {
+	Engine domain.CoreEngineKind
+	Cause  error
+}
+
+func (e *EngineNotInstalledError) Error() string {
+	if e == nil {
+		return ErrEngineNotInstalled.Error()
+	}
+	if e.Engine == "" {
+		if e.Cause != nil {
+			return fmt.Sprintf("%s: %v", ErrEngineNotInstalled.Error(), e.Cause)
+		}
+		return ErrEngineNotInstalled.Error()
+	}
+	if e.Cause != nil {
+		return fmt.Sprintf("%s (%s): %v", ErrEngineNotInstalled.Error(), e.Engine, e.Cause)
+	}
+	return fmt.Sprintf("%s (%s)", ErrEngineNotInstalled.Error(), e.Engine)
+}
+
+func (e *EngineNotInstalledError) Unwrap() error { return ErrEngineNotInstalled }
+
 // Service 代理服务
 type Service struct {
 	frouters   repository.FRouterRepository
@@ -340,11 +363,11 @@ func (s *Service) getEngineBinary(ctx context.Context, engine domain.CoreEngineK
 
 	comp, err := s.components.GetByKind(ctx, kind)
 	if err != nil {
-		return "", ErrEngineNotInstalled
+		return "", &EngineNotInstalledError{Engine: engine, Cause: err}
 	}
 
 	if comp.InstallDir == "" {
-		return "", ErrEngineNotInstalled
+		return "", &EngineNotInstalledError{Engine: engine}
 	}
 
 	candidates := []string(nil)
@@ -362,7 +385,7 @@ func (s *Service) getEngineBinary(ctx context.Context, engine domain.CoreEngineK
 
 	path, err := shared.FindBinaryInDir(comp.InstallDir, candidates)
 	if err != nil {
-		return "", fmt.Errorf("%w: %v", ErrEngineNotInstalled, err)
+		return "", &EngineNotInstalledError{Engine: engine, Cause: err}
 	}
 	return path, nil
 }

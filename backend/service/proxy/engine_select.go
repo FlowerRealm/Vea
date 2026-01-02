@@ -32,6 +32,7 @@ func selectEngineForFRouter(
 	}
 
 	installed := installedEnginesFromComponents(componentsList)
+	strong := make(map[domain.CoreEngineKind]struct{}, 2)
 	candidates := make([]domain.CoreEngineKind, 0, 4)
 	addCandidate := func(engine domain.CoreEngineKind) {
 		if engine == "" || engine == domain.EngineAuto {
@@ -46,10 +47,12 @@ func selectEngineForFRouter(
 	}
 
 	if preferred != "" && preferred != domain.EngineAuto {
+		strong[preferred] = struct{}{}
 		addCandidate(preferred)
 	}
 
 	if anyNodeRequiresSingBox(activeNodes) {
+		strong[domain.EngineSingBox] = struct{}{}
 		addCandidate(domain.EngineSingBox)
 	}
 
@@ -70,11 +73,8 @@ func selectEngineForFRouter(
 	addCandidate(domain.EngineSingBox)
 	addCandidate(domain.EngineXray)
 
+	fallback := domain.CoreEngineKind("")
 	for _, engine := range candidates {
-		comp, ok := installed[engine]
-		if !ok {
-			continue
-		}
 		adapter := adapters[engine]
 		if adapter == nil {
 			continue
@@ -82,10 +82,23 @@ func selectEngineForFRouter(
 		if !supportsAllNodes(adapter, activeNodes) {
 			continue
 		}
-		return engine, comp, nil
+
+		comp, ok := installed[engine]
+		if ok {
+			return engine, comp, nil
+		}
+		if _, ok := strong[engine]; ok {
+			return engine, domain.CoreComponent{}, nil
+		}
+		if fallback == "" {
+			fallback = engine
+		}
 	}
 
-	return "", domain.CoreComponent{}, fmt.Errorf("no installed engine supports frouter nodes")
+	if fallback != "" {
+		return fallback, domain.CoreComponent{}, nil
+	}
+	return "", domain.CoreComponent{}, fmt.Errorf("no engine supports frouter nodes")
 }
 
 func anyNodeRequiresSingBox(nodes []domain.Node) bool {

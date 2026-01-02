@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -275,11 +276,64 @@ func (f *Facade) StopProxy() error {
 
 // StartProxy 启动代理（以 FRouter 为中心）
 func (f *Facade) StartProxy(config domain.ProxyConfig) error {
-	return f.proxy.Start(context.Background(), config)
+	ctx := context.Background()
+
+	if err := f.proxy.Start(ctx, config); err != nil {
+		var engineErr *proxy.EngineNotInstalledError
+		if errors.As(err, &engineErr) {
+			if err2 := f.ensureCoreEngineInstalled(ctx, engineErr.Engine); err2 != nil {
+				return err2
+			}
+			return f.proxy.Start(ctx, config)
+		}
+		return err
+	}
+	return nil
 }
 
 func (f *Facade) GetKernelLogs(since int64) proxy.KernelLogSnapshot {
 	return f.proxy.KernelLogsSince(since)
+}
+
+func (f *Facade) ensureCoreEngineInstalled(ctx context.Context, engine domain.CoreEngineKind) error {
+	if f.component == nil {
+		return errors.New("component service is not configured")
+	}
+
+	var kind domain.CoreComponentKind
+	switch engine {
+	case domain.EngineXray:
+		kind = domain.ComponentXray
+	case domain.EngineSingBox:
+		kind = domain.ComponentSingBox
+	default:
+		return fmt.Errorf("unknown engine: %s", engine)
+	}
+
+	comp, err := f.component.Create(ctx, domain.CoreComponent{Kind: kind})
+	if err != nil {
+		return fmt.Errorf("resolve component %s: %w", kind, err)
+	}
+	if _, err := f.component.Install(ctx, comp.ID); err != nil {
+		return fmt.Errorf("install %s: %w", kind, err)
+	}
+
+	deadline := time.Now().Add(shared.DownloadTimeout)
+	for time.Now().Before(deadline) {
+		current, err := f.component.Get(ctx, comp.ID)
+		if err != nil {
+			return fmt.Errorf("get %s component: %w", kind, err)
+		}
+		if current.InstallStatus == domain.InstallStatusError {
+			return fmt.Errorf("install %s failed: %s", kind, strings.TrimSpace(current.InstallMessage))
+		}
+		if current.InstallDir != "" && !current.LastInstalledAt.IsZero() {
+			return nil
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	return fmt.Errorf("install %s timeout", kind)
 }
 
 // ========== Component 操作 ==========

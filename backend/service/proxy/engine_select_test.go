@@ -165,12 +165,15 @@ func TestSelectEngineForFRouter_NoInstalledEngineSupportsNodes(t *testing.T) {
 		},
 	}
 
-	_, _, err := selectEngineForFRouter(context.Background(), frouter, nodes, domain.EngineAuto, componentRepo, settingsRepo, map[domain.CoreEngineKind]adapters.CoreAdapter{
+	engine, _, err := selectEngineForFRouter(context.Background(), frouter, nodes, domain.EngineAuto, componentRepo, settingsRepo, map[domain.CoreEngineKind]adapters.CoreAdapter{
 		domain.EngineXray:    &adapters.XrayAdapter{},
 		domain.EngineSingBox: &adapters.SingBoxAdapter{},
 	})
-	if err == nil {
-		t.Fatalf("expected error, got nil")
+	if err != nil {
+		t.Fatalf("selectEngineForFRouter() error: %v", err)
+	}
+	if engine != domain.EngineSingBox {
+		t.Fatalf("expected engine %q, got %q", domain.EngineSingBox, engine)
 	}
 }
 
