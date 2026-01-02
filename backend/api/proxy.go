@@ -43,40 +43,7 @@ func (r *Router) updateProxyConfig(c *gin.Context) {
 	}
 
 	updated, err := r.service.UpdateProxyConfig(func(current domain.ProxyConfig) (domain.ProxyConfig, error) {
-		if req.InboundMode != "" {
-			current.InboundMode = req.InboundMode
-		}
-		if req.InboundPort != 0 {
-			current.InboundPort = req.InboundPort
-		}
-		if req.InboundConfig != nil {
-			current.InboundConfig = req.InboundConfig
-		}
-		if req.TUNSettings != nil {
-			current.TUNSettings = req.TUNSettings
-		}
-		if req.ResolvedService != nil {
-			current.ResolvedService = req.ResolvedService
-		}
-		if req.DNSConfig != nil {
-			current.DNSConfig = req.DNSConfig
-		}
-		if req.LogConfig != nil {
-			current.LogConfig = req.LogConfig
-		}
-		if req.PerformanceConfig != nil {
-			current.PerformanceConfig = req.PerformanceConfig
-		}
-		if req.XrayConfig != nil {
-			current.XrayConfig = req.XrayConfig
-		}
-		if req.PreferredEngine != "" {
-			current.PreferredEngine = req.PreferredEngine
-		}
-		if req.FRouterID != "" {
-			current.FRouterID = req.FRouterID
-		}
-		return current, nil
+		return current.ApplyPatch(req), nil
 	})
 	if err != nil {
 		r.handleError(c, err)
@@ -96,40 +63,7 @@ func (r *Router) startProxy(c *gin.Context) {
 		}
 	}
 
-	cfg := r.service.GetProxyConfig()
-	if req.InboundMode != "" {
-		cfg.InboundMode = req.InboundMode
-	}
-	if req.InboundPort != 0 {
-		cfg.InboundPort = req.InboundPort
-	}
-	if req.InboundConfig != nil {
-		cfg.InboundConfig = req.InboundConfig
-	}
-	if req.TUNSettings != nil {
-		cfg.TUNSettings = req.TUNSettings
-	}
-	if req.ResolvedService != nil {
-		cfg.ResolvedService = req.ResolvedService
-	}
-	if req.DNSConfig != nil {
-		cfg.DNSConfig = req.DNSConfig
-	}
-	if req.LogConfig != nil {
-		cfg.LogConfig = req.LogConfig
-	}
-	if req.PerformanceConfig != nil {
-		cfg.PerformanceConfig = req.PerformanceConfig
-	}
-	if req.XrayConfig != nil {
-		cfg.XrayConfig = req.XrayConfig
-	}
-	if req.PreferredEngine != "" {
-		cfg.PreferredEngine = req.PreferredEngine
-	}
-	if req.FRouterID != "" {
-		cfg.FRouterID = req.FRouterID
-	}
+	cfg := r.service.GetProxyConfig().ApplyPatch(req)
 
 	if err := r.service.StartProxy(cfg); err != nil {
 		r.handleError(c, err)

@@ -956,6 +956,7 @@ func (r *Router) saveFRouterGraph(c *gin.Context) {
 			}
 		}
 		if cfg.FRouterID != "" {
+			c.Header("X-Vea-Effects", "proxy_restart_scheduled")
 			log.Printf("[FRouterGraph] 图配置已更新，重启代理以应用更改")
 			go func(cfg domain.ProxyConfig) {
 				// StopProxy 会强制关闭系统代理并持久化（防止“内核停了但系统代理还指向黑洞”）。

@@ -986,7 +986,7 @@ paths:
     put:
       tags: [frouters]
       summary: 保存 FRouter 图
-      description: 保存链式代理图（保存前会进行 CompileFRouter 校验并归一化兜底 priority=0）
+      description: 保存链式代理图（保存前会进行 CompileFRouter 校验并归一化兜底 priority=0）；如果代理正在运行，会异步调度一次重启以应用新图配置
       operationId: saveFRouterGraph
       parameters:
         - $ref: '#/components/parameters/FRouterId'
@@ -999,6 +999,11 @@ paths:
       responses:
         '200':
           description: 保存成功
+          headers:
+            X-Vea-Effects:
+              description: 可选。存在时表示该请求触发了副作用（当前唯一值：proxy_restart_scheduled）
+              schema:
+                type: string
           content:
             application/json:
               schema:
