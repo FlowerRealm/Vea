@@ -133,11 +133,38 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
 
+  /nodes/from-link:
+    post:
+      tags: [nodes]
+      summary: 从分享链接导入节点
+      description: 解析分享链接（支持单条链接/多条链接/base64 订阅内容），并创建为手动节点
+      operationId: importNodesFromLink
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodeFromLinkRequest'
+      responses:
+        '201':
+          description: 导入成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nodes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Node'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
   /nodes/{id}:
     put:
       tags: [nodes]
       summary: 更新节点
-      description: 更新节点配置（订阅节点不可编辑）
+      description: 更新节点配置（订阅节点核心字段不可编辑；名称/标签请使用 /nodes/{id}/meta）
       operationId: updateNode
       parameters:
         - $ref: '#/components/parameters/NodeId'
@@ -147,6 +174,32 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/NodeUpsertRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Node'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /nodes/{id}/meta:
+    put:
+      tags: [nodes]
+      summary: 更新节点名称/标签
+      description: 更新节点的 name/tags（订阅节点仅允许修改这些字段）
+      operationId: updateNodeMeta
+      parameters:
+        - $ref: '#/components/parameters/NodeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodeMetaRequest'
       responses:
         '200':
           description: 更新成功
@@ -1177,6 +1230,33 @@ components:
           $ref: '#/components/schemas/NodeTransport'
         tls:
           $ref: '#/components/schemas/NodeTLS'
+
+    NodeFromLinkRequest:
+      type: object
+      description: 从分享链接导入节点请求体
+      required: [shareLink]
+      properties:
+        shareLink:
+          type: string
+          description: 分享链接文本（可为单条链接、多行链接或 base64 订阅内容）
+        tags:
+          type: array
+          items:
+            type: string
+          description: （可选）为导入的节点统一设置的标签
+
+    NodeMetaRequest:
+      type: object
+      description: 更新节点名称/标签请求体（至少提供 name 或 tags 之一）
+      properties:
+        name:
+          type: string
+          description: 节点名称
+        tags:
+          type: array
+          items:
+            type: string
+          description: 节点标签
 
     NodeSecurity:
       type: object

@@ -2494,9 +2494,14 @@
     <div class="modal-content" style="max-width: 760px; max-height: 90vh; overflow-y: auto;">
       <button id="nodes-modal-close" class="modal-close"
         style="position:absolute; top:24px; right:24px; background:none; border:none; color:var(--text-secondary); font-size:20px; cursor:pointer;">×</button>
-      <form id="nodes-form" class="form-grid">
+      <form id="nodes-form" class="form-grid" novalidate>
         <h3 id="nodes-modal-title" style="grid-column:1/-1; margin-bottom:16px; font-size:18px; font-weight:600; color:var(--text-primary);">
           添加节点</h3>
+
+        <label id="nodes-sharelink-row" style="grid-column:1/-1;">
+          <span>分享链接 (可选)</span>
+          <textarea name="shareLink" style="height:72px;" placeholder="vless:// / vmess:// / trojan:// / ss:// (支持 base64 订阅内容)"></textarea>
+        </label>
 
         <label><span>节点名称 *</span><input name="name" type="text" required placeholder="例如: 香港01"></label>
         <label><span>服务器地址 *</span><input name="address" type="text" required placeholder="example.com 或 IP"></label>
@@ -3897,7 +3902,7 @@
 		                const latency = getNodeLatencyDisplay(n);
 		                const speed = getNodeSpeedDisplay(n);
 
-		                const editButton = n.sourceConfigId ? "" : `<button class="mini-btn" data-action="edit-node">编辑</button>`;
+		                const editButton = `<button class="mini-btn" data-action="edit-node">编辑</button>`;
 		                return `
 		                  <tr class="node-card-row" data-id="${escapeHtml(id)}">
 		                    <td colspan="6">
@@ -5258,10 +5263,6 @@
                 showStatus("节点未找到", "error", 4000);
                 return;
               }
-              if (node.sourceConfigId) {
-                showStatus("订阅节点不可编辑", "error", 4000);
-                return;
-              }
               openNodesModal(node);
               return;
             }
@@ -5627,15 +5628,57 @@
         updateNodesFieldVisibility();
       }
 
+      function setNodesReadonlyForSubscription(enabled) {
+        if (!nodesForm) return;
+        const lockedNames = [
+          "address",
+          "port",
+          "protocol",
+          "ss_method",
+          "ss_password",
+          "vmess_uuid",
+          "vmess_alterid",
+          "vmess_security",
+          "vless_flow",
+          "trojan_password",
+          "network",
+          "ws_path",
+          "ws_host",
+          "h2_path",
+          "h2_host",
+          "grpc_service",
+          "tls",
+          "tls_sni",
+          "tls_fingerprint",
+          "tls_insecure",
+        ];
+        for (const name of lockedNames) {
+          const el = nodesForm.querySelector(`[name="${name}"]`);
+          if (!el) continue;
+          el.disabled = Boolean(enabled);
+        }
+      }
+
       function openNodesModal(node = null) {
         if (!nodesModal) return;
         nodesModal.classList.add("open");
         editingNode = node;
         if (nodesForm) nodesForm.reset();
-        setNodesModalMode(Boolean(editingNode));
+        const isEdit = Boolean(editingNode);
+        setNodesModalMode(isEdit);
+        const shareLinkRow = document.getElementById("nodes-sharelink-row");
+        if (shareLinkRow) {
+          shareLinkRow.style.display = isEdit ? "none" : "block";
+        }
         if (editingNode) {
           fillNodesForm(editingNode);
+          const subscription = Boolean(editingNode.sourceConfigId);
+          setNodesReadonlyForSubscription(subscription);
+          if (subscription) {
+            showStatus("订阅节点仅支持修改名称/标签", "info", 3200);
+          }
         } else {
+          setNodesReadonlyForSubscription(false);
           updateNodesFieldVisibility();
         }
       }
@@ -5685,6 +5728,46 @@
         nodesForm.addEventListener("submit", async (event) => {
           event.preventDefault();
           const form = event.target;
+          const isEdit = Boolean(editingNode && editingNode.id);
+          const isSubscriptionEdit = Boolean(isEdit && editingNode.sourceConfigId);
+          const shareLink = (form.shareLink?.value || "").trim();
+          const tags = parseList(form.tags.value);
+
+          if (!isEdit && shareLink) {
+            const payload = { shareLink };
+            if (tags.length) {
+              payload.tags = tags;
+            }
+            try {
+              const resp = await api.post("/nodes/from-link", payload);
+              const count = Array.isArray(resp?.nodes) ? resp.nodes.length : 0;
+              showStatus(count > 1 ? `已导入 ${count} 个节点` : "节点已添加", "success");
+              form.reset();
+              closeNodesModal();
+              await loadNodes();
+            } catch (err) {
+              showStatus(`导入节点失败：${err.message}`, "error", 6000);
+            }
+            return;
+          }
+
+          if (isSubscriptionEdit) {
+            const name = form.name.value.trim();
+            if (!name) {
+              showStatus("请填写节点名称", "error", 5000);
+              return;
+            }
+            try {
+              await api.put(`/nodes/${editingNode.id}/meta`, { name, tags });
+              showStatus("节点已更新", "success");
+              closeNodesModal();
+              await loadNodes();
+            } catch (err) {
+              showStatus(`更新节点失败：${err.message}`, "error", 6000);
+            }
+            return;
+          }
+
           const protocol = form.protocol.value;
           const payload = {
             name: form.name.value.trim(),
@@ -5692,7 +5775,6 @@
             port: parseNumber(form.port.value),
             protocol,
           };
-          const tags = parseList(form.tags.value);
           if (tags.length) {
             payload.tags = tags;
           }

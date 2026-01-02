@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -160,6 +161,9 @@ func (r *NodeRepo) ReplaceNodesForConfig(_ context.Context, configID string, nod
 	nextIDs := make(map[string]struct{}, len(nodes))
 	for _, node := range nodes {
 		node.SourceConfigID = configID
+		if strings.TrimSpace(node.Name) == "" && strings.TrimSpace(node.Address) != "" {
+			node.Name = node.Address
+		}
 		if node.ID == "" {
 			node.ID = stableNodeIDForConfig(configID, node)
 		}
@@ -201,6 +205,12 @@ func (r *NodeRepo) ReplaceNodesForConfig(_ context.Context, configID string, nod
 			node.LastSpeedMbps = existing.LastSpeedMbps
 			node.LastSpeedAt = existing.LastSpeedAt
 			node.LastSpeedError = existing.LastSpeedError
+			if strings.TrimSpace(existing.Name) != "" {
+				node.Name = existing.Name
+			}
+			if existing.Tags != nil {
+				node.Tags = existing.Tags
+			}
 			next[i] = node
 			r.store.Nodes()[node.ID] = node
 			eventsToPublish = append(eventsToPublish, events.NodeEvent{

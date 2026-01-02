@@ -15,6 +15,7 @@ import (
 	"vea/backend/domain"
 	"vea/backend/repository"
 	"vea/backend/service"
+	nodeshare "vea/backend/service/node"
 	"vea/backend/service/nodegroup"
 )
 
@@ -66,6 +67,8 @@ func (r *Router) register(engine *gin.Engine) {
 	{
 		nodes.GET("", r.listNodes)
 		nodes.POST("", r.createNode)
+		nodes.POST("/from-link", r.createNodesFromLink)
+		nodes.PUT(":id/meta", r.updateNodeMeta)
 		nodes.PUT(":id", r.updateNode)
 		nodes.POST(":id/ping", r.pingNode)
 		nodes.POST(":id/speedtest", r.speedtestNode)
@@ -209,6 +212,53 @@ func (r *Router) createNode(c *gin.Context) {
 	c.JSON(http.StatusCreated, created)
 }
 
+type nodeFromLinkRequest struct {
+	ShareLink string   `json:"shareLink" binding:"required"`
+	Tags      []string `json:"tags,omitempty"`
+}
+
+func (r *Router) createNodesFromLink(c *gin.Context) {
+	var req nodeFromLinkRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+
+	parsed, errs := nodeshare.ParseMultipleLinks(req.ShareLink)
+	if len(parsed) == 0 {
+		if len(errs) > 0 {
+			badRequest(c, errs[0])
+			return
+		}
+		badRequest(c, fmt.Errorf("%w: no nodes found in share link", repository.ErrInvalidData))
+		return
+	}
+
+	created := make([]domain.Node, 0, len(parsed))
+	for _, node := range parsed {
+		node.ID = ""
+		node.SourceConfigID = ""
+		if strings.TrimSpace(node.Name) == "" {
+			if strings.TrimSpace(node.Address) != "" {
+				node.Name = node.Address
+			} else {
+				node.Name = "node"
+			}
+		}
+		if req.Tags != nil {
+			node.Tags = req.Tags
+		}
+		next, err := r.service.CreateNode(node)
+		if err != nil {
+			r.handleError(c, err)
+			return
+		}
+		created = append(created, next)
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"nodes": created})
+}
+
 func (r *Router) updateNode(c *gin.Context) {
 	var req nodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -226,6 +276,39 @@ func (r *Router) updateNode(c *gin.Context) {
 		}
 		next.SourceConfigID = node.SourceConfigID
 		return next, nil
+	})
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, updated)
+}
+
+type nodeMetaRequest struct {
+	Name string   `json:"name,omitempty"`
+	Tags []string `json:"tags,omitempty"`
+}
+
+func (r *Router) updateNodeMeta(c *gin.Context) {
+	var req nodeMetaRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	if strings.TrimSpace(req.Name) == "" && req.Tags == nil {
+		badRequest(c, fmt.Errorf("%w: name or tags is required", repository.ErrInvalidData))
+		return
+	}
+
+	id := c.Param("id")
+	updated, err := r.service.UpdateNode(id, func(node domain.Node) (domain.Node, error) {
+		if strings.TrimSpace(req.Name) != "" {
+			node.Name = strings.TrimSpace(req.Name)
+		}
+		if req.Tags != nil {
+			node.Tags = req.Tags
+		}
+		return node, nil
 	})
 	if err != nil {
 		r.handleError(c, err)

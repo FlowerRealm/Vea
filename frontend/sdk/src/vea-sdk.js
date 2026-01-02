@@ -203,8 +203,16 @@ class NodesAPI {
     return this.client.post('/nodes', data)
   }
 
+  async createFromLink(data) {
+    return this.client.post('/nodes/from-link', data)
+  }
+
   async update(id, data) {
     return this.client.put(`/nodes/${id}`, data)
+  }
+
+  async updateMeta(id, data) {
+    return this.client.put(`/nodes/${id}/meta`, data)
   }
 
   async bulkPing(ids = []) {
