@@ -124,6 +124,23 @@ function checkService(callback) {
 // 服务管理
 // ============================================================================
 
+function resolveVeaBinaryPath(isDev) {
+  const baseDir = isDev ? path.join(__dirname, '..') : process.resourcesPath
+  const candidates = process.platform === 'win32'
+    ? ['vea.exe', 'vea']
+    : ['vea']
+
+  for (const name of candidates) {
+    const candidate = path.join(baseDir, name)
+    if (fs.existsSync(candidate)) {
+      return candidate
+    }
+  }
+
+  // Keep a deterministic path for error messages even when missing.
+  return path.join(baseDir, candidates[0])
+}
+
 /**
  * 等待服务启动
  */
@@ -154,11 +171,12 @@ function startVeaService() {
   // 开发模式：使用项目根目录的二进制
   // 生产模式：使用打包后的 resources 目录
   const isDev = !app.isPackaged
-  const veaBinary = isDev
-    ? path.join(__dirname, '../vea')
-    : path.join(process.resourcesPath, 'vea')
+  const veaBinary = resolveVeaBinaryPath(isDev)
 
   console.log(`Starting Vea service from: ${veaBinary}`)
+  if (!fs.existsSync(veaBinary)) {
+    console.error(`Vea binary not found: ${veaBinary}`)
+  }
 
   // 确保 vea 有执行权限（AppImage 打包后可能丢失）
   try {

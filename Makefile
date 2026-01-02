@@ -8,8 +8,8 @@ VERSION ?= dev
 # 默认输出目录
 OUTPUT_DIR ?= dist
 # 默认架构
-GOARCH ?= amd64
-GOOS ?= linux
+GOARCH ?= $(shell go env GOARCH)
+GOOS ?= $(shell go env GOOS)
 
 # 编译参数
 LDFLAGS := -s -w
@@ -59,7 +59,7 @@ dev: ## 启动 Electron 开发模式
 	@rm -f vea vea.exe
 	@$(MAKE) -j2 build-backend deps
 	@echo "==> 启动 Electron 开发模式..."
-	@cp $(OUTPUT_DIR)/$(BINARY_NAME) vea
+	@cp $(OUTPUT_DIR)/$(BINARY_NAME) $(BINARY_NAME)
 	@cd frontend && npm run dev
 
 build: ## 打包 Electron 应用
@@ -70,7 +70,7 @@ build: ## 打包 Electron 应用
 	@rm -f vea vea.exe
 	@$(MAKE) -j2 build-backend deps
 	@echo "==> 打包 Electron 应用..."
-	@cp $(OUTPUT_DIR)/$(BINARY_NAME) vea
+	@cp $(OUTPUT_DIR)/$(BINARY_NAME) $(BINARY_NAME)
 	@cd frontend && npm run build
 	@echo "==> 应用打包完成"
 	@ls -lh release/
