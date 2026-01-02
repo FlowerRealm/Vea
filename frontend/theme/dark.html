@@ -3511,6 +3511,7 @@
           }
 
           await refreshXrayStatus();
+          await checkTUNStatus();
           await loadSystemProxySettings();
           await loadIPGeo();
           showStatus(`TUN 模式已${enabled ? '启用' : '禁用'}`, "success", 2000);
@@ -3583,20 +3584,8 @@
       }
 
       async function showTUNStatusDialog() {
-        if (!tunStatusCache) {
-          showStatus("正在检查 TUN 状态...", "info");
-          checkTUNStatus({ notify: true });
-          return;
-        }
-
-        const { configured, platform } = tunStatusCache;
-
-        if (configured) {
-          showStatus(`TUN 模式已在 ${platform} 上配置`, "success", 3000);
-          return;
-        }
-
-        showStatus(`TUN 模式未配置，请以管理员权限运行 Vea`, "info", 5000);
+        showStatus("正在检查 TUN 状态...", "info");
+        await checkTUNStatus({ notify: true });
       }
 
       // 配置 TUN - 直接调用 API
