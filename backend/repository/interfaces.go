@@ -119,36 +119,57 @@ type Repositories interface {
 
 // RepositoriesImpl 仓储容器实现
 type RepositoriesImpl struct {
-	Store Snapshottable
+	store Snapshottable
 
-	NodeRepo      NodeRepository
-	FRouterRepo   FRouterRepository
-	ConfigRepo    ConfigRepository
-	GeoRepo       GeoRepository
-	ComponentRepo ComponentRepository
-	SettingsRepo  SettingsRepository
+	nodeRepo      NodeRepository
+	frouterRepo   FRouterRepository
+	configRepo    ConfigRepository
+	geoRepo       GeoRepository
+	componentRepo ComponentRepository
+	settingsRepo  SettingsRepository
+}
+
+func NewRepositories(
+	store Snapshottable,
+	nodeRepo NodeRepository,
+	frouterRepo FRouterRepository,
+	configRepo ConfigRepository,
+	geoRepo GeoRepository,
+	componentRepo ComponentRepository,
+	settingsRepo SettingsRepository,
+) *RepositoriesImpl {
+	return &RepositoriesImpl{
+		store: store,
+
+		nodeRepo:      nodeRepo,
+		frouterRepo:   frouterRepo,
+		configRepo:    configRepo,
+		geoRepo:       geoRepo,
+		componentRepo: componentRepo,
+		settingsRepo:  settingsRepo,
+	}
 }
 
 // 实现 Repositories 接口
-func (r *RepositoriesImpl) Node() NodeRepository           { return r.NodeRepo }
-func (r *RepositoriesImpl) FRouter() FRouterRepository     { return r.FRouterRepo }
-func (r *RepositoriesImpl) Config() ConfigRepository       { return r.ConfigRepo }
-func (r *RepositoriesImpl) Geo() GeoRepository             { return r.GeoRepo }
-func (r *RepositoriesImpl) Component() ComponentRepository { return r.ComponentRepo }
-func (r *RepositoriesImpl) Settings() SettingsRepository   { return r.SettingsRepo }
+func (r *RepositoriesImpl) Node() NodeRepository           { return r.nodeRepo }
+func (r *RepositoriesImpl) FRouter() FRouterRepository     { return r.frouterRepo }
+func (r *RepositoriesImpl) Config() ConfigRepository       { return r.configRepo }
+func (r *RepositoriesImpl) Geo() GeoRepository             { return r.geoRepo }
+func (r *RepositoriesImpl) Component() ComponentRepository { return r.componentRepo }
+func (r *RepositoriesImpl) Settings() SettingsRepository   { return r.settingsRepo }
 
 func (r *RepositoriesImpl) Snapshot() domain.ServiceState {
-	if r.Store == nil {
+	if r.store == nil {
 		return domain.ServiceState{}
 	}
-	return r.Store.Snapshot()
+	return r.store.Snapshot()
 }
 
 func (r *RepositoriesImpl) LoadState(state domain.ServiceState) {
-	if r.Store == nil {
+	if r.store == nil {
 		return
 	}
-	r.Store.LoadState(state)
+	r.store.LoadState(state)
 }
 
 // Snapshottable 可快照的存储接口

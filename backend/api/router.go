@@ -395,7 +395,8 @@ func (r *Router) createFRouter(c *gin.Context) {
 	}
 	frouter.ChainProxy.Edges = normalizeChainEdges(frouter.ChainProxy.Edges)
 	if _, err := nodegroup.CompileFRouter(frouter, r.service.ListNodes()); err != nil {
-		if ce, ok := err.(*nodegroup.CompileError); ok {
+		var ce *nodegroup.CompileError
+		if errors.As(err, &ce) {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error":    "invalid frouter",
 				"problems": ce.Problems,
@@ -921,7 +922,8 @@ func (r *Router) saveFRouterGraph(c *gin.Context) {
 	}
 
 	if _, err := nodegroup.CompileFRouter(draft, r.service.ListNodes()); err != nil {
-		if ce, ok := err.(*nodegroup.CompileError); ok {
+		var ce *nodegroup.CompileError
+		if errors.As(err, &ce) {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error":    "invalid frouter graph",
 				"problems": ce.Problems,
@@ -1035,7 +1037,8 @@ func (r *Router) validateFRouterGraph(c *gin.Context) {
 
 	compiled, err := nodegroup.CompileFRouter(draft, r.service.ListNodes())
 	if err != nil {
-		if ce, ok := err.(*nodegroup.CompileError); ok {
+		var ce *nodegroup.CompileError
+		if errors.As(err, &ce) {
 			c.JSON(http.StatusOK, validateGraphResponse{
 				Valid:    false,
 				Errors:   ce.Problems,

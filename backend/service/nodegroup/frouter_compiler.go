@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"vea/backend/domain"
+	"vea/backend/repository"
 )
 
 type ActionKind string
@@ -55,6 +56,10 @@ func (e *CompileError) Error() string {
 		return "compile error"
 	}
 	return strings.Join(e.Problems, "; ")
+}
+
+func (e *CompileError) Unwrap() error {
+	return repository.ErrInvalidData
 }
 
 func CompileFRouter(frouter domain.FRouter, nodes []domain.Node) (CompiledFRouter, error) {

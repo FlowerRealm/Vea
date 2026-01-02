@@ -421,12 +421,7 @@ frouterRepo := memory.NewFRouterRepo(memStore) // FRouter 仓储
 configRepo := memory.NewConfigRepo(memStore)
 // ...
 
-repos := &repository.RepositoriesImpl{
-    NodeRepo:        nodeRepo,
-    FRouterRepo:      frouterRepo,
-    ConfigRepo:       configRepo,
-    // ...
-}
+repos := repository.NewRepositories(memStore, nodeRepo, frouterRepo, configRepo, geoRepo, componentRepo, settingsRepo)
 
 // 5. 创建服务层
 nodeSvc := nodes.NewService(nodeRepo)

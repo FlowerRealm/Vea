@@ -1,10 +1,13 @@
 package nodegroup
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
 	"vea/backend/domain"
+	"vea/backend/repository"
 )
 
 func TestCompileFRouter_ViaBuildsDetourChain(t *testing.T) {
@@ -410,5 +413,32 @@ func TestCompileFRouter_RulesSortedByPriorityThenEdgeID(t *testing.T) {
 	}
 	if compiled.Rules[0].EdgeID != "a" || compiled.Rules[1].EdgeID != "b" {
 		t.Fatalf("expected rules sorted by edgeID for equal priority, got: %v then %v", compiled.Rules[0].EdgeID, compiled.Rules[1].EdgeID)
+	}
+}
+
+func TestCompileFRouter_ErrorIsInvalidData(t *testing.T) {
+	t.Parallel()
+
+	frouter := domain.FRouter{
+		ID:   "fr1",
+		Name: "test",
+		ChainProxy: domain.ChainProxySettings{
+			Edges: []domain.ProxyEdge{},
+		},
+	}
+
+	_, err := CompileFRouter(frouter, nil)
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+
+	wrapped := fmt.Errorf("wrap: %w", err)
+
+	var ce *CompileError
+	if !errors.As(wrapped, &ce) {
+		t.Fatalf("expected errors.As to match *CompileError, got %T: %v", wrapped, wrapped)
+	}
+	if !errors.Is(wrapped, repository.ErrInvalidData) {
+		t.Fatalf("expected errors.Is(..., ErrInvalidData)=true, got false")
 	}
 }

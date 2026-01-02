@@ -32,16 +32,7 @@ func TestGETComponents_SeedsDefaultComponents(t *testing.T) {
 	componentRepo := memory.NewComponentRepo(memStore)
 	settingsRepo := memory.NewSettingsRepo(memStore)
 
-	repos := &repository.RepositoriesImpl{
-		Store: memStore,
-
-		NodeRepo:      nodeRepo,
-		FRouterRepo:   frouterRepo,
-		ConfigRepo:    configRepo,
-		GeoRepo:       geoRepo,
-		ComponentRepo: componentRepo,
-		SettingsRepo:  settingsRepo,
-	}
+	repos := repository.NewRepositories(memStore, nodeRepo, frouterRepo, configRepo, geoRepo, componentRepo, settingsRepo)
 
 	nodeSvc := nodes.NewService(nodeRepo)
 	frouterSvc := frouter.NewService(frouterRepo, nodeRepo)

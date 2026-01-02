@@ -102,16 +102,7 @@ func main() {
 	componentRepo := memory.NewComponentRepo(memStore)
 	settingsRepo := memory.NewSettingsRepo(memStore)
 
-	repos := &repository.RepositoriesImpl{
-		Store: memStore,
-
-		NodeRepo:      nodeRepo,
-		FRouterRepo:   frouterRepo,
-		ConfigRepo:    configRepo,
-		GeoRepo:       geoRepo,
-		ComponentRepo: componentRepo,
-		SettingsRepo:  settingsRepo,
-	}
+	repos := repository.NewRepositories(memStore, nodeRepo, frouterRepo, configRepo, geoRepo, componentRepo, settingsRepo)
 
 	// 5. 创建服务层
 	nodeSvc := nodes.NewService(nodeRepo)
