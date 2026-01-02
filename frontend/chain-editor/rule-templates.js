@@ -283,21 +283,6 @@ const RULE_TEMPLATES = {
         ]
       }
     },
-    {
-      id: 'copilot',
-      category: 'ai',
-      name: 'GitHub Copilot',
-      description: 'GitHub Copilot AI 编程助手',
-      icon: '👨‍💻',
-      action: 'proxy',
-      rule: {
-        domains: [
-          'domain:copilot.github.com',
-          'domain:githubcopilot.com',
-          'domain:copilot-proxy.githubusercontent.com'
-        ]
-      }
-    },
 
     // ===== 开发工具 =====
     {
@@ -425,10 +410,7 @@ function templateToRouteRule(template) {
   if (!template || !template.rule) return null;
   return {
     domains: template.rule.domains || [],
-    ips: template.rule.ips || [],
-    protocols: template.rule.protocols || [],
-    ports: template.rule.ports || [],
-    processNames: template.rule.processNames || []
+    ips: template.rule.ips || []
   };
 }
 

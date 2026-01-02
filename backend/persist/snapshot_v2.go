@@ -117,6 +117,35 @@ func (s *SnapshotterV2) save() error {
 	return s.doSave()
 }
 
+// WaitIdle 等待所有已调度的快照保存完成。
+// 主要用于测试与优雅退出时确保后台 goroutine 不再写入文件。
+func (s *SnapshotterV2) WaitIdle(timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		s.mu.Lock()
+		pending := s.pending
+		s.mu.Unlock()
+
+		if !pending {
+			if s.saveMu.TryLock() {
+				s.saveMu.Unlock()
+
+				s.mu.Lock()
+				pending = s.pending
+				s.mu.Unlock()
+				if !pending {
+					return nil
+				}
+			}
+		}
+
+		if time.Now().After(deadline) {
+			return errors.New("wait idle timeout")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 // atomicWrite 原子写入
 func (s *SnapshotterV2) atomicWrite(data []byte) error {
 	dir := filepath.Dir(s.path)
@@ -165,26 +194,4 @@ func LoadV2(path string) (domain.ServiceState, error) {
 
 	migrator := NewMigrator()
 	return migrator.Migrate(data)
-}
-
-// SaveV2 静态函数：保存状态
-func SaveV2(path string, state domain.ServiceState) error {
-	state.SchemaVersion = SchemaVersion
-	state.GeneratedAt = time.Now()
-
-	data, err := json.MarshalIndent(state, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
 }

@@ -153,7 +153,6 @@ export interface CoreComponent {
   kind: CoreComponentKind
   sourceUrl: string
   archiveType: string
-  autoUpdateInterval: number
   lastInstalledAt: string
   installDir: string
   lastVersion: string
@@ -230,6 +229,28 @@ export interface FRouterUpdateRequest {
   tags?: string[]
 }
 
+export interface NodeCreateRequest {
+  name: string
+  address: string
+  port: number
+  protocol: NodeProtocol
+  tags?: string[]
+  security?: NodeSecurity
+  transport?: NodeTransport
+  tls?: NodeTLS
+}
+
+export interface NodeUpdateRequest {
+  name: string
+  address: string
+  port: number
+  protocol: NodeProtocol
+  tags?: string[]
+  security?: NodeSecurity
+  transport?: NodeTransport
+  tls?: NodeTLS
+}
+
 export interface ConfigImportRequest {
   name: string
   format: ConfigFormat
@@ -261,7 +282,6 @@ export interface ComponentRequest {
   kind?: CoreComponentKind
   sourceUrl?: string
   archiveType?: string
-  autoUpdateIntervalMinutes?: number
 }
 
 export interface SystemProxyRequest {
@@ -328,6 +348,8 @@ export interface ConfigsAPI {
 
 export interface NodesAPI {
   list(): Promise<NodesListResponse>
+  create(data: NodeCreateRequest): Promise<Node>
+  update(id: string, data: NodeUpdateRequest): Promise<Node>
   ping(id: string): Promise<null>
   speedtest(id: string): Promise<null>
 }

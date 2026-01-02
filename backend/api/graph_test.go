@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -69,7 +70,7 @@ func TestGETFRouterGraph_ReturnsGraphData(t *testing.T) {
 
 	nodeRepo, frouterRepo, handler := newTestRouterWithRepos(t)
 
-	_, err := nodeRepo.Create(t.Context(), domain.Node{
+	_, err := nodeRepo.Create(context.Background(), domain.Node{
 		ID:       "n1",
 		Name:     "node-1",
 		Protocol: domain.ProtocolVLESS,
@@ -81,7 +82,7 @@ func TestGETFRouterGraph_ReturnsGraphData(t *testing.T) {
 	}
 
 	now := time.Now()
-	created, err := frouterRepo.Create(t.Context(), domain.FRouter{
+	created, err := frouterRepo.Create(context.Background(), domain.FRouter{
 		Name: "fr-1",
 		ChainProxy: domain.ChainProxySettings{
 			Edges: []domain.ProxyEdge{
@@ -129,7 +130,7 @@ func TestPUTFRouterGraph_NormalizesDefaultPriority(t *testing.T) {
 
 	_, frouterRepo, handler := newTestRouterWithRepos(t)
 
-	created, err := frouterRepo.Create(t.Context(), domain.FRouter{
+	created, err := frouterRepo.Create(context.Background(), domain.FRouter{
 		Name: "fr-1",
 		ChainProxy: domain.ChainProxySettings{
 			Edges: []domain.ProxyEdge{{ID: "e-default", From: domain.EdgeNodeLocal, To: domain.EdgeNodeDirect, Enabled: true}},
@@ -175,7 +176,7 @@ func TestPUTFRouterGraph_InvalidGraphReturnsProblems(t *testing.T) {
 
 	nodeRepo, frouterRepo, handler := newTestRouterWithRepos(t)
 
-	_, err := nodeRepo.Create(t.Context(), domain.Node{
+	_, err := nodeRepo.Create(context.Background(), domain.Node{
 		ID:       "n1",
 		Name:     "node-1",
 		Protocol: domain.ProtocolVLESS,
@@ -186,7 +187,7 @@ func TestPUTFRouterGraph_InvalidGraphReturnsProblems(t *testing.T) {
 		t.Fatalf("create node: %v", err)
 	}
 
-	created, err := frouterRepo.Create(t.Context(), domain.FRouter{Name: "fr-1"})
+	created, err := frouterRepo.Create(context.Background(), domain.FRouter{Name: "fr-1"})
 	if err != nil {
 		t.Fatalf("create frouter: %v", err)
 	}
@@ -235,7 +236,7 @@ func TestPOSTFRouterGraphValidate_ReturnsValidFalseOnCompileError(t *testing.T) 
 
 	nodeRepo, frouterRepo, handler := newTestRouterWithRepos(t)
 
-	_, err := nodeRepo.Create(t.Context(), domain.Node{
+	_, err := nodeRepo.Create(context.Background(), domain.Node{
 		ID:       "n1",
 		Name:     "node-1",
 		Protocol: domain.ProtocolVLESS,
@@ -246,7 +247,7 @@ func TestPOSTFRouterGraphValidate_ReturnsValidFalseOnCompileError(t *testing.T) 
 		t.Fatalf("create node: %v", err)
 	}
 
-	created, err := frouterRepo.Create(t.Context(), domain.FRouter{Name: "fr-1"})
+	created, err := frouterRepo.Create(context.Background(), domain.FRouter{Name: "fr-1"})
 	if err != nil {
 		t.Fatalf("create frouter: %v", err)
 	}

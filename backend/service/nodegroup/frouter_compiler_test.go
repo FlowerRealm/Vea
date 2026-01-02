@@ -231,42 +231,6 @@ func TestCompileFRouter_MultipleDefaultEdges(t *testing.T) {
 	}
 }
 
-func TestCompileFRouter_RouteRuleProtocolsNotSupportedYet(t *testing.T) {
-	t.Parallel()
-
-	nodes := []domain.Node{
-		{ID: "n1", Name: "n1"},
-	}
-	frouter := domain.FRouter{
-		ID:   "fr1",
-		Name: "test",
-		ChainProxy: domain.ChainProxySettings{
-			Edges: []domain.ProxyEdge{
-				{ID: "e-default", From: domain.EdgeNodeLocal, To: domain.EdgeNodeDirect, Enabled: true},
-				{
-					ID:       "e-rule",
-					From:     domain.EdgeNodeLocal,
-					To:       "n1",
-					Priority: 10,
-					Enabled:  true,
-					RuleType: domain.EdgeRuleRoute,
-					RouteRule: &domain.RouteMatchRule{
-						Protocols: []string{"tcp"},
-					},
-				},
-			},
-		},
-	}
-
-	_, err := CompileFRouter(frouter, nodes)
-	if err == nil {
-		t.Fatalf("expected error, got nil")
-	}
-	if !strings.Contains(err.Error(), "protocols is not supported yet") {
-		t.Fatalf("expected protocols not supported error, got: %v", err)
-	}
-}
-
 func TestCompileFRouter_SlotUnboundEdgeSkippedWithWarning(t *testing.T) {
 	t.Parallel()
 

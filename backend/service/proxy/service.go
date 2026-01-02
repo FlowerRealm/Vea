@@ -195,7 +195,12 @@ func (s *Service) Stop(ctx context.Context) error {
 
 // Status 获取代理状态
 func (s *Service) Status(ctx context.Context) map[string]interface{} {
-	s.mu.Lock()
+	if !s.mu.TryLock() {
+		return map[string]interface{}{
+			"running": false,
+			"busy":    true,
+		}
+	}
 	defer s.mu.Unlock()
 
 	running := s.mainHandle != nil && s.mainHandle.Cmd != nil && s.mainHandle.Cmd.Process != nil
@@ -221,13 +226,6 @@ func (s *Service) Status(ctx context.Context) map[string]interface{} {
 	}
 
 	return status
-}
-
-// IsRunning 检查代理是否运行
-func (s *Service) IsRunning() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.mainHandle != nil && s.mainHandle.Cmd != nil && s.mainHandle.Cmd.Process != nil
 }
 
 // ========== 内部方法 ==========

@@ -112,6 +112,52 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Node'
+    post:
+      tags: [nodes]
+      summary: 创建节点
+      description: 手动创建全局节点（不归属订阅）
+      operationId: createNode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodeUpsertRequest'
+      responses:
+        '201':
+          description: 节点创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Node'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /nodes/{id}:
+    put:
+      tags: [nodes]
+      summary: 更新节点
+      description: 更新节点配置（订阅节点不可编辑）
+      operationId: updateNode
+      parameters:
+        - $ref: '#/components/parameters/NodeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodeUpsertRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Node'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
 
   /nodes/{id}/ping:
     post:
@@ -1095,6 +1141,38 @@ components:
           type: string
           format: date-time
 
+    NodeUpsertRequest:
+      type: object
+      description: 手动创建/更新节点请求体
+      required: [name, address, port, protocol]
+      properties:
+        name:
+          type: string
+          description: 节点名称
+        address:
+          type: string
+          description: 服务器地址
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+          description: 服务器端口
+        protocol:
+          type: string
+          enum: [vless, trojan, shadowsocks, vmess, hysteria2, tuic]
+          description: 协议类型
+        tags:
+          type: array
+          items:
+            type: string
+          description: 节点标签
+        security:
+          $ref: '#/components/schemas/NodeSecurity'
+        transport:
+          $ref: '#/components/schemas/NodeTransport'
+        tls:
+          $ref: '#/components/schemas/NodeTLS'
+
     NodeSecurity:
       type: object
       properties:
@@ -1314,11 +1392,21 @@ components:
         ruleType:
           type: string
         routeRule:
-          type: object
-        condition:
-          type: object
+          $ref: '#/components/schemas/RouteMatchRule'
         description:
           type: string
+
+    RouteMatchRule:
+      type: object
+      properties:
+        domains:
+          type: array
+          items:
+            type: string
+        ips:
+          type: array
+          items:
+            type: string
 
     GraphPosition:
       type: object
@@ -1488,10 +1576,6 @@ components:
           type: string
         archiveType:
           type: string
-        autoUpdateInterval:
-          type: integer
-          format: int64
-          description: 自动更新间隔（纳秒）
         lastInstalledAt:
           type: string
           format: date-time
@@ -1540,9 +1624,6 @@ components:
           type: string
         archiveType:
           type: string
-        autoUpdateIntervalMinutes:
-          type: integer
-          format: int64
 
     CoreEngineInfo:
       type: object

@@ -29,10 +29,10 @@
 
 ## 编译管线
 
-1. NormalizeChainProxySettings：统一虚拟节点 ID（local/destination → client/target）
-2. CompileChainPlan：解析 slot，得到线性链路与节点集
-3. ActiveNodeIDs：合并 target 节点
-4. Render：adapter 根据 RuntimePlan 输出各引擎配置
+1. CompileFRouter：解析/校验 `ChainProxySettings`（虚拟节点语义：`local`/`direct`/`block`/slot），产出 rules/default/detour
+2. ActiveNodeIDs：从 default/rules 出发，计算 detour 上游闭包，得到本次计划实际需要的节点集合
+3. CompileProxyPlan / CompileMeasurementPlan：组装 RuntimePlan（Purpose/Engine/Inbound/ProxyConfig 等）
+4. Render：adapter 根据 RuntimePlan 输出各引擎配置（Xray / sing-box）
 
 ## 对外接口建议
 

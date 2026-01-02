@@ -190,7 +190,7 @@ func (r *NodeRepo) ReplaceNodesForConfig(_ context.Context, configID string, nod
 		})
 	}
 
-	// Upsert 当前节点集合
+	// Upsert 节点集合
 	for i := range next {
 		node := next[i]
 		if existing, ok := r.store.Nodes()[node.ID]; ok {

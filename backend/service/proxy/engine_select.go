@@ -99,7 +99,7 @@ func anyNodeRequiresSingBox(nodes []domain.Node) bool {
 
 func requiresSingBoxForNode(node domain.Node) bool {
 	switch node.Protocol {
-	case "hysteria2", "tuic":
+	case domain.ProtocolHysteria2, domain.ProtocolTUIC:
 		return true
 	case domain.ProtocolShadowsocks:
 		if node.Security == nil {

@@ -26,9 +26,6 @@ type RoutingRuleEntry struct {
 	DomainKeyword []string // domain_keyword 关键字匹配
 	DomainRegex   []string // domain_regex 正则匹配
 	IPCidr        []string // ip_cidr 匹配
-	Protocol      []string // protocol 匹配
-	Port          []int    // port 匹配
-	ProcessName   []string // process_name 匹配
 	IPIsPrivate   bool     // ip_is_private
 	Outbound      string   // 出站标签
 }
@@ -192,15 +189,6 @@ func (m *RuleSetManager) ConvertRouteMatchRule(rule *domain.RouteMatchRule, outb
 		entry.IPCidr = append(entry.IPCidr, ip)
 	}
 
-	// 处理协议
-	entry.Protocol = rule.Protocols
-
-	// 处理端口
-	entry.Port = rule.Ports
-
-	// 处理进程名
-	entry.ProcessName = rule.ProcessNames
-
 	return entry, nil
 }
 
@@ -226,29 +214,12 @@ func (e *RoutingRuleEntry) ToSingBoxRule() map[string]interface{} {
 	if len(e.IPCidr) > 0 {
 		rule["ip_cidr"] = e.IPCidr
 	}
-	if len(e.Protocol) > 0 {
-		rule["protocol"] = e.Protocol
-	}
-	if len(e.Port) > 0 {
-		rule["port"] = e.Port
-	}
-	if len(e.ProcessName) > 0 {
-		rule["process_name"] = e.ProcessName
-	}
 	if e.IPIsPrivate {
 		rule["ip_is_private"] = true
 	}
 	rule["outbound"] = e.Outbound
 
 	return rule
-}
-
-// BuildDefaultRuleSets 构建默认的 rule-set（国内直连、广告拦截）
-func (m *RuleSetManager) BuildDefaultRuleSets() {
-	// 默认需要的 rule-set
-	m.AddGeoSite("cn")
-	m.AddGeoSite("category-ads-all")
-	m.AddGeoIP("cn")
 }
 
 // BuildDefaultRoutingRules 构建默认的路由规则
@@ -280,16 +251,6 @@ func (m *RuleSetManager) BuildDefaultRoutingRules(defaultTag string) []map[strin
 	})
 
 	return rules
-}
-
-// BuildDNSRules 构建 DNS 规则
-func (m *RuleSetManager) BuildDNSRules() []map[string]interface{} {
-	return []map[string]interface{}{
-		{
-			"rule_set": []string{m.AddGeoSite("cn")},
-			"server":   "dns-local",
-		},
-	}
 }
 
 // 注：sing-box 路由仅允许从 FRouter 编译产物生成，不提供独立的全局分流模型。

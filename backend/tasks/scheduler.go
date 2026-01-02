@@ -5,7 +5,6 @@ import (
 	"log"
 	"time"
 
-	"vea/backend/service/component"
 	configsvc "vea/backend/service/config"
 	"vea/backend/service/geo"
 )
@@ -13,14 +12,12 @@ import (
 type Scheduler struct {
 	config    *configsvc.Service
 	geo       *geo.Service
-	component *component.Service
 }
 
-func NewScheduler(configSvc *configsvc.Service, geoSvc *geo.Service, componentSvc *component.Service) *Scheduler {
+func NewScheduler(configSvc *configsvc.Service, geoSvc *geo.Service) *Scheduler {
 	return &Scheduler{
-		config:    configSvc,
-		geo:       geoSvc,
-		component: componentSvc,
+		config: configSvc,
+		geo:    geoSvc,
 	}
 }
 
@@ -37,11 +34,6 @@ func (s *Scheduler) Start(ctx context.Context) {
 	if s.geo != nil {
 		go runWithTicker(ctx, 6*time.Hour, "geo sync", func(ctx context.Context) {
 			s.geo.SyncAll(ctx)
-		})
-	}
-	if s.component != nil {
-		go runWithTicker(ctx, time.Hour, "component update", func(ctx context.Context) {
-			s.component.CheckUpdates(ctx)
 		})
 	}
 }

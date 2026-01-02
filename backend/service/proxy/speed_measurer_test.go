@@ -133,19 +133,20 @@ func TestDownloadViaSocks5OnceFastResponseClampsElapsed(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
+	minSeconds := 0.5
 	bytesRead, seconds, err := downloadViaSocks5Once(ctx, host, port, socksTarget{
 		host:  "example.com",
 		port:  80,
 		path:  "/10MB.zip",
 		tls:   false,
 		bytes: 0,
-	}, shared.DefaultSpeedProbeMinSeconds, nil)
+	}, minSeconds, nil)
 	<-serverDone
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if seconds < shared.DefaultSpeedProbeMinSeconds {
-		t.Fatalf("expected elapsed >= %v, got %v", shared.DefaultSpeedProbeMinSeconds, seconds)
+	if seconds < minSeconds {
+		t.Fatalf("expected elapsed >= %v, got %v", minSeconds, seconds)
 	}
 	if bytesRead == 0 {
 		t.Fatalf("expected to read some bytes")

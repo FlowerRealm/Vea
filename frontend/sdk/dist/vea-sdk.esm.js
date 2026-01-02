@@ -1,6 +1,6 @@
 /**
  * @vea/sdk v1.0.0
- * (c) 2025 Vea Project
+ * (c) 2026 Vea Project
  * @license MIT
  */
 /**
@@ -202,6 +202,14 @@ class NodesAPI {
 
   async list() {
     return this.client.get('/nodes')
+  }
+
+  async create(data) {
+    return this.client.post('/nodes', data)
+  }
+
+  async update(id, data) {
+    return this.client.put(`/nodes/${id}`, data)
   }
 
   async bulkPing(ids = []) {

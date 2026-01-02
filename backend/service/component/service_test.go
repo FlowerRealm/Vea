@@ -60,9 +60,6 @@ func TestCreate_CoreComponent_IsIdempotent(t *testing.T) {
 	if xray1.Name != "Xray" {
 		t.Fatalf("expected default xray name %q, got %q", "Xray", xray1.Name)
 	}
-	if xray1.AutoUpdateInterval != shared.DefaultComponentUpdateInterval {
-		t.Fatalf("expected default xray interval %v, got %v", shared.DefaultComponentUpdateInterval, xray1.AutoUpdateInterval)
-	}
 	if xray1.Meta == nil || xray1.Meta["repo"] != "XTLS/Xray-core" {
 		t.Fatalf("expected default xray meta repo %q, got %#v", "XTLS/Xray-core", xray1.Meta)
 	}

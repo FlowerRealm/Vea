@@ -144,8 +144,8 @@ func main() {
 		log.Printf("ensure default geo resources failed: %v", err)
 	}
 
-	// 7.3 启动后台任务（订阅/Geo/组件自动更新）
-	tasks.NewScheduler(configSvc, geoSvc, componentSvc).Start(ctx)
+	// 7.3 启动后台任务（订阅/Geo）
+	tasks.NewScheduler(configSvc, geoSvc).Start(ctx)
 
 	// 8. 创建路由
 	router := api.NewRouter(facade)

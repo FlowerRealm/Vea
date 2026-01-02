@@ -73,11 +73,6 @@ func (s *Service) Get(ctx context.Context, id string) (domain.CoreComponent, err
 	return s.repo.Get(ctx, id)
 }
 
-// GetByKind 按类型获取组件
-func (s *Service) GetByKind(ctx context.Context, kind domain.CoreComponentKind) (domain.CoreComponent, error) {
-	return s.repo.GetByKind(ctx, kind)
-}
-
 // Create 创建组件
 func (s *Service) Create(ctx context.Context, comp domain.CoreComponent) (domain.CoreComponent, error) {
 	// 核心组件（xray/sing-box）使用幂等创建：缺失时补齐默认配置，存在则直接返回
@@ -119,14 +114,6 @@ func (s *Service) Install(ctx context.Context, id string) (domain.CoreComponent,
 	go s.doInstall(id)
 
 	return s.repo.Get(ctx, id)
-}
-
-// IsInstalling 检查是否正在安装
-func (s *Service) IsInstalling(id string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	_, ok := s.installing[id]
-	return ok
 }
 
 // ========== 内部方法 ==========
@@ -287,9 +274,8 @@ func (s *Service) EnsureDefaultComponents(ctx context.Context) error {
 			return err
 		}
 		if _, err := s.repo.Create(ctx, domain.CoreComponent{
-			Name:               "Xray",
-			Kind:               domain.ComponentXray,
-			AutoUpdateInterval: shared.DefaultComponentUpdateInterval,
+			Name: "Xray",
+			Kind: domain.ComponentXray,
 			Meta: map[string]string{
 				"repo": "XTLS/Xray-core",
 			},
@@ -304,9 +290,8 @@ func (s *Service) EnsureDefaultComponents(ctx context.Context) error {
 			return err
 		}
 		if _, err := s.repo.Create(ctx, domain.CoreComponent{
-			Name:               "sing-box",
-			Kind:               domain.ComponentSingBox,
-			AutoUpdateInterval: shared.DefaultComponentUpdateInterval,
+			Name: "sing-box",
+			Kind: domain.ComponentSingBox,
 			Meta: map[string]string{
 				"repo": "SagerNet/sing-box",
 			},
@@ -316,23 +301,6 @@ func (s *Service) EnsureDefaultComponents(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-// CheckUpdates 检查更新
-func (s *Service) CheckUpdates(ctx context.Context) {
-	components, err := s.repo.List(ctx)
-	if err != nil {
-		return
-	}
-
-	for _, comp := range components {
-		if comp.AutoUpdateInterval > 0 && !comp.LastInstalledAt.IsZero() {
-			if time.Since(comp.LastInstalledAt) >= comp.AutoUpdateInterval {
-				// 触发自动更新
-				s.Install(ctx, comp.ID)
-			}
-		}
-	}
 }
 
 // resolveInstallDir 确定组件的安装目录
@@ -411,62 +379,4 @@ func (s *Service) setExecutablePermissions(dir, kind string) {
 			}
 		}
 	}
-}
-
-// GetBinaryPath 获取组件的二进制文件路径
-func (s *Service) GetBinaryPath(ctx context.Context, kind domain.CoreComponentKind) (string, error) {
-	comp, err := s.repo.GetByKind(ctx, kind)
-	if err != nil {
-		return "", err
-	}
-
-	if comp.InstallDir == "" {
-		return "", ErrComponentNotFound
-	}
-
-	var candidates []string
-	switch kind {
-	case domain.ComponentXray:
-		candidates = []string{"xray", "xray.exe"}
-	case domain.ComponentSingBox:
-		candidates = []string{"sing-box", "sing-box.exe"}
-	}
-
-	// 先在根目录查找
-	for _, name := range candidates {
-		path := filepath.Join(comp.InstallDir, name)
-		if _, err := os.Stat(path); err == nil {
-			return path, nil
-		}
-	}
-
-	// 在子目录中查找
-	entries, err := os.ReadDir(comp.InstallDir)
-	if err != nil {
-		return "", fmt.Errorf("binary not found in %s", comp.InstallDir)
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		subdir := filepath.Join(comp.InstallDir, entry.Name())
-		for _, name := range candidates {
-			path := filepath.Join(subdir, name)
-			if _, err := os.Stat(path); err == nil {
-				return path, nil
-			}
-		}
-	}
-
-	return "", fmt.Errorf("binary not found in %s", comp.InstallDir)
-}
-
-// IsInstalled 检查组件是否已安装
-func (s *Service) IsInstalled(ctx context.Context, kind domain.CoreComponentKind) bool {
-	comp, err := s.repo.GetByKind(ctx, kind)
-	if err != nil {
-		return false
-	}
-	return comp.InstallDir != "" && !comp.LastInstalledAt.IsZero()
 }

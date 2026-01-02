@@ -297,9 +297,6 @@ func actionFromTo(to string, nodesByID map[string]domain.Node) (Action, bool) {
 }
 
 func validateAndIsDefaultSelectionEdge(edge domain.ProxyEdge) (bool, error) {
-	if edge.Condition != nil {
-		return false, fmt.Errorf("condition rule is not supported")
-	}
 	if (edge.To == domain.EdgeNodeDirect || edge.To == domain.EdgeNodeBlock) && len(edge.Via) > 0 {
 		return false, fmt.Errorf("via is not allowed when to=%s", edge.To)
 	}
@@ -314,11 +311,7 @@ func validateAndIsDefaultSelectionEdge(edge domain.ProxyEdge) (bool, error) {
 		if edge.RouteRule == nil {
 			return true, nil
 		}
-		if edge.RouteRule.Invert {
-			return false, fmt.Errorf("invert is not supported")
-		}
-		if len(edge.RouteRule.Domains) == 0 && len(edge.RouteRule.IPs) == 0 &&
-			len(edge.RouteRule.Protocols) == 0 && len(edge.RouteRule.Ports) == 0 && len(edge.RouteRule.ProcessNames) == 0 {
+		if len(edge.RouteRule.Domains) == 0 && len(edge.RouteRule.IPs) == 0 {
 			return true, nil
 		}
 		return false, nil
@@ -334,9 +327,6 @@ func validateDetourEdge(edge domain.ProxyEdge) error {
 	if edge.RouteRule != nil {
 		return fmt.Errorf("detour edge must not have routeRule")
 	}
-	if edge.Condition != nil {
-		return fmt.Errorf("detour edge must not have condition")
-	}
 	if len(edge.Via) > 0 {
 		return fmt.Errorf("detour edge must not have via")
 	}
@@ -344,18 +334,6 @@ func validateDetourEdge(edge domain.ProxyEdge) error {
 }
 
 func validateRouteMatchRule(rule domain.RouteMatchRule) error {
-	if rule.Invert {
-		return fmt.Errorf("invert is not supported")
-	}
-	if len(rule.Protocols) > 0 {
-		return fmt.Errorf("protocols is not supported yet")
-	}
-	if len(rule.Ports) > 0 {
-		return fmt.Errorf("ports is not supported yet")
-	}
-	if len(rule.ProcessNames) > 0 {
-		return fmt.Errorf("processNames is not supported yet")
-	}
 	if len(rule.Domains) == 0 && len(rule.IPs) == 0 {
 		return fmt.Errorf("empty routeRule is not allowed on non-default edge")
 	}

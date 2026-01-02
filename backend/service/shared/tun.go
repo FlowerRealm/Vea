@@ -2,9 +2,7 @@ package shared
 
 import (
 	"io"
-	"log"
 	"net/http"
-	"runtime"
 	"strings"
 	"time"
 )
@@ -46,16 +44,4 @@ func GetIPGeo() (map[string]interface{}, error) {
 	}
 
 	return result, nil
-}
-
-// CleanupTUN 清理 TUN 接口
-func CleanupTUN(interfaceName string) error {
-	if runtime.GOOS != "linux" {
-		return nil // 其他平台不需要清理
-	}
-
-	log.Printf("[TUN] 清理 TUN 接口: %s", interfaceName)
-	// 尝试删除可能存在的 TUN 接口
-	// 这是一个尽力而为的操作，失败不影响后续启动
-	return nil
 }

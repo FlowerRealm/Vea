@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -58,7 +59,7 @@ func TestGETSnapshot_IncludesRuntimeMetrics(t *testing.T) {
 	facade := service.NewFacade(nodeSvc, frouterSvc, configSvc, proxySvc, componentSvc, geoSvc, repos)
 	router := NewRouter(facade)
 
-	createdNode, err := nodeRepo.Create(t.Context(), domain.Node{
+	createdNode, err := nodeRepo.Create(context.Background(), domain.Node{
 		Name:     "node-1",
 		Protocol: domain.ProtocolVLESS,
 		Address:  "example.com",
@@ -67,11 +68,11 @@ func TestGETSnapshot_IncludesRuntimeMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create node: %v", err)
 	}
-	if err := nodeRepo.UpdateLatency(t.Context(), createdNode.ID, 123, ""); err != nil {
+	if err := nodeRepo.UpdateLatency(context.Background(), createdNode.ID, 123, ""); err != nil {
 		t.Fatalf("update node latency: %v", err)
 	}
 
-	createdFRouter, err := frouterRepo.Create(t.Context(), domain.FRouter{
+	createdFRouter, err := frouterRepo.Create(context.Background(), domain.FRouter{
 		Name: "fr-1",
 		ChainProxy: domain.ChainProxySettings{
 			Edges: []domain.ProxyEdge{
@@ -82,7 +83,7 @@ func TestGETSnapshot_IncludesRuntimeMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create frouter: %v", err)
 	}
-	if err := frouterRepo.UpdateSpeed(t.Context(), createdFRouter.ID, 88.8, ""); err != nil {
+	if err := frouterRepo.UpdateSpeed(context.Background(), createdFRouter.ID, 88.8, ""); err != nil {
 		t.Fatalf("update frouter speed: %v", err)
 	}
 

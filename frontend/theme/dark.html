@@ -6,6 +6,38 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Vea Console</title>
   <style>
+    @font-face {
+      font-family: "FiraCode Nerd Font";
+      src: url("fonts/FiraCodeNerdFont-Regular.ttf") format("truetype");
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "FiraCode Nerd Font";
+      src: url("fonts/FiraCodeNerdFont-Medium.ttf") format("truetype");
+      font-weight: 500;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "FiraCode Nerd Font";
+      src: url("fonts/FiraCodeNerdFont-SemiBold.ttf") format("truetype");
+      font-weight: 600;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: "FiraCode Nerd Font";
+      src: url("fonts/FiraCodeNerdFont-Bold.ttf") format("truetype");
+      font-weight: 700;
+      font-style: normal;
+      font-display: swap;
+    }
+
     :root {
       /* Premium Dark (Linear-esque) */
       --bg-root: #050505;
@@ -32,8 +64,8 @@
       --radius-md: 12px;
       --radius-lg: 16px;
 
-      --font-sans: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      --font-mono: "SF Mono", "JetBrains Mono", Consolas, monospace;
+      --font-sans: "FiraCode Nerd Font", "FiraCode Nerd Font Mono", "Fira Code", "FiraCode", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --font-mono: "FiraCode Nerd Font", "FiraCode Nerd Font Mono", "Fira Code", "FiraCode", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
       --ease: cubic-bezier(0.23, 1, 0.32, 1);
     }
@@ -266,6 +298,15 @@
       flex: 1;
       min-height: 0;
       overflow: auto;
+      background: transparent;
+      border: none;
+      box-shadow: none;
+      border-radius: 0;
+    }
+
+    #panel-nodes .nodes-table-card:hover {
+      transform: none;
+      box-shadow: none;
     }
 
     #panel-nodes #nodes-table thead th {
@@ -274,6 +315,171 @@
       background: var(--bg-card);
       z-index: 1;
     }
+
+    #nodes-table {
+      border-collapse: separate;
+      border-spacing: 0;
+    }
+
+    #nodes-table thead {
+      display: none;
+    }
+
+    #nodes-table td {
+      border-bottom: none;
+      padding: 0;
+    }
+
+    #nodes-table tr:hover td {
+      background: transparent;
+      color: inherit;
+    }
+
+    #nodes-table tbody tr.node-group-row td {
+      background: transparent;
+      color: var(--text-primary);
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: 0.02em;
+      padding: 16px 0 6px;
+      border-top: 3px solid var(--border-highlight);
+      border-bottom: none;
+    }
+
+    #nodes-table tbody tr.node-group-row:first-child td {
+      border-top: none;
+    }
+
+    #nodes-table tbody tr.node-group-row .node-group-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 12px;
+      border-radius: 12px;
+      background: var(--bg-card);
+    }
+
+    #nodes-table tbody tr.node-group-row .node-group-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--accent);
+      color: var(--bg-root);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+    }
+
+    #nodes-table tbody tr.node-group-row .node-group-name {
+      font-weight: 700;
+    }
+
+    #nodes-table tbody tr.node-group-row .node-group-count {
+      margin-left: auto;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border-highlight);
+      background: var(--bg-card);
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+
+    #nodes-table tbody tr.node-card-row td {
+      padding: 0;
+    }
+
+    #nodes-table tbody tr.node-card-row .node-card {
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      border-top: 1px solid var(--border-subtle);
+      padding: 14px 4px 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    #nodes-table tbody tr.node-group-row + tr.node-card-row .node-card {
+      border-top: none;
+    }
+
+    #nodes-table tbody tr.node-card-row .node-card-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    #nodes-table tbody tr.node-card-row .node-card-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    #nodes-table tbody tr.node-card-row .node-card-name {
+      font-weight: 600;
+      color: var(--text-primary);
+      font-size: 14px;
+    }
+
+    #nodes-table tbody tr.node-card-row .node-card-protocol {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--bg-secondary);
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    #nodes-table tbody tr.node-card-row .node-card-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      color: var(--text-tertiary);
+      font-size: 12px;
+    }
+
+    #nodes-table tbody tr.node-card-row .node-card-addr {
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+
+    #nodes-table tbody tr.node-card-row .node-card-id {
+      color: var(--text-tertiary);
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    #nodes-table tbody tr.node-card-row .node-card-stats {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    #nodes-table tbody tr.node-card-row .node-card-stat {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    #nodes-table tbody tr.node-card-row .node-card-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
 
     /* Logs panel: 固定工具栏 + 内容区滚动 */
     #panel-logs {
@@ -633,7 +839,7 @@
     .node-row-meta {
       font-size: 12px;
       color: var(--text-tertiary);
-      font-family: 'SF Mono', 'JetBrains Mono', monospace;
+      font-family: var(--font-mono);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -677,7 +883,7 @@
     }
 
     .node-metric-value {
-      font-family: 'SF Mono', 'JetBrains Mono', monospace;
+      font-family: var(--font-mono);
       font-weight: 500;
     }
 
@@ -1949,11 +2155,12 @@
 	          <h2>节点</h2>
 	          <p>查看与测量全局节点（独立于 FRouter）。</p>
 	        </div>
-	        <div class="panel-actions">
-	          <button id="nodes-bulk-ping">全部测延迟</button>
-	          <button id="nodes-bulk-speed">全部测速</button>
-	        </div>
-	      </div>
+        <div class="panel-actions">
+          <button id="nodes-bulk-ping">全部测延迟</button>
+          <button id="nodes-bulk-speed">全部测速</button>
+          <button id="nodes-add-button" class="primary">添加节点</button>
+        </div>
+      </div>
 	      <div class="card nodes-table-card">
 	        <table id="nodes-table">
 	          <thead>
@@ -1983,7 +2190,7 @@
           <p>Core system dependencies and versions.</p>
         </div>
         <div class="panel-actions">
-          <button id="component-refresh">检查更新</button>
+          <button id="component-refresh">刷新</button>
         </div>
       </div>
       <div class="card" style="padding:0;">
@@ -2315,23 +2522,168 @@
     </div>
   </div>
 
+  <div id="nodes-modal" class="modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content" style="max-width: 760px; max-height: 90vh; overflow-y: auto;">
+      <button id="nodes-modal-close" class="modal-close"
+        style="position:absolute; top:24px; right:24px; background:none; border:none; color:var(--text-secondary); font-size:20px; cursor:pointer;">×</button>
+      <form id="nodes-form" class="form-grid">
+        <h3 id="nodes-modal-title" style="grid-column:1/-1; margin-bottom:16px; font-size:18px; font-weight:600; color:var(--text-primary);">
+          添加节点</h3>
+
+        <label><span>节点名称 *</span><input name="name" type="text" required placeholder="例如: 香港01"></label>
+        <label><span>服务器地址 *</span><input name="address" type="text" required placeholder="example.com 或 IP"></label>
+        <label><span>端口 *</span><input name="port" type="number" min="1" max="65535" required placeholder="443"></label>
+        <label>
+          <span>协议 *</span>
+          <select name="protocol" id="nodes-protocol-select" required>
+            <option value="shadowsocks">Shadowsocks</option>
+            <option value="vmess">VMess</option>
+            <option value="vless">VLESS</option>
+            <option value="trojan">Trojan</option>
+          </select>
+        </label>
+        <label style="grid-column:1/-1;"><span>标签</span><input name="tags" type="text"
+            placeholder="多个标签用逗号分隔, 例如: 香港,游戏"></label>
+
+        <div
+          style="grid-column:1/-1; font-weight:600; font-size:14px; color:var(--text-primary); margin-top:8px; padding-bottom:8px; border-bottom:1px solid var(--border-color);">
+          认证信息</div>
+
+        <div id="nodes-ss-fields"
+          style="grid-column:1/-1; display:none; grid-template-columns:1fr 1fr; gap:16px;">
+          <label>
+            <span>加密方式</span>
+            <select name="ss_method">
+              <option value="aes-256-gcm">aes-256-gcm</option>
+              <option value="aes-128-gcm">aes-128-gcm</option>
+              <option value="chacha20-ietf-poly1305">chacha20-ietf-poly1305</option>
+              <option value="2022-blake3-aes-256-gcm">2022-blake3-aes-256-gcm</option>
+              <option value="2022-blake3-aes-128-gcm">2022-blake3-aes-128-gcm</option>
+            </select>
+          </label>
+          <label><span>密码</span><input name="ss_password" type="text" placeholder="密码"></label>
+        </div>
+
+        <div id="nodes-vmess-fields"
+          style="grid-column:1/-1; display:none; grid-template-columns:1fr 1fr; gap:16px;">
+          <label><span>UUID</span><input name="vmess_uuid" type="text"
+              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"></label>
+          <label>
+            <span>AlterID (VMess)</span>
+            <input name="vmess_alterid" type="number" value="0" placeholder="0">
+          </label>
+          <label>
+            <span>加密方式</span>
+            <select name="vmess_security">
+              <option value="auto">auto</option>
+              <option value="aes-128-gcm">aes-128-gcm</option>
+              <option value="chacha20-poly1305">chacha20-poly1305</option>
+              <option value="none">none</option>
+            </select>
+          </label>
+          <label>
+            <span>流控 (VLESS)</span>
+            <select name="vless_flow">
+              <option value="">无</option>
+              <option value="xtls-rprx-vision">xtls-rprx-vision</option>
+              <option value="xtls-rprx-vision-udp443">xtls-rprx-vision-udp443</option>
+            </select>
+          </label>
+        </div>
+
+        <div id="nodes-trojan-fields" style="grid-column:1/-1; display:none;">
+          <label><span>密码</span><input name="trojan_password" type="text" placeholder="密码"></label>
+        </div>
+
+        <div
+          style="grid-column:1/-1; font-weight:600; font-size:14px; color:var(--text-primary); margin-top:8px; padding-bottom:8px; border-bottom:1px solid var(--border-color);">
+          传输设置</div>
+        <label>
+          <span>传输协议</span>
+          <select name="network" id="nodes-network-select">
+            <option value="tcp">TCP</option>
+            <option value="ws">WebSocket</option>
+            <option value="http">HTTP</option>
+            <option value="h2">HTTP/2</option>
+            <option value="grpc">gRPC</option>
+          </select>
+        </label>
+        <label>
+          <span>TLS</span>
+          <select name="tls" id="nodes-tls-select">
+            <option value="">不启用</option>
+            <option value="tls">TLS</option>
+          </select>
+        </label>
+
+        <div id="nodes-ws-fields"
+          style="grid-column:1/-1; display:none; grid-template-columns:1fr 1fr; gap:16px;">
+          <label style="grid-column:1/-1"><span>WebSocket 路径</span><input name="ws_path" type="text"
+              placeholder="/path"></label>
+          <label style="grid-column:1/-1"><span>Host</span><input name="ws_host" type="text"
+              placeholder="example.com"></label>
+        </div>
+
+        <div id="nodes-http-fields"
+          style="grid-column:1/-1; display:none; grid-template-columns:1fr 1fr; gap:16px;">
+          <label style="grid-column:1/-1"><span>HTTP 路径</span><input name="h2_path" type="text"
+              placeholder="/path"></label>
+          <label style="grid-column:1/-1"><span>Host</span><input name="h2_host" type="text"
+              placeholder="example.com"></label>
+        </div>
+
+        <div id="nodes-grpc-fields" style="grid-column:1/-1; display:none;">
+          <label><span>gRPC ServiceName</span><input name="grpc_service" type="text" placeholder="ServiceName"></label>
+        </div>
+
+        <div id="nodes-tls-fields"
+          style="grid-column:1/-1; display:none; grid-template-columns:1fr 1fr; gap:16px;">
+          <label style="grid-column:1/-1"><span>SNI</span><input name="tls_sni" type="text"
+              placeholder="留空使用服务器地址"></label>
+          <label style="grid-column:1/-1"><span>指纹 (Fingerprint)</span>
+            <select name="tls_fingerprint">
+              <option value="">不设置</option>
+              <option value="chrome">Chrome</option>
+              <option value="firefox">Firefox</option>
+              <option value="safari">Safari</option>
+              <option value="edge">Edge</option>
+              <option value="random">随机</option>
+            </select>
+          </label>
+          <label style="grid-column:1/-1"><span>证书校验</span>
+            <select name="tls_insecure">
+              <option value="false">严格校验</option>
+              <option value="true">跳过校验</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" id="nodes-modal-reset">重置</button>
+          <button type="submit" class="primary">创建节点</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div id="config-modal" class="modal">
     <div class="modal-backdrop"></div>
     <div class="modal-content">
       <button id="config-modal-close" class="modal-close"
         style="position:absolute; top:24px; right:24px; background:none; border:none; color:var(--text-secondary); font-size:20px; cursor:pointer;">×</button>
       <form id="config-form" class="form-grid">
-        <h3 style="grid-column:1/-1; margin-bottom:16px; font-size:18px; font-weight:600; color:var(--text-primary);">
-          Add Subscription</h3>
-        <label><span>名称</span><input name="name" type="text" required placeholder="e.g. My Server"></label>
-        <label style="grid-column:1/-1"><span>Source URL</span><input name="sourceUrl" type="url" required
+        <h3 id="config-modal-title" style="grid-column:1/-1; margin-bottom:16px; font-size:18px; font-weight:600; color:var(--text-primary);">
+          添加订阅</h3>
+        <label><span>名称</span><input name="name" type="text" required placeholder="例如: My Server"></label>
+        <label style="grid-column:1/-1"><span>订阅链接</span><input name="sourceUrl" type="url" required
             placeholder="https://..."></label>
-        <label><span>Update Interval (min)</span><input name="autoUpdateInterval" type="number" value="60"></label>
-        <label style="grid-column:1/-1"><span>JSON Configuration (Optional)</span><textarea name="payload"
+        <label><span>更新间隔 (分钟，0=关闭)</span><input name="autoUpdateInterval" type="number" min="0" value="60"></label>
+        <label style="grid-column:1/-1"><span>配置内容 (可选)</span><textarea name="payload"
             style="height:80px;"></textarea></label>
         <div class="form-actions">
-          <button type="button" id="config-modal-reset">Reset</button>
-          <button type="submit" class="primary">Save Source</button>
+          <button type="button" id="config-modal-reset">重置</button>
+          <button type="submit" class="primary">保存订阅</button>
         </div>
       </form>
     </div>
@@ -2387,6 +2739,7 @@
       };
 	      let froutersCache = [];
 	      let nodesCache = [];
+	      let configsCache = [];
 	      let currentFRouterId = "";
 	      let componentsCache = [];
 	      let froutersPollHandle = null;
@@ -3380,6 +3733,58 @@
           .join("");
 	      }
 
+	      function getConfigNameById(configId) {
+	        if (!configId) return "";
+	        const list = Array.isArray(configsCache) ? configsCache : [];
+	        const cfg = list.find((item) => item && item.id === configId);
+	        return cfg?.name || "";
+	      }
+
+	      function formatSubscriptionLabel(configId) {
+	        if (!configId) return "未归属订阅";
+	        const name = getConfigNameById(configId);
+	        return name || String(configId);
+	      }
+
+	      function groupNodesBySubscription(nodes) {
+	        const all = Array.isArray(nodes) ? nodes : [];
+	        const groupsMap = new Map();
+	        for (const n of all) {
+	          const key = n?.sourceConfigId ? String(n.sourceConfigId) : "";
+	          if (!groupsMap.has(key)) {
+	            groupsMap.set(key, { key, label: formatSubscriptionLabel(key), nodes: [] });
+	          }
+	          groupsMap.get(key).nodes.push(n);
+	        }
+
+	        for (const group of groupsMap.values()) {
+	          group.nodes.sort((a, b) => {
+	            const an = (a?.name || a?.id || "").toString();
+	            const bn = (b?.name || b?.id || "").toString();
+	            return an.localeCompare(bn, "zh-Hans-CN");
+	          });
+	        }
+
+	        const order = new Map();
+	        if (Array.isArray(configsCache)) {
+	          configsCache.forEach((cfg, idx) => {
+	            if (cfg?.id) order.set(String(cfg.id), idx);
+	          });
+	        }
+
+	        return Array.from(groupsMap.values()).sort((a, b) => {
+	          const aEmpty = !a.key;
+	          const bEmpty = !b.key;
+	          if (aEmpty && bEmpty) return 0;
+	          if (aEmpty) return 1;
+	          if (bEmpty) return -1;
+	          const ao = order.has(a.key) ? order.get(a.key) : Number.MAX_SAFE_INTEGER;
+	          const bo = order.has(b.key) ? order.get(b.key) : Number.MAX_SAFE_INTEGER;
+	          if (ao !== bo) return ao - bo;
+	          return a.label.localeCompare(b.label, "zh-Hans-CN");
+	        });
+	      }
+
 	      let lastRenderedFRoutersHash = "";
 	      let lastRenderedNodesStructureHash = "";
 
@@ -3393,7 +3798,9 @@
 	            const proto = (n && n.protocol) || "";
 	            const addr = (n && n.address) || "";
 	            const port = (n && n.port) || "";
-	            return `${id}|${name}|${proto}|${addr}|${port}`;
+	            const source = (n && n.sourceConfigId) || "";
+	            const sourceName = source ? getConfigNameById(source) : "";
+	            return `${id}|${name}|${proto}|${addr}|${port}|${source}|${sourceName}`;
 	          })
 	          .join(";");
 	      }
@@ -3506,29 +3913,70 @@
 	          return;
 	        }
 
-	        tbody.innerHTML = all
-	          .map((n) => {
-	            const id = n.id || "";
-	            const name = n.name || n.id || "未命名节点";
-	            const proto = (n.protocol || "").toUpperCase() || "UNKNOWN";
-	            const addr = n.address ? `${n.address}:${n.port || ""}` : "-";
-
-	            const latency = getNodeLatencyDisplay(n);
-	            const speed = getNodeSpeedDisplay(n);
-
-	            return `
-	              <tr data-id="${escapeHtml(id)}">
-	                <td title="${escapeHtml(id)}">${escapeHtml(name)}</td>
-	                <td><span class="node-row-protocol">${escapeHtml(proto)}</span></td>
-	                <td><span class="text-truncate" title="${escapeHtml(addr)}">${escapeHtml(addr)}</span></td>
-	                <td><span class="node-metric-value ${latency.cls}" data-metric="latency" title="${escapeHtml(latency.title)}">${escapeHtml(latency.value)}</span></td>
-	                <td><span class="node-metric-value ${speed.cls}" data-metric="speed" title="${escapeHtml(speed.title)}">${escapeHtml(speed.value)}</span></td>
-	                <td style="text-align:right">
-	                  <button class="mini-btn" data-action="ping-node">测延迟</button>
-	                  <button class="mini-btn" data-action="speedtest-node">测速</button>
+	        const groups = groupNodesBySubscription(all);
+	        tbody.innerHTML = groups
+	          .map((group) => {
+	            const pillText = group.key ? "订阅" : "未归属";
+	            const header = `
+	              <tr class="node-group-row" data-group="${escapeHtml(group.key || "unbound")}">
+	                <td colspan="6">
+	                  <div class="node-group-label">
+	                    <span class="node-group-pill">${escapeHtml(pillText)}</span>
+	                    <span class="node-group-name">${escapeHtml(group.label)}</span>
+	                    <span class="node-group-count">${group.nodes.length} 个</span>
+	                  </div>
 	                </td>
 	              </tr>
 	            `;
+
+		            const rows = group.nodes
+		              .map((n) => {
+		                const id = n.id || "";
+		                const name = n.name || n.id || "未命名节点";
+		                const proto = (n.protocol || "").toUpperCase() || "UNKNOWN";
+		                const addr = n.address ? `${n.address}:${n.port || ""}` : "-";
+
+		                const latency = getNodeLatencyDisplay(n);
+		                const speed = getNodeSpeedDisplay(n);
+
+		                const editButton = n.sourceConfigId ? "" : `<button class="mini-btn" data-action="edit-node">编辑</button>`;
+		                return `
+		                  <tr class="node-card-row" data-id="${escapeHtml(id)}">
+		                    <td colspan="6">
+		                      <div class="node-card">
+		                        <div class="node-card-top">
+		                          <div class="node-card-title">
+		                            <span class="node-card-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+		                            <span class="node-card-protocol">${escapeHtml(proto)}</span>
+		                          </div>
+		                          <div class="node-card-actions">
+		                            <button class="mini-btn" data-action="ping-node">测延迟</button>
+		                            <button class="mini-btn" data-action="speedtest-node">测速</button>
+		                            ${editButton}
+		                          </div>
+		                        </div>
+		                        <div class="node-card-meta">
+		                          <span class="node-card-addr" title="${escapeHtml(addr)}">${escapeHtml(addr)}</span>
+		                          <span class="node-card-id" title="${escapeHtml(id)}">${escapeHtml(id)}</span>
+		                        </div>
+		                        <div class="node-card-stats">
+		                          <div class="node-card-stat">
+		                            <span>延迟</span>
+		                            <span class="node-metric-value ${latency.cls}" data-metric="latency" title="${escapeHtml(latency.title)}">${escapeHtml(latency.value)}</span>
+		                          </div>
+		                          <div class="node-card-stat">
+		                            <span>速度</span>
+		                            <span class="node-metric-value ${speed.cls}" data-metric="speed" title="${escapeHtml(speed.title)}">${escapeHtml(speed.value)}</span>
+		                          </div>
+		                        </div>
+		                      </div>
+		                    </td>
+		                  </tr>
+		                `;
+		              })
+		              .join("");
+
+	            return `${header}${rows}`;
 	          })
 	          .join("");
 	      }
@@ -3635,7 +4083,9 @@
       async function loadConfigs({ notify = false } = {}) {
         try {
           const configs = await api.get("/configs");
-          renderConfigs(configs);
+          configsCache = Array.isArray(configs) ? configs : [];
+          renderConfigs(configsCache);
+          renderOrUpdateNodesPanel(nodesCache);
           if (notify) {
             showStatus("配置列表已刷新", "success");
           }
@@ -3664,6 +4114,7 @@
             <td>${formatTime(cfg.lastSyncedAt)}</td>
             <td>${syncState}</td>
             <td>
+              <button class="ghost" data-action="edit-config">编辑</button>
               <button class="ghost" data-action="pull-nodes">拉取节点</button>
               <button class="ghost" data-action="refresh-config">刷新</button>
               <button class="danger" data-action="delete-config">删除</button>
@@ -3836,8 +4287,6 @@
       // 组件安装轮询定时器
       let componentPollTimer = null;
 
-      const CORE_COMPONENT_UPDATE_INTERVAL_NS = 12 * 60 * 60 * 1000000000;
-
       function normalizeComponents(components) {
         const list = Array.isArray(components) ? components : [];
 
@@ -3845,7 +4294,6 @@
           id: "",
           name: "Xray",
           kind: "xray",
-          autoUpdateInterval: CORE_COMPONENT_UPDATE_INTERVAL_NS,
           lastInstalledAt: "",
           installDir: "",
           lastVersion: "",
@@ -3858,7 +4306,6 @@
           id: "",
           name: "sing-box",
           kind: "singbox",
-          autoUpdateInterval: CORE_COMPONENT_UPDATE_INTERVAL_NS,
           lastInstalledAt: "",
           installDir: "",
           lastVersion: "",
@@ -3930,7 +4377,6 @@
               actionBtn = `<button class="primary" data-action="update-component">安装</button>`;
             }
 
-            const interval = formatInterval(component.autoUpdateInterval);
             const isCoreComponent = component.kind === "xray" || component.kind === "singbox";
             const deleteBtn = isCoreComponent ? '' : '<button class="danger" data-action="delete-component">删除</button>';
 
@@ -3941,7 +4387,7 @@
             <td>${version}</td>
             <td><span class="muted">${installDir}</span></td>
             <td>${installedAt}</td>
-            <td>${statusText}<br /><span class="muted">自动更新：${interval}</span></td>
+            <td>${statusText}</td>
             <td>
               ${actionBtn}
               ${deleteBtn}
@@ -4026,7 +4472,6 @@
         }
 
         async init() {
-          await this.loadNodes();
           await this.loadGraph();
           this.bindEvents();
           this.initRuleTemplates();
@@ -4044,6 +4489,7 @@
 
         async loadGraph() {
           try {
+            await this.loadNodes();
             const path = this.frouterId
               ? `/frouters/${encodeURIComponent(this.frouterId)}/graph`
               : '/graph';
@@ -4138,45 +4584,43 @@
           const value = (currentValue && String(currentValue)) || 'direct';
           const nodes = Array.isArray(this.nodes) ? [...this.nodes] : [];
           const slots = Array.isArray(this.slots) ? [...this.slots] : [];
-
-          nodes.sort((a, b) => {
-            const an = (a?.name || a?.id || '').toString();
-            const bn = (b?.name || b?.id || '').toString();
-            return an.localeCompare(bn);
-          });
-
-          slots.sort((a, b) => {
-            const an = (a?.name || a?.id || '').toString();
-            const bn = (b?.name || b?.id || '').toString();
-            return an.localeCompare(bn);
-          });
-
-          const options = [];
           const seen = new Set();
-          const pushOpt = (val, label) => {
-            const v = (val && String(val)) || '';
-            if (!v || seen.has(v)) return;
-            options.push({ value: v, label: (label && String(label)) || v });
-            seen.add(v);
-          };
-
+          const optionHtml = (val, label) => `<option value="${escapeHtml(val)}">${escapeHtml(label)}</option>`;
           const hasValue = (v) => {
             if (v === 'direct' || v === 'block') return true;
             return nodes.some(n => n?.id === v) || slots.some(s => s?.id === v);
           };
+
+          let html = '';
           if (value && !hasValue(value)) {
-            pushOpt(value, `未知: ${value}`);
+            html += optionHtml(value, `未知: ${value}`);
+            seen.add(value);
           }
 
-          for (const n of nodes) {
-            const id = n?.id;
-            if (!id) continue;
-            pushOpt(id, n?.name || id);
+          const groups = groupNodesBySubscription(nodes);
+          for (const group of groups) {
+            const groupOptions = [];
+            for (const n of group.nodes) {
+              const id = n?.id;
+              if (!id || seen.has(id)) continue;
+              groupOptions.push(optionHtml(id, n?.name || id));
+              seen.add(id);
+            }
+            if (groupOptions.length > 0) {
+              html += `<optgroup label="${escapeHtml(group.label)}">${groupOptions.join('')}</optgroup>`;
+            }
           }
 
+          slots.sort((a, b) => {
+            const an = (a?.name || a?.id || '').toString();
+            const bn = (b?.name || b?.id || '').toString();
+            return an.localeCompare(bn, "zh-Hans-CN");
+          });
+
+          const slotOptions = [];
           for (const s of slots) {
             const id = s?.id;
-            if (!id) continue;
+            if (!id || seen.has(id)) continue;
             const bound = s?.boundNodeId;
             let suffix = '';
             if (bound) {
@@ -4185,15 +4629,27 @@
             } else {
               suffix = '（未绑定）';
             }
-            pushOpt(id, `${s?.name || id}${suffix}`);
+            slotOptions.push(optionHtml(id, `${s?.name || id}${suffix}`));
+            seen.add(id);
+          }
+          if (slotOptions.length > 0) {
+            html += `<optgroup label="槽位">${slotOptions.join('')}</optgroup>`;
           }
 
-          pushOpt('direct', '不代理（直连）');
-          pushOpt('block', '阻断');
+          const builtinOptions = [];
+          if (!seen.has('direct')) {
+            builtinOptions.push(optionHtml('direct', '不代理（直连）'));
+            seen.add('direct');
+          }
+          if (!seen.has('block')) {
+            builtinOptions.push(optionHtml('block', '阻断'));
+            seen.add('block');
+          }
+          if (builtinOptions.length > 0) {
+            html += `<optgroup label="内置">${builtinOptions.join('')}</optgroup>`;
+          }
 
-          selectEl.innerHTML = options
-            .map(opt => `<option value="${escapeHtml(opt.value)}">${escapeHtml(opt.label)}</option>`)
-            .join('');
+          selectEl.innerHTML = html;
           selectEl.value = value;
         }
 
@@ -4203,44 +4659,42 @@
           const value = (currentValue && String(currentValue)) || '';
           const nodes = Array.isArray(this.nodes) ? [...this.nodes] : [];
           const slots = Array.isArray(this.slots) ? [...this.slots] : [];
+          const seen = new Set();
+          const optionHtml = (val, label) => `<option value="${escapeHtml(val)}">${escapeHtml(label)}</option>`;
+          const hasValue = (v) => {
+            return nodes.some(n => n?.id === v) || slots.some(s => s?.id === v);
+          };
 
-          nodes.sort((a, b) => {
-            const an = (a?.name || a?.id || '').toString();
-            const bn = (b?.name || b?.id || '').toString();
-            return an.localeCompare(bn);
-          });
+          let html = '';
+          if (value && !hasValue(value)) {
+            html += optionHtml(value, `未知: ${value}`);
+            seen.add(value);
+          }
+
+          const groups = groupNodesBySubscription(nodes);
+          for (const group of groups) {
+            const groupOptions = [];
+            for (const n of group.nodes) {
+              const id = n?.id;
+              if (!id || seen.has(id)) continue;
+              groupOptions.push(optionHtml(id, n?.name || id));
+              seen.add(id);
+            }
+            if (groupOptions.length > 0) {
+              html += `<optgroup label="${escapeHtml(group.label)}">${groupOptions.join('')}</optgroup>`;
+            }
+          }
 
           slots.sort((a, b) => {
             const an = (a?.name || a?.id || '').toString();
             const bn = (b?.name || b?.id || '').toString();
-            return an.localeCompare(bn);
+            return an.localeCompare(bn, "zh-Hans-CN");
           });
 
-          const options = [];
-          const seen = new Set();
-          const pushOpt = (val, label) => {
-            const v = (val && String(val)) || '';
-            if (!v || seen.has(v)) return;
-            options.push({ value: v, label: (label && String(label)) || v });
-            seen.add(v);
-          };
-
-          const hasValue = (v) => {
-            return nodes.some(n => n?.id === v) || slots.some(s => s?.id === v);
-          };
-          if (value && !hasValue(value)) {
-            pushOpt(value, `未知: ${value}`);
-          }
-
-          for (const n of nodes) {
-            const id = n?.id;
-            if (!id) continue;
-            pushOpt(id, n?.name || id);
-          }
-
+          const slotOptions = [];
           for (const s of slots) {
             const id = s?.id;
-            if (!id) continue;
+            if (!id || seen.has(id)) continue;
             const bound = s?.boundNodeId;
             let suffix = '';
             if (bound) {
@@ -4249,19 +4703,22 @@
             } else {
               suffix = '（未绑定）';
             }
-            pushOpt(id, `${s?.name || id}${suffix}`);
+            slotOptions.push(optionHtml(id, `${s?.name || id}${suffix}`));
+            seen.add(id);
+          }
+          if (slotOptions.length > 0) {
+            html += `<optgroup label="槽位">${slotOptions.join('')}</optgroup>`;
           }
 
-          selectEl.innerHTML = options
-            .map(opt => `<option value="${escapeHtml(opt.value)}">${escapeHtml(opt.label)}</option>`)
-            .join('');
+          selectEl.innerHTML = html;
 
           if (value && seen.has(value)) {
             selectEl.value = value;
             return;
           }
-          if (options.length > 0) {
-            selectEl.value = options[0].value;
+          const firstOption = selectEl.querySelector('option');
+          if (firstOption) {
+            selectEl.value = firstOption.value;
           }
         }
 
@@ -4629,20 +5086,44 @@
             const ipsInput = this.container.querySelector('#rule-ips');
             const descInput = this.container.querySelector('#rule-description');
 
+            const mergeLines = (base, extra) => {
+              const out = [];
+              const seen = new Set();
+              for (const item of base) {
+                if (!item) continue;
+                if (seen.has(item)) continue;
+                seen.add(item);
+                out.push(item);
+              }
+              for (const item of extra) {
+                if (!item) continue;
+                if (seen.has(item)) continue;
+                seen.add(item);
+                out.push(item);
+              }
+              return out;
+            };
+
             if (domainsInput) {
+              const existing = (domainsInput.value || '').split('\n').map(s => s.trim()).filter(Boolean);
               const domains = Array.isArray(template.rule.domains) ? template.rule.domains : [];
-              domainsInput.value = domains.join('\n');
+              const merged = mergeLines(existing, domains);
+              domainsInput.value = merged.join('\n');
             }
 
             if (ipsInput) {
+              const existing = (ipsInput.value || '').split('\n').map(s => s.trim()).filter(Boolean);
               const ips = Array.isArray(template.rule.ips) ? template.rule.ips : [];
-              ipsInput.value = ips.join('\n');
+              const merged = mergeLines(existing, ips);
+              ipsInput.value = merged.join('\n');
             }
 
             if (descInput) {
               const prev = String(descInput.value || '').trim();
-              if (!prev || prev.startsWith('模板:')) {
+              if (!prev) {
                 descInput.value = `模板: ${template.name}`;
+              } else if (prev.startsWith('模板:') && !prev.includes(template.name)) {
+                descInput.value = `${prev} + ${template.name}`;
               }
             }
 
@@ -4803,17 +5284,29 @@
 
 	          const action = button.dataset.action;
 	          try {
-	            if (action === "ping-node") {
-	              await api.post(`/nodes/${id}/ping`, {});
-	              showStatus("节点延迟任务已提交", "info");
-	            } else if (action === "speedtest-node") {
-	              await api.post(`/nodes/${id}/speedtest`, {});
-	              showStatus("节点测速任务已提交", "info");
-	            }
+            if (action === "ping-node") {
+              await api.post(`/nodes/${id}/ping`, {});
+              showStatus("节点延迟任务已提交", "info");
+            } else if (action === "speedtest-node") {
+              await api.post(`/nodes/${id}/speedtest`, {});
+              showStatus("节点测速任务已提交", "info");
+            } else if (action === "edit-node") {
+              const node = Array.isArray(nodesCache) ? nodesCache.find((item) => item.id === id) : null;
+              if (!node) {
+                showStatus("节点未找到", "error", 4000);
+                return;
+              }
+              if (node.sourceConfigId) {
+                showStatus("订阅节点不可编辑", "error", 4000);
+                return;
+              }
+              openNodesModal(node);
+              return;
+            }
 
-	            setTimeout(() => {
-	              if (currentPanel === "panel-nodes") {
-	                loadNodes();
+            setTimeout(() => {
+              if (currentPanel === "panel-nodes") {
+                loadNodes();
 	              }
 	            }, 1200);
 	          } catch (err) {
@@ -5050,12 +5543,12 @@
         });
       }
 
-	      if (nodeForm) {
-	        nodeForm.addEventListener("submit", async (event) => {
-	          event.preventDefault();
-	          const form = event.target;
-	          const frouterName = form.name.value.trim();
-	          const tags = parseList(form.tags.value);
+      if (nodeForm) {
+        nodeForm.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const form = event.target;
+          const frouterName = form.name.value.trim();
+          const tags = parseList(form.tags.value);
 
 		          if (!frouterName) {
 		            showStatus("请填写 FRouter 名称", "error");
@@ -5070,14 +5563,273 @@
 		            await loadFRouters();
 		          } catch (err) {
 		            showStatus(`添加 FRouter 失败：${err.message}`, "error", 6000);
-		          }
+          }
         });
       }
 
-	      if (nodeGrid) {
-	        nodeGrid.addEventListener("click", async (event) => {
-	          const row = event.target.closest(".node-row[data-id]");
-	          if (!row) return;
+      const nodesAddButton = document.getElementById("nodes-add-button");
+      const nodesModal = document.getElementById("nodes-modal");
+      const nodesModalClose = document.getElementById("nodes-modal-close");
+      const nodesModalReset = document.getElementById("nodes-modal-reset");
+      const nodesModalBackdrop = nodesModal ? nodesModal.querySelector(".modal-backdrop") : null;
+      const nodesForm = document.getElementById("nodes-form");
+      const nodesModalTitle = document.getElementById("nodes-modal-title");
+      const nodesSubmitButton = nodesForm ? nodesForm.querySelector('button[type="submit"]') : null;
+      const nodesProtocolSelect = document.getElementById("nodes-protocol-select");
+      const nodesNetworkSelect = document.getElementById("nodes-network-select");
+      const nodesTLSSelect = document.getElementById("nodes-tls-select");
+      let editingNode = null;
+
+      function setNodesModalMode(isEdit) {
+        if (nodesModalTitle) {
+          nodesModalTitle.textContent = isEdit ? "编辑节点" : "添加节点";
+        }
+        if (nodesSubmitButton) {
+          nodesSubmitButton.textContent = isEdit ? "保存修改" : "创建节点";
+        }
+      }
+
+      function updateNodesFieldVisibility() {
+        if (!nodesForm) return;
+        const protocol = nodesProtocolSelect?.value || "";
+        const network = nodesNetworkSelect?.value || "tcp";
+        const tls = nodesTLSSelect?.value || "";
+
+        const ssFields = document.getElementById("nodes-ss-fields");
+        const vmessFields = document.getElementById("nodes-vmess-fields");
+        const trojanFields = document.getElementById("nodes-trojan-fields");
+        if (ssFields) ssFields.style.display = "none";
+        if (vmessFields) vmessFields.style.display = "none";
+        if (trojanFields) trojanFields.style.display = "none";
+
+        if (protocol === "shadowsocks" && ssFields) {
+          ssFields.style.display = "grid";
+        } else if ((protocol === "vmess" || protocol === "vless") && vmessFields) {
+          vmessFields.style.display = "grid";
+        } else if (protocol === "trojan" && trojanFields) {
+          trojanFields.style.display = "block";
+        }
+
+        const wsFields = document.getElementById("nodes-ws-fields");
+        const httpFields = document.getElementById("nodes-http-fields");
+        const grpcFields = document.getElementById("nodes-grpc-fields");
+        if (wsFields) wsFields.style.display = "none";
+        if (httpFields) httpFields.style.display = "none";
+        if (grpcFields) grpcFields.style.display = "none";
+
+        if (network === "ws" && wsFields) {
+          wsFields.style.display = "grid";
+        } else if ((network === "http" || network === "h2") && httpFields) {
+          httpFields.style.display = "grid";
+        } else if (network === "grpc" && grpcFields) {
+          grpcFields.style.display = "block";
+        }
+
+        const tlsFields = document.getElementById("nodes-tls-fields");
+        if (tlsFields) {
+          tlsFields.style.display = tls ? "grid" : "none";
+        }
+      }
+
+      function fillNodesForm(node) {
+        if (!nodesForm || !node) return;
+        nodesForm.name.value = node.name || "";
+        nodesForm.address.value = node.address || "";
+        nodesForm.port.value = node.port ? String(node.port) : "";
+        nodesForm.protocol.value = node.protocol || "shadowsocks";
+        nodesForm.tags.value = Array.isArray(node.tags) ? node.tags.join(",") : "";
+
+        const sec = node.security || {};
+        nodesForm.ss_method.value = sec.method || "aes-256-gcm";
+        nodesForm.ss_password.value = sec.password || "";
+        nodesForm.vmess_uuid.value = sec.uuid || "";
+        nodesForm.vmess_alterid.value = Number.isFinite(sec.alterId) ? String(sec.alterId) : "0";
+        nodesForm.vmess_security.value = sec.encryption || sec.method || "auto";
+        nodesForm.vless_flow.value = sec.flow || "";
+        nodesForm.trojan_password.value = sec.password || "";
+
+        const transportType = node.transport?.type || "tcp";
+        nodesForm.network.value = transportType;
+        nodesForm.ws_path.value = node.transport?.path || "";
+        nodesForm.ws_host.value = node.transport?.host || "";
+        nodesForm.h2_path.value = node.transport?.path || "";
+        nodesForm.h2_host.value = node.transport?.host || "";
+        nodesForm.grpc_service.value = node.transport?.serviceName || "";
+
+        const tlsEnabled = node.tls && node.tls.enabled;
+        nodesForm.tls.value = tlsEnabled ? (node.tls.type || "tls") : "";
+        nodesForm.tls_sni.value = node.tls?.serverName || "";
+        nodesForm.tls_fingerprint.value = node.tls?.fingerprint || "";
+        nodesForm.tls_insecure.value = node.tls?.insecure ? "true" : "false";
+
+        updateNodesFieldVisibility();
+      }
+
+      function openNodesModal(node = null) {
+        if (!nodesModal) return;
+        nodesModal.classList.add("open");
+        editingNode = node;
+        if (nodesForm) nodesForm.reset();
+        setNodesModalMode(Boolean(editingNode));
+        if (editingNode) {
+          fillNodesForm(editingNode);
+        } else {
+          updateNodesFieldVisibility();
+        }
+      }
+
+      function closeNodesModal() {
+        if (!nodesModal) return;
+        nodesModal.classList.remove("open");
+        editingNode = null;
+      }
+
+      if (nodesAddButton) {
+        nodesAddButton.addEventListener("click", () => openNodesModal());
+      }
+      if (nodesModalClose) {
+        nodesModalClose.addEventListener("click", closeNodesModal);
+      }
+      if (nodesModalBackdrop) {
+        nodesModalBackdrop.addEventListener("click", closeNodesModal);
+      }
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && nodesModal?.classList.contains("open")) {
+          closeNodesModal();
+        }
+      });
+      if (nodesModalReset && nodesForm) {
+        nodesModalReset.addEventListener("click", () => {
+          if (editingNode) {
+            fillNodesForm(editingNode);
+            return;
+          }
+          nodesForm.reset();
+          updateNodesFieldVisibility();
+        });
+      }
+
+      if (nodesProtocolSelect) {
+        nodesProtocolSelect.addEventListener("change", updateNodesFieldVisibility);
+      }
+      if (nodesNetworkSelect) {
+        nodesNetworkSelect.addEventListener("change", updateNodesFieldVisibility);
+      }
+      if (nodesTLSSelect) {
+        nodesTLSSelect.addEventListener("change", updateNodesFieldVisibility);
+      }
+
+      if (nodesForm) {
+        nodesForm.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const form = event.target;
+          const protocol = form.protocol.value;
+          const payload = {
+            name: form.name.value.trim(),
+            address: form.address.value.trim(),
+            port: parseNumber(form.port.value),
+            protocol,
+          };
+          const tags = parseList(form.tags.value);
+          if (tags.length) {
+            payload.tags = tags;
+          }
+          if (!payload.name) {
+            showStatus("请填写节点名称", "error", 5000);
+            return;
+          }
+          if (!payload.address) {
+            showStatus("请填写服务器地址", "error", 5000);
+            return;
+          }
+          if (!payload.port || payload.port <= 0) {
+            showStatus("请填写有效端口", "error", 5000);
+            return;
+          }
+
+          const security = {};
+          if (protocol === "shadowsocks") {
+            security.method = form.ss_method.value.trim();
+            security.password = form.ss_password.value.trim();
+            if (!security.method || !security.password) {
+              showStatus("Shadowsocks 需要加密方式和密码", "error", 5000);
+              return;
+            }
+          } else if (protocol === "vmess" || protocol === "vless") {
+            security.uuid = form.vmess_uuid.value.trim();
+            security.alterId = parseNumber(form.vmess_alterid.value);
+            const enc = form.vmess_security.value.trim();
+            if (enc) {
+              security.encryption = enc;
+              security.method = enc;
+            }
+            const flow = form.vless_flow.value.trim();
+            if (flow) security.flow = flow;
+            if (!security.uuid) {
+              showStatus("VMess/VLESS 需要填写 UUID", "error", 5000);
+              return;
+            }
+          } else if (protocol === "trojan") {
+            security.password = form.trojan_password.value.trim();
+            if (!security.password) {
+              showStatus("Trojan 需要填写密码", "error", 5000);
+              return;
+            }
+          }
+          if (Object.keys(security).length > 0) {
+            payload.security = security;
+          }
+
+          const network = form.network.value || "tcp";
+          if (network && network !== "tcp") {
+            const transport = { type: network };
+            if (network === "ws") {
+              transport.path = form.ws_path.value.trim();
+              transport.host = form.ws_host.value.trim();
+            } else if (network === "http" || network === "h2") {
+              transport.path = form.h2_path.value.trim();
+              transport.host = form.h2_host.value.trim();
+            } else if (network === "grpc") {
+              transport.serviceName = form.grpc_service.value.trim();
+            }
+            payload.transport = transport;
+          }
+
+          const tlsType = form.tls.value;
+          if (tlsType) {
+            const tls = {
+              enabled: true,
+              type: tlsType,
+              insecure: form.tls_insecure.value === "true",
+            };
+            const sni = form.tls_sni.value.trim();
+            const fp = form.tls_fingerprint.value.trim();
+            if (sni) tls.serverName = sni;
+            if (fp) tls.fingerprint = fp;
+            payload.tls = tls;
+          }
+
+          try {
+            if (editingNode && editingNode.id) {
+              await api.put(`/nodes/${editingNode.id}`, payload);
+              showStatus("节点已更新", "success");
+            } else {
+              await api.post("/nodes", payload);
+              showStatus("节点已添加", "success");
+              form.reset();
+            }
+            closeNodesModal();
+            await loadNodes();
+          } catch (err) {
+            showStatus(`${editingNode ? "更新" : "添加"}节点失败：${err.message}`, "error", 6000);
+          }
+        });
+      }
+
+      if (nodeGrid) {
+        nodeGrid.addEventListener("click", async (event) => {
+          const row = event.target.closest(".node-row[data-id]");
+          if (!row) return;
 	          const id = row.dataset.id;
           const actionTarget = event.target.closest("[data-action]");
           const action = actionTarget ? actionTarget.dataset.action : null;
@@ -5147,16 +5899,65 @@
       const configModalBackdrop = configModal?.querySelector(".modal-backdrop");
       const configModalReset = document.getElementById("config-modal-reset");
       const configForm = document.getElementById("config-form");
+      const configModalTitle = document.getElementById("config-modal-title");
+      const configSubmitButton = configForm ? configForm.querySelector('button[type="submit"]') : null;
+      let editingConfig = null;
 
-      function openConfigModal() {
+      function durationToMinutes(value) {
+        if (!value) return 0;
+        if (typeof value === "number") {
+          if (!Number.isFinite(value) || value <= 0) return 0;
+          return Math.round(value / 60000000000);
+        }
+        if (typeof value === "string") {
+          if (/^\d+$/.test(value)) {
+            const num = Number(value);
+            return Number.isFinite(num) ? Math.round(num / 60000000000) : 0;
+          }
+          let hours = 0;
+          let minutes = 0;
+          const hMatch = value.match(/(\\d+)h/);
+          const mMatch = value.match(/(\\d+)m/);
+          if (hMatch) hours = parseInt(hMatch[1], 10);
+          if (mMatch) minutes = parseInt(mMatch[1], 10);
+          return hours * 60 + minutes;
+        }
+        return 0;
+      }
+
+      function setConfigModalMode(isEdit) {
+        if (configModalTitle) {
+          configModalTitle.textContent = isEdit ? "编辑订阅" : "添加订阅";
+        }
+        if (configSubmitButton) {
+          configSubmitButton.textContent = isEdit ? "保存修改" : "保存订阅";
+        }
+      }
+
+      function fillConfigForm(cfg) {
+        if (!configForm || !cfg) return;
+        configForm.name.value = cfg.name || "";
+        configForm.sourceUrl.value = cfg.sourceUrl || "";
+        configForm.payload.value = cfg.payload || "";
+        const minutes = durationToMinutes(cfg.autoUpdateInterval);
+        configForm.autoUpdateInterval.value = Number.isFinite(minutes) ? String(minutes) : "0";
+      }
+
+      function openConfigModal(config = null) {
         if (!configModal) return;
         configModal.classList.add("open");
+        editingConfig = config || null;
         if (configForm) configForm.reset();
+        setConfigModalMode(Boolean(editingConfig));
+        if (editingConfig) {
+          fillConfigForm(editingConfig);
+        }
       }
 
       function closeConfigModal() {
         if (!configModal) return;
         configModal.classList.remove("open");
+        editingConfig = null;
       }
 
       if (configAddButton) {
@@ -5175,6 +5976,10 @@
       });
       if (configModalReset && configForm) {
         configModalReset.addEventListener("click", () => {
+          if (editingConfig) {
+            fillConfigForm(editingConfig);
+            return;
+          }
           configForm.reset();
         });
       }
@@ -5183,9 +5988,11 @@
         configForm.addEventListener("submit", async (event) => {
           event.preventDefault();
           const form = event.target;
+          const isEdit = Boolean(editingConfig && editingConfig.id);
           let inferredFormat = "";
           const typedPayload = (form.payload.value || "").trim();
-          const sourceUrl = form.sourceUrl.value.trim();
+          const sourceUrlInput = form.sourceUrl.value.trim();
+          const sourceUrl = sourceUrlInput || (isEdit ? (editingConfig?.sourceUrl || "") : "");
           const detectSample = typedPayload || sourceUrl;
           if (detectSample) {
             const lower = detectSample.toLowerCase();
@@ -5194,24 +6001,33 @@
             }
           }
           const payload = {
-            name: form.name.value.trim(),
-            format: inferredFormat || "xray-json",
+            name: form.name.value.trim() || (isEdit ? (editingConfig?.name || "") : ""),
+            format: inferredFormat || (isEdit ? (editingConfig?.format || "xray-json") : "xray-json"),
             sourceUrl,
-            payload: typedPayload,
+            payload: typedPayload || (isEdit ? (editingConfig?.payload || "") : ""),
             autoUpdateIntervalMinutes: parseNumber(form.autoUpdateInterval.value),
           };
+          if (!payload.name) {
+            showStatus("请填写名称", "error", 5000);
+            return;
+          }
           if (!payload.sourceUrl) {
             showStatus("请填写源/订阅链接", "error", 5000);
             return;
           }
           try {
-            await api.post("/configs/import", payload);
-            form.reset();
-            showStatus("配置添加成功", "success");
+            if (isEdit) {
+              await api.put(`/configs/${editingConfig.id}`, payload);
+              showStatus("配置已更新", "success");
+            } else {
+              await api.post("/configs/import", payload);
+              form.reset();
+              showStatus("配置添加成功", "success");
+            }
             closeConfigModal();
             await Promise.all([loadConfigs(), loadFRouters(), loadNodes()]);
           } catch (err) {
-            showStatus(`添加配置失败：${err.message}`, "error", 6000);
+            showStatus(`${isEdit ? "更新" : "添加"}配置失败：${err.message}`, "error", 6000);
           }
         });
       }
@@ -5277,7 +6093,14 @@
         const id = tr.dataset.id;
         const action = button.dataset.action;
         try {
-          if (action === "refresh-config") {
+          if (action === "edit-config") {
+            const cfg = Array.isArray(configsCache) ? configsCache.find((item) => item.id === id) : null;
+            if (!cfg) {
+              showStatus("配置未找到", "error", 4000);
+              return;
+            }
+            openConfigModal(cfg);
+          } else if (action === "refresh-config") {
             await api.post(`/configs/${id}/refresh`);
             showStatus("配置刷新完成", "success");
             await Promise.all([loadConfigs(), loadFRouters(), loadNodes()]);

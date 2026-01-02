@@ -102,8 +102,7 @@ backend/
 │
 ├── service/                      # 服务层
 │   ├── facade.go                 # 门面服务 (API 聚合层)
-│   ├── shared/                   # 共享工具 (NEW)
-│   │   └── common.go             # 常量、HTTP客户端
+│   ├── shared/                   # 共享工具（artifacts root / 下载 / system proxy / TUN 等）
 │   ├── frouter/                  # FRouter 服务
 │   │   └── service.go            # FRouter CRUD、测速/延迟队列
 │   ├── nodes/                    # 节点服务
@@ -111,7 +110,8 @@ backend/
 │   ├── node/                     # 节点解析
 │   │   └── parser.go             # 分享链接解析
 │   ├── nodegroup/                # 运行计划编译（NodeGroup）
-│   │   ├── compile.go            # 计划编译入口
+│   │   ├── plan_compile.go       # 计划编译入口（CompileProxyPlan / CompileMeasurementPlan）
+│   │   ├── frouter_compiler.go   # FRouter 图编译（CompileFRouter）
 │   │   └── runtime_plan.go       # 运行计划结构
 │   ├── config/                   # 配置服务 (NEW)
 │   │   └── service.go            # 订阅同步
@@ -127,9 +127,8 @@ backend/
 │   │   └── singbox.go            # sing-box 适配器
 │
 ├── persist/                      # 持久化层
-│   ├── persist.go                # 快照读写入口
-│   ├── snapshot_v2.go            # 新版快照器 (NEW)
-│   └── migrator.go               # 版本校验器 (NEW)
+│   ├── snapshot_v2.go            # 快照读写 + 防抖保存
+│   └── migrator.go               # schemaVersion 迁移/校验
 │
 ```
 

@@ -50,11 +50,6 @@ func (s *Service) Get(ctx context.Context, id string) (domain.GeoResource, error
 	return s.repo.Get(ctx, id)
 }
 
-// GetByType 按类型获取 Geo 资源
-func (s *Service) GetByType(ctx context.Context, geoType domain.GeoResourceType) (domain.GeoResource, error) {
-	return s.repo.GetByType(ctx, geoType)
-}
-
 // Upsert 插入或更新 Geo 资源
 func (s *Service) Upsert(ctx context.Context, geo domain.GeoResource) (domain.GeoResource, error) {
 	return s.repo.Upsert(ctx, geo)
@@ -192,12 +187,4 @@ func (s *Service) downloadFile(url, savePath string) (checksum string, fileSize 
 	}
 
 	return hex.EncodeToString(hash.Sum(nil)), n, nil
-}
-
-// GetGeoFilePaths 获取 Geo 文件路径
-func (s *Service) GetGeoFilePaths(ctx context.Context) (geoIP, geoSite string) {
-	geoDir := filepath.Join(shared.ArtifactsRoot, shared.GeoDir)
-	geoIP = filepath.Join(geoDir, "geoip.dat")
-	geoSite = filepath.Join(geoDir, "geosite.dat")
-	return
 }

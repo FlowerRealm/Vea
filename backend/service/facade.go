@@ -144,12 +144,20 @@ func (f *Facade) ListNodes() []domain.Node {
 	return nodes
 }
 
-func (f *Facade) GetNode(id string) (domain.Node, error) {
-	return f.nodes.Get(context.Background(), id)
+func (f *Facade) CreateNode(node domain.Node) (domain.Node, error) {
+	return f.nodes.Create(context.Background(), node)
 }
 
-func (f *Facade) DeleteNode(id string) error {
-	return f.nodes.Delete(context.Background(), id)
+func (f *Facade) UpdateNode(id string, updateFn func(domain.Node) (domain.Node, error)) (domain.Node, error) {
+	node, err := f.nodes.Get(context.Background(), id)
+	if err != nil {
+		return domain.Node{}, err
+	}
+	updated, err := updateFn(node)
+	if err != nil {
+		return domain.Node{}, err
+	}
+	return f.nodes.Update(context.Background(), id, updated)
 }
 
 func (f *Facade) MeasureNodeLatencyAsync(id string) {
@@ -479,25 +487,11 @@ func (f *Facade) GetIPGeo() (map[string]interface{}, error) {
 	return shared.GetIPGeo()
 }
 
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
-}
-
 // ========== 引擎推荐 ==========
 
 // RecommendEngine 获取引擎推荐
 func (f *Facade) RecommendEngine() proxy.EngineRecommendation {
 	return f.proxy.RecommendEngine(context.Background())
-}
-
-// GetEffectiveDefaultEngine 获取有效的默认引擎
-func (f *Facade) GetEffectiveDefaultEngine() domain.CoreEngineKind {
-	return f.proxy.GetEffectiveDefaultEngine(context.Background())
 }
 
 // GetEngineStatus 获取引擎状态

@@ -118,7 +118,7 @@ backend/service/shared/tun_linux.go:
 #### Windows
 ```powershell
 # 以管理员身份运行
-backend/service/privilege_windows.go:
+backend/service/shared/tun_windows.go:
   - 检查 IsUserAnAdmin()
 ```
 
@@ -186,7 +186,6 @@ backend/
 │   ├── proxy/
 │   └── shared/
 └── persist/
-    ├── persist.go
     ├── snapshot_v2.go
     └── migrator.go
 
@@ -231,7 +230,6 @@ docs/
 - [ ] 节点测速（TUN 模式下）
 - [ ] 流量统计（按 FRouter）
 - [ ] Clash 内核支持
-- [ ] 自动更新内核二进制
 
 ---
 

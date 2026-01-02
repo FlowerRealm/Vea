@@ -11,6 +11,8 @@ const (
 	ProtocolTrojan      NodeProtocol = "trojan"
 	ProtocolShadowsocks NodeProtocol = "shadowsocks"
 	ProtocolVMess       NodeProtocol = "vmess"
+	ProtocolHysteria2   NodeProtocol = "hysteria2"
+	ProtocolTUIC        NodeProtocol = "tuic"
 )
 
 type Node struct {
@@ -147,20 +149,19 @@ const (
 )
 
 type CoreComponent struct {
-	ID                 string            `json:"id"`
-	Name               string            `json:"name"`
-	Kind               CoreComponentKind `json:"kind"`
-	SourceURL          string            `json:"sourceUrl"`
-	ArchiveType        string            `json:"archiveType"`
-	AutoUpdateInterval time.Duration     `json:"autoUpdateInterval"`
-	LastInstalledAt    time.Time         `json:"lastInstalledAt"`
-	InstallDir         string            `json:"installDir"`
-	LastVersion        string            `json:"lastVersion"`
-	Checksum           string            `json:"checksum"`
-	LastSyncError      string            `json:"lastSyncError"`
-	Meta               map[string]string `json:"meta,omitempty"`
-	CreatedAt          time.Time         `json:"createdAt"`
-	UpdatedAt          time.Time         `json:"updatedAt"`
+	ID              string            `json:"id"`
+	Name            string            `json:"name"`
+	Kind            CoreComponentKind `json:"kind"`
+	SourceURL       string            `json:"sourceUrl"`
+	ArchiveType     string            `json:"archiveType"`
+	LastInstalledAt time.Time         `json:"lastInstalledAt"`
+	InstallDir      string            `json:"installDir"`
+	LastVersion     string            `json:"lastVersion"`
+	Checksum        string            `json:"checksum"`
+	LastSyncError   string            `json:"lastSyncError"`
+	Meta            map[string]string `json:"meta,omitempty"`
+	CreatedAt       time.Time         `json:"createdAt"`
+	UpdatedAt       time.Time         `json:"updatedAt"`
 	// 配套组件（如 sing-box 的 v2ray-plugin）
 	Accessories []string `json:"accessories,omitempty"`
 	// 安装进度相关
@@ -192,46 +193,27 @@ func IsSlotNode(nodeID string) bool {
 type EdgeRuleType string
 
 const (
-	EdgeRuleNone      EdgeRuleType = ""          // 默认路径（无条件）
-	EdgeRuleRoute     EdgeRuleType = "route"     // 路由规则（域名/IP/协议匹配）
-	EdgeRuleCondition EdgeRuleType = "condition" // 条件规则（时间段/网络类型）
+	EdgeRuleNone  EdgeRuleType = ""      // 默认路径（无条件）
+	EdgeRuleRoute EdgeRuleType = "route" // 路由规则（域名/IP 匹配）
 )
 
 // RouteMatchRule 路由匹配规则
 type RouteMatchRule struct {
-	Domains      []string `json:"domains,omitempty"`      // 域名匹配（支持通配符 *.google.com）
-	IPs          []string `json:"ips,omitempty"`          // IP/CIDR 匹配
-	Protocols    []string `json:"protocols,omitempty"`    // 协议匹配（tcp/udp）
-	Ports        []int    `json:"ports,omitempty"`        // 端口匹配
-	ProcessNames []string `json:"processNames,omitempty"` // 进程名匹配
-	Invert       bool     `json:"invert,omitempty"`       // 反向匹配
-}
-
-// TimeRange 时间范围
-type TimeRange struct {
-	Start string `json:"start"` // 开始时间 "08:00"
-	End   string `json:"end"`   // 结束时间 "18:00"
-	Days  []int  `json:"days"`  // 生效日期 0-6（周日-周六）
-}
-
-// ConditionRule 条件规则
-type ConditionRule struct {
-	TimeRanges   []TimeRange `json:"timeRanges,omitempty"`   // 时间段条件
-	NetworkTypes []string    `json:"networkTypes,omitempty"` // 网络类型（wifi/cellular/ethernet）
+	Domains []string `json:"domains,omitempty"` // 域名匹配（支持通配符 *.google.com）
+	IPs     []string `json:"ips,omitempty"`     // IP/CIDR 匹配
 }
 
 // ProxyEdge 代理边 - 定义两个节点之间的连接关系
 type ProxyEdge struct {
 	ID          string          `json:"id"`                    // 边的唯一标识
-	From        string          `json:"from"`                  // 源: "client" | nodeID | "target"
-	To          string          `json:"to"`                    // 目标: nodeID | "target" | "direct"
-	Via         []string        `json:"via,omitempty"`         // 链式代理：在 To 之后追加的后续节点（仅用于 local->* 选择边）
+	From        string          `json:"from"`                  // 源: "local" | nodeID | slotID
+	To          string          `json:"to"`                    // 目标: nodeID | slotID | "direct" | "block"
+	Via         []string        `json:"via,omitempty"`         // 链式代理：在 local->node 的“选择边”上定义后续 hop（会被编译成 detour）
 	Tag         string          `json:"tag,omitempty"`         // 边标签（用于路由规则引用）
 	Priority    int             `json:"priority"`              // 优先级（多出口时，数值大优先）
 	Enabled     bool            `json:"enabled"`               // 是否启用
 	RuleType    EdgeRuleType    `json:"ruleType,omitempty"`    // 规则类型
 	RouteRule   *RouteMatchRule `json:"routeRule,omitempty"`   // 路由匹配规则
-	Condition   *ConditionRule  `json:"condition,omitempty"`   // 条件规则
 	Description string          `json:"description,omitempty"` // 边描述/标签
 }
 
@@ -250,8 +232,10 @@ type SlotNode struct {
 }
 
 // ChainProxySettings 链式代理设置（图结构）
-// 通过边定义代理拓扑：client → nodeA → target → nodeB → direct
-// 支持插槽节点：占位符节点，可动态绑定到实际代理节点
+// 通过边定义代理拓扑：
+// - local -> {node|direct|block} 为“选择边”（可写规则/priority；可选 via 生成链路）
+// - {node|slot} -> {node|slot} 为 detour 边（不写规则；描述节点之间的上游链路）
+// 支持插槽节点：slot 为占位符，可绑定到实际节点；未绑定的 slot 会被静默跳过。
 type ChainProxySettings struct {
 	Edges     []ProxyEdge              `json:"edges"`               // 所有代理边
 	Positions map[string]GraphPosition `json:"positions,omitempty"` // 节点位置（nodeID -> position）

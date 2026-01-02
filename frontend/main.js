@@ -26,7 +26,7 @@ const SERVICE_STARTUP_INTERVAL = 500  // ms
  */
 const TRAY_UPDATE_INTERVAL = 5000
 
-// 已移除「内核自动启动」：避免后台反复触发需要提权的动作（多次弹密码框）。
+// 内核随应用启动：只启动内核，不自动启用系统代理，避免无意影响全局设置。
 
 // 注：Electron sandbox 在部分发行方式下容易触发兼容性问题，这里保持禁用以减少启动失败。
 app.commandLine.appendSwitch('no-sandbox')
@@ -301,57 +301,50 @@ async function getProxyStatus() {
 }
 
 /**
- * 启动代理服务（通过 API）
- * 与主页启动代理按钮逻辑一致：启动代理 Profile + 启用系统代理
+ * 启动内核（通过 API）
+ * 仅确保内核运行，不修改系统代理开关
  */
-async function startProxyViaAPI() {
-  // 1) 选择一个可用的 FRouter（默认取第一个）
-  const froutersResult = await apiRequest({ path: '/frouters', timeout: 5000 })
-  const frouters = froutersResult.success && froutersResult.data && Array.isArray(froutersResult.data.frouters)
-    ? froutersResult.data.frouters
-    : []
-  const frouterId = frouters.length > 0 && frouters[0] && frouters[0].id ? frouters[0].id : ''
+async function startKernelViaAPI() {
+  const status = await getProxyStatus()
+  if (status && (status.running || status.busy)) {
+    console.log('Kernel already running')
+    return true
+  }
+
+  let frouterId = ''
+
+  const configResult = await apiRequest({ path: '/proxy/config', timeout: 2000 })
+  if (configResult.success && configResult.data && configResult.data.frouterId) {
+    frouterId = configResult.data.frouterId
+  }
+
   if (!frouterId) {
-    console.error('Failed to start proxy: no frouter available')
+    const froutersResult = await apiRequest({ path: '/frouters', timeout: 5000 })
+    const frouters = froutersResult.success && froutersResult.data && Array.isArray(froutersResult.data.frouters)
+      ? froutersResult.data.frouters
+      : []
+    frouterId = frouters.length > 0 && frouters[0] && frouters[0].id ? frouters[0].id : ''
+  }
+
+  if (!frouterId) {
+    console.warn('Failed to start kernel: no frouter available')
     return false
   }
 
-  // 2) 启动代理（以 FRouter 为中心）
   const startResult = await apiRequest({
     path: '/proxy/start',
     method: 'POST',
     body: { frouterId },
-    timeout: 5000
+    timeout: 8000
   })
 
   if (!startResult.success) {
-    console.error('Failed to start proxy:', startResult.error || startResult.data)
+    console.error('Failed to start kernel:', startResult.error || startResult.data)
     return false
   }
 
-  console.log('Proxy started')
-
-  // 等待 500ms 后启用系统代理
-  await new Promise(resolve => setTimeout(resolve, 500))
-
-  // 第二步：启用系统代理
-  const proxyResult = await apiRequest({
-    path: '/settings/system-proxy',
-    method: 'PUT',
-    body: {
-      enabled: true,
-      ignoreHosts: ['localhost', '127.0.0.1', '::1', '*.local']
-    },
-    timeout: 3000
-  })
-
-  if (proxyResult.success) {
-    console.log('System proxy enabled')
-    return true
-  } else {
-    console.error('Failed to enable system proxy:', proxyResult.error || proxyResult.data)
-    return false
-  }
+  console.log('Kernel started')
+  return true
 }
 
 /**
@@ -530,6 +523,9 @@ app.whenReady().then(async () => {
     app.quit()
     return
   }
+
+  // 内核随应用启动（不自动启用系统代理）
+  await startKernelViaAPI()
 
   createWindow()
   createTray()

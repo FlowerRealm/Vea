@@ -128,11 +128,6 @@ func DownloadWithProgress(source string, onProgress ProgressCallback) ([]byte, s
 	return downloadWithUA(source, GithubUserAgent(), onProgress)
 }
 
-// DownloadSubscription 下载订阅内容（使用 Clash 风格 UA）
-func DownloadSubscription(source string) ([]byte, string, error) {
-	return downloadWithUA(source, "ClashForAndroid/2.5.12", nil)
-}
-
 func downloadWithUA(source, userAgent string, onProgress ProgressCallback) ([]byte, string, error) {
 	if source == "" {
 		return nil, "", errors.New("empty source url")

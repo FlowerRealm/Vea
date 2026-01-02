@@ -816,34 +816,10 @@ func downloadDirectOnce(ctx context.Context, _ string, _ int, t socksTarget, min
 	return totalRead, elapsed, nil
 }
 
-func measureLatencyThroughSocks5(ctx context.Context, proxyHost string, proxyPort int) (int64, error) {
-	candidates := []socksTarget{
-		{"www.gstatic.com", 80, "/generate_204", false, 0},
-		{"example.com", 80, "/", false, 0},
-		{"speed.cloudflare.com", 443, "/__up", true, 0},
-	}
-
-	var lastErr error
-	for _, t := range candidates {
-		lat, err := latencyViaSocksOnce(ctx, proxyHost, proxyPort, t)
-		if err == nil {
-			if lat <= 0 {
-				lat = 1
-			}
-			return lat, nil
-		}
-		lastErr = err
-	}
-	if lastErr == nil {
-		lastErr = errors.New("no latency candidate successful")
-	}
-	return 0, lastErr
-}
-
 func measureNodeLatencyDirect(ctx context.Context, node domain.Node) (int64, error) {
-	proto := strings.ToLower(strings.TrimSpace(string(node.Protocol)))
+	proto := domain.NodeProtocol(strings.ToLower(strings.TrimSpace(string(node.Protocol))))
 	switch proto {
-	case "hysteria2", "tuic":
+	case domain.ProtocolHysteria2, domain.ProtocolTUIC:
 		return 0, fmt.Errorf("latency probe not supported for %s (udp/quic)", node.Protocol)
 	}
 
@@ -929,9 +905,9 @@ func shouldNodeTLSHandshake(node domain.Node) bool {
 	if strings.EqualFold(node.TLS.Type, "reality") || strings.TrimSpace(node.TLS.RealityPublicKey) != "" {
 		return false
 	}
-	proto := strings.ToLower(strings.TrimSpace(string(node.Protocol)))
+	proto := domain.NodeProtocol(strings.ToLower(strings.TrimSpace(string(node.Protocol))))
 	switch proto {
-	case "hysteria2", "tuic":
+	case domain.ProtocolHysteria2, domain.ProtocolTUIC:
 		return false
 	default:
 		return true
@@ -967,128 +943,6 @@ func measureLatencyDirect(ctx context.Context) (int64, error) {
 		lastErr = errors.New("no latency candidate successful")
 	}
 	return 0, lastErr
-}
-
-func latencyViaSocksOnce(ctx context.Context, proxyHost string, proxyPort int, t socksTarget) (int64, error) {
-	deadline := time.Now().Add(5 * time.Second)
-	d := net.Dialer{}
-	conn, err := d.DialContext(ctx, "tcp", net.JoinHostPort(proxyHost, strconv.Itoa(proxyPort)))
-	if err != nil {
-		return 0, err
-	}
-	defer conn.Close()
-	_ = conn.SetDeadline(deadline)
-
-	brw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
-	// SOCKS5 greet
-	if _, err := brw.Write([]byte{0x05, 0x01, 0x00}); err != nil {
-		return 0, err
-	}
-	if err := brw.Flush(); err != nil {
-		return 0, err
-	}
-	resp := make([]byte, 2)
-	if _, err := io.ReadFull(brw, resp); err != nil {
-		return 0, err
-	}
-	if resp[0] != 0x05 || resp[1] != 0x00 {
-		return 0, fmt.Errorf("socks5 noauth rejected")
-	}
-	// CONNECT request
-	req, err := buildSocks5ConnectRequest(t.host, t.port)
-	if err != nil {
-		return 0, err
-	}
-	if _, err := brw.Write(req); err != nil {
-		return 0, err
-	}
-	if err := brw.Flush(); err != nil {
-		return 0, err
-	}
-	hdr := make([]byte, 4)
-	if _, err := io.ReadFull(brw, hdr); err != nil {
-		return 0, err
-	}
-	if hdr[1] != 0x00 {
-		return 0, fmt.Errorf("socks5 connect failed: 0x%02x", hdr[1])
-	}
-	atyp := hdr[3]
-	switch atyp {
-	case 0x01:
-		tmp := make([]byte, 6)
-		if _, err := io.ReadFull(brw, tmp); err != nil {
-			return 0, err
-		}
-	case 0x03:
-		ln, _ := brw.ReadByte()
-		tmp := make([]byte, int(ln)+2)
-		if _, err := io.ReadFull(brw, tmp); err != nil {
-			return 0, err
-		}
-	case 0x04:
-		tmp := make([]byte, 18)
-		if _, err := io.ReadFull(brw, tmp); err != nil {
-			return 0, err
-		}
-	default:
-		return 0, fmt.Errorf("unknown atyp %d", atyp)
-	}
-
-	var downstream net.Conn = conn
-	if t.tls {
-		tlsConn := tls.Client(conn, &tls.Config{ServerName: t.host, InsecureSkipVerify: true})
-		if err := tlsConn.Handshake(); err != nil {
-			tlsConn.Close()
-			return 0, err
-		}
-		downstream = tlsConn
-		brw = bufio.NewReadWriter(bufio.NewReader(downstream), bufio.NewWriter(downstream))
-	}
-
-	request := fmt.Sprintf("HEAD %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\nUser-Agent: VeaLatency\r\n\r\n", t.path, t.host)
-	start := time.Now()
-	if _, err := brw.WriteString(request); err != nil {
-		_ = downstream.Close()
-		return 0, err
-	}
-	if err := brw.Flush(); err != nil {
-		_ = downstream.Close()
-		return 0, err
-	}
-
-	buf := make([]byte, 1024)
-	header := make([]byte, 0, 2048)
-	for {
-		n, rerr := brw.Read(buf)
-		if n > 0 {
-			header = append(header, buf[:n]...)
-			if len(header) > 64*1024 {
-				_ = downstream.Close()
-				return 0, fmt.Errorf("http header too large")
-			}
-			if idx := indexOfHeaderEnd(header); idx >= 0 {
-				status, ok := parseHTTPStatusCode(header[:idx])
-				if ok && status >= 400 {
-					_ = downstream.Close()
-					return 0, fmt.Errorf("http status %d", status)
-				}
-				break
-			}
-		}
-		if rerr != nil {
-			if rerr == io.EOF {
-				break
-			}
-			_ = downstream.Close()
-			return 0, rerr
-		}
-	}
-	latency := time.Since(start).Milliseconds()
-	_ = downstream.Close()
-	if latency <= 0 {
-		latency = 1
-	}
-	return latency, nil
 }
 
 func latencyDirectOnce(ctx context.Context, t socksTarget) (int64, error) {

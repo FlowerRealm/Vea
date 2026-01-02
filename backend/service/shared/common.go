@@ -9,11 +9,10 @@ import (
 
 // 常量定义
 const (
-	DefaultConfigSyncInterval      = time.Hour
-	DefaultComponentUpdateInterval = 12 * time.Hour
-	MaxDownloadSize                = 50 << 20        // 50 MiB
-	DownloadTimeout                = 5 * time.Minute // 支持慢速网络
-	MeasurementPort                = 17891
+	DefaultConfigSyncInterval = time.Hour
+	MaxDownloadSize           = 50 << 20        // 50 MiB
+	DownloadTimeout           = 5 * time.Minute // 支持慢速网络
+	MeasurementPort           = 17891
 
 	GeoDir        = "geo"
 	ComponentFile = "artifact.bin"
@@ -27,11 +26,6 @@ var (
 	// SpeedTestTimeout 速度测试超时时间
 	SpeedTestTimeout = 30 * time.Second
 )
-
-// GetArtifactsRoot 返回 artifacts 目录的绝对路径
-func GetArtifactsRoot() string {
-	return ArtifactsRoot
-}
 
 // HTTP 客户端
 var (

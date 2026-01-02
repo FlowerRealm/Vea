@@ -99,8 +99,14 @@ func runResolvectlHelper() {
 				return
 			default:
 			}
-			if ne, ok := err.(net.Error); ok && ne.Temporary() {
+			if errors.Is(err, net.ErrClosed) {
+				return
+			}
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
 				time.Sleep(50 * time.Millisecond)
+				continue
+			}
+			if errors.Is(err, syscall.EINTR) {
 				continue
 			}
 			log.Fatalf("accept: %v", err)

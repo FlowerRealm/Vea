@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -64,6 +65,8 @@ func (r *Router) register(engine *gin.Engine) {
 	nodes := engine.Group("/nodes")
 	{
 		nodes.GET("", r.listNodes)
+		nodes.POST("", r.createNode)
+		nodes.PUT(":id", r.updateNode)
 		nodes.POST(":id/ping", r.pingNode)
 		nodes.POST(":id/speedtest", r.speedtestNode)
 		nodes.POST("/bulk/ping", r.bulkPingNodes)
@@ -162,6 +165,17 @@ type frouterUpdateRequest struct {
 	Tags       []string                   `json:"tags,omitempty"`
 }
 
+type nodeRequest struct {
+	Name      string                `json:"name" binding:"required"`
+	Address   string                `json:"address" binding:"required"`
+	Port      int                   `json:"port" binding:"required"`
+	Protocol  domain.NodeProtocol   `json:"protocol" binding:"required"`
+	Tags      []string              `json:"tags,omitempty"`
+	Security  *domain.NodeSecurity  `json:"security,omitempty"`
+	Transport *domain.NodeTransport `json:"transport,omitempty"`
+	TLS       *domain.NodeTLS       `json:"tls,omitempty"`
+}
+
 func (r *Router) listFRouters(c *gin.Context) {
 	frouters := r.service.ListFRouters()
 	c.JSON(http.StatusOK, gin.H{
@@ -174,6 +188,118 @@ func (r *Router) listNodes(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"nodes": nodes,
 	})
+}
+
+func (r *Router) createNode(c *gin.Context) {
+	var req nodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	node, err := buildNodeFromRequest(req)
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	created, err := r.service.CreateNode(node)
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, created)
+}
+
+func (r *Router) updateNode(c *gin.Context) {
+	var req nodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	id := c.Param("id")
+	updated, err := r.service.UpdateNode(id, func(node domain.Node) (domain.Node, error) {
+		if strings.TrimSpace(node.SourceConfigID) != "" {
+			return domain.Node{}, fmt.Errorf("%w: subscription node is read-only", repository.ErrInvalidData)
+		}
+		next, err := buildNodeFromRequest(req)
+		if err != nil {
+			return domain.Node{}, err
+		}
+		next.SourceConfigID = node.SourceConfigID
+		return next, nil
+	})
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, updated)
+}
+
+func buildNodeFromRequest(req nodeRequest) (domain.Node, error) {
+	if err := validateNodeRequest(req); err != nil {
+		return domain.Node{}, err
+	}
+	node := domain.Node{
+		Name:      strings.TrimSpace(req.Name),
+		Address:   strings.TrimSpace(req.Address),
+		Port:      req.Port,
+		Protocol:  req.Protocol,
+		Tags:      req.Tags,
+		Security:  req.Security,
+		Transport: req.Transport,
+		TLS:       req.TLS,
+	}
+	if node.Protocol == domain.ProtocolVMess && node.Security != nil {
+		if node.Security.Encryption == "" && node.Security.Method != "" {
+			node.Security.Encryption = node.Security.Method
+		}
+		if node.Security.Method == "" && node.Security.Encryption != "" {
+			node.Security.Method = node.Security.Encryption
+		}
+	}
+	if node.TLS != nil && node.TLS.Enabled && node.TLS.Type == "" {
+		node.TLS.Type = "tls"
+	}
+	return node, nil
+}
+
+func validateNodeRequest(req nodeRequest) error {
+	if strings.TrimSpace(req.Name) == "" {
+		return fmt.Errorf("%w: name is required", repository.ErrInvalidData)
+	}
+	if strings.TrimSpace(req.Address) == "" {
+		return fmt.Errorf("%w: address is required", repository.ErrInvalidData)
+	}
+	if req.Port <= 0 || req.Port > 65535 {
+		return fmt.Errorf("%w: port is invalid", repository.ErrInvalidData)
+	}
+	switch req.Protocol {
+	case domain.ProtocolVLESS, domain.ProtocolVMess, domain.ProtocolTrojan, domain.ProtocolShadowsocks, domain.ProtocolHysteria2, domain.ProtocolTUIC:
+	default:
+		return fmt.Errorf("%w: protocol is invalid", repository.ErrInvalidData)
+	}
+	switch req.Protocol {
+	case domain.ProtocolShadowsocks:
+		if req.Security == nil || strings.TrimSpace(req.Security.Method) == "" || strings.TrimSpace(req.Security.Password) == "" {
+			return fmt.Errorf("%w: shadowsocks requires method and password", repository.ErrInvalidData)
+		}
+	case domain.ProtocolVMess, domain.ProtocolVLESS:
+		if req.Security == nil || strings.TrimSpace(req.Security.UUID) == "" {
+			return fmt.Errorf("%w: vmess/vless requires uuid", repository.ErrInvalidData)
+		}
+	case domain.ProtocolTrojan:
+		if req.Security == nil || strings.TrimSpace(req.Security.Password) == "" {
+			return fmt.Errorf("%w: trojan requires password", repository.ErrInvalidData)
+		}
+	case domain.ProtocolHysteria2:
+		if req.Security == nil || strings.TrimSpace(req.Security.Password) == "" {
+			return fmt.Errorf("%w: hysteria2 requires password", repository.ErrInvalidData)
+		}
+	case domain.ProtocolTUIC:
+		if req.Security == nil || strings.TrimSpace(req.Security.UUID) == "" || strings.TrimSpace(req.Security.Password) == "" {
+			return fmt.Errorf("%w: tuic requires uuid and password", repository.ErrInvalidData)
+		}
+	}
+	return nil
 }
 
 func (r *Router) pingNode(c *gin.Context) {
@@ -539,11 +665,10 @@ func (r *Router) refreshGeo(c *gin.Context) {
 }
 
 type componentRequest struct {
-	Name                  string                   `json:"name"`
-	Kind                  domain.CoreComponentKind `json:"kind"`
-	SourceURL             string                   `json:"sourceUrl"`
-	ArchiveType           string                   `json:"archiveType"`
-	AutoUpdateIntervalMin int64                    `json:"autoUpdateIntervalMinutes"`
+	Name        string                   `json:"name"`
+	Kind        domain.CoreComponentKind `json:"kind"`
+	SourceURL   string                   `json:"sourceUrl"`
+	ArchiveType string                   `json:"archiveType"`
 }
 
 func (r *Router) listComponents(c *gin.Context) {
@@ -556,16 +681,11 @@ func (r *Router) createComponent(c *gin.Context) {
 		badRequest(c, err)
 		return
 	}
-	interval := time.Duration(0)
-	if req.AutoUpdateIntervalMin > 0 {
-		interval = time.Duration(req.AutoUpdateIntervalMin) * time.Minute
-	}
 	component := domain.CoreComponent{
-		Name:               req.Name,
-		Kind:               req.Kind,
-		SourceURL:          req.SourceURL,
-		ArchiveType:        req.ArchiveType,
-		AutoUpdateInterval: interval,
+		Name:        req.Name,
+		Kind:        req.Kind,
+		SourceURL:   req.SourceURL,
+		ArchiveType: req.ArchiveType,
 	}
 	created, err := r.service.CreateComponent(component)
 	if err != nil {
@@ -581,10 +701,6 @@ func (r *Router) updateComponent(c *gin.Context) {
 		badRequest(c, err)
 		return
 	}
-	interval := time.Duration(0)
-	if req.AutoUpdateIntervalMin > 0 {
-		interval = time.Duration(req.AutoUpdateIntervalMin) * time.Minute
-	}
 	id := c.Param("id")
 	updated, err := r.service.UpdateComponent(id, func(component domain.CoreComponent) (domain.CoreComponent, error) {
 		component.Name = req.Name
@@ -595,7 +711,6 @@ func (r *Router) updateComponent(c *gin.Context) {
 		if req.ArchiveType != "" {
 			component.ArchiveType = req.ArchiveType
 		}
-		component.AutoUpdateInterval = interval
 		return component, nil
 	})
 	if err != nil {

@@ -78,10 +78,6 @@ func (s *Service) Update(ctx context.Context, id string, node domain.Node) (doma
 	return s.repo.Update(ctx, id, node)
 }
 
-func (s *Service) Delete(ctx context.Context, id string) error {
-	return s.repo.Delete(ctx, id)
-}
-
 func (s *Service) ReplaceNodesForConfig(ctx context.Context, configID string, nodes []domain.Node) ([]domain.Node, error) {
 	return s.repo.ReplaceNodesForConfig(ctx, configID, nodes)
 }

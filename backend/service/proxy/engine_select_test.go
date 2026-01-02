@@ -82,7 +82,7 @@ func TestSelectEngineForFRouter_NodeRequiresSingBoxOverridesPreferred(t *testing
 	settingsRepo := memory.NewSettingsRepo(store)
 
 	nodes := []domain.Node{
-		{ID: "n1", Name: "n1", Protocol: domain.NodeProtocol("hysteria2")},
+		{ID: "n1", Name: "n1", Protocol: domain.ProtocolHysteria2},
 	}
 	frouter := domain.FRouter{
 		ID:   "fr1",
@@ -153,7 +153,7 @@ func TestSelectEngineForFRouter_NoInstalledEngineSupportsNodes(t *testing.T) {
 	settingsRepo := memory.NewSettingsRepo(store)
 
 	nodes := []domain.Node{
-		{ID: "n1", Name: "n1", Protocol: domain.NodeProtocol("hysteria2")},
+		{ID: "n1", Name: "n1", Protocol: domain.ProtocolHysteria2},
 	}
 	frouter := domain.FRouter{
 		ID:   "fr1",

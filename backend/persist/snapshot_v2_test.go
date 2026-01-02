@@ -13,8 +13,8 @@ import (
 )
 
 type countingStore struct {
-	mu    sync.Mutex
-	count int
+	mu     sync.Mutex
+	count  int
 	notify chan struct{}
 }
 
@@ -104,5 +104,9 @@ func TestSnapshotterV2_Schedule_DirtyTriggersSecondSave(t *testing.T) {
 		case <-deadline:
 			t.Fatalf("timeout waiting for snapshot to be saved twice")
 		}
+	}
+
+	if err := s.WaitIdle(1 * time.Second); err != nil {
+		t.Fatalf("WaitIdle() error: %v", err)
 	}
 }

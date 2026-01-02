@@ -199,6 +199,14 @@ class NodesAPI {
     return this.client.get('/nodes')
   }
 
+  async create(data) {
+    return this.client.post('/nodes', data)
+  }
+
+  async update(id, data) {
+    return this.client.put(`/nodes/${id}`, data)
+  }
+
   async bulkPing(ids = []) {
     return this.client.post('/nodes/bulk/ping', { ids })
   }

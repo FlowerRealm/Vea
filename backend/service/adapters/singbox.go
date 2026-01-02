@@ -89,8 +89,8 @@ func (a *SingBoxAdapter) SupportedProtocols() []domain.NodeProtocol {
 		domain.ProtocolVMess,
 		domain.ProtocolTrojan,
 		domain.ProtocolShadowsocks,
-		"hysteria2", // sing-box 独有
-		"tuic",      // sing-box 独有
+		domain.ProtocolHysteria2, // sing-box 独有
+		domain.ProtocolTUIC,      // sing-box 独有
 	}
 }
 
@@ -379,13 +379,13 @@ func (a *SingBoxAdapter) buildOutbound(node domain.Node, geo GeoFiles) (map[stri
 			}
 		}
 
-	case "hysteria2":
+	case domain.ProtocolHysteria2:
 		outbound["type"] = "hysteria2"
 		outbound["password"] = sec.Password
 		outbound["up_mbps"] = 100
 		outbound["down_mbps"] = 100
 
-	case "tuic":
+	case domain.ProtocolTUIC:
 		outbound["type"] = "tuic"
 		outbound["uuid"] = sec.UUID
 		outbound["password"] = sec.Password
@@ -696,30 +696,6 @@ func (a *SingBoxAdapter) buildExperimental(profile domain.ProxyConfig) map[strin
 	// }
 
 	return experimental
-}
-
-// isIPAddress 检查字符串是否是 IP 地址（IPv4 或 IPv6）
-func isIPAddress(s string) bool {
-	// 简单检查：包含冒号是 IPv6，全是数字和点是 IPv4
-	if strings.Contains(s, ":") {
-		return true // 可能是 IPv6
-	}
-	// IPv4: 检查是否符合 x.x.x.x 格式
-	parts := strings.Split(s, ".")
-	if len(parts) != 4 {
-		return false
-	}
-	for _, part := range parts {
-		if len(part) == 0 || len(part) > 3 {
-			return false
-		}
-		for _, c := range part {
-			if c < '0' || c > '9' {
-				return false
-			}
-		}
-	}
-	return true
 }
 
 // ========== 新增 CoreAdapter 接口方法实现 ==========
