@@ -59,7 +59,8 @@ dev: ## 启动 Electron 开发模式
 	@rm -f vea vea.exe
 	@$(MAKE) -j2 build-backend deps
 	@echo "==> 启动 Electron 开发模式..."
-	@cp $(OUTPUT_DIR)/$(BINARY_NAME) $(BINARY_NAME)
+	@cp $(OUTPUT_DIR)/$(BINARY_NAME) vea
+	@if [ "$(BINARY_NAME)" != "vea" ]; then cp $(OUTPUT_DIR)/$(BINARY_NAME) $(BINARY_NAME); fi
 	@cd frontend && npm run dev
 
 build: ## 打包 Electron 应用

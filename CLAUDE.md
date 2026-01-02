@@ -5,7 +5,7 @@
 - `backend/`: HTTP API (`backend/api/`), entities (`backend/domain/`), services/adapters (`backend/service/`), repositories (`backend/repository/`), persistence (`backend/persist/`), schedulers (`backend/tasks/`).
 - `backend/service/proxy/engine_select.go`: engine selection (Xray vs sing-box) based on inbound mode / protocol constraints.
 - `backend/domain/entities.go`: domain model of `FRouter`, `Node` (节点), `ProxyConfig`, `ChainProxySettings` and engines.
-- `backend/api/router.go`: HTTP endpoints, including `/frouters`、`/frouters/:id/graph`、`/nodes`、`/proxy/*`、`/tun/*`.
+- `backend/api/router.go`: HTTP endpoints, including `/frouters`, `/frouters/:id/graph`, `/nodes`, `/proxy/*`, `/tun/*`.
 - `backend/service/nodegroup/`: compiles runtime plans from `ProxyConfig` + `FRouter` + `Nodes` + `ChainProxySettings` (proxy + measurement).
 - `frontend/`: Electron app (`frontend/main.js`) and UI themes (`frontend/theme/*.html`).
 - `frontend/theme/*.html`: UI uses FRouter as the primary unit.
