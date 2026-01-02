@@ -810,15 +810,25 @@ func (a *SingBoxAdapter) WaitForReady(handle *ProcessHandle, timeout time.Durati
 	addr := fmt.Sprintf("127.0.0.1:%d", handle.Port)
 
 	for time.Now().Before(deadline) {
-		// 不用 Dial 做 readiness probe：Dial 会在 debug 日志下制造一条“inbound connection + EOF”的噪音。
-		// 用 Listen 探测端口是否已被占用即可（占用 = 有进程监听）。
-		ln, err := net.Listen("tcp", addr)
-		if err != nil {
-			if errors.Is(err, syscall.EADDRINUSE) {
+		if runtime.GOOS == "windows" {
+			// Windows 上 net.Listen 可能因为 SO_REUSEADDR 语义导致“端口已被监听仍能 Listen 成功”，
+			// 用 Dial 做探测更可靠。
+			conn, err := net.DialTimeout("tcp", addr, 200*time.Millisecond)
+			if err == nil {
+				_ = conn.Close()
 				return nil
 			}
 		} else {
-			_ = ln.Close()
+			// 不用 Dial 做 readiness probe：Dial 会在 debug 日志下制造一条“inbound connection + EOF”的噪音。
+			// 用 Listen 探测端口是否已被占用即可（占用 = 有进程监听）。
+			ln, err := net.Listen("tcp", addr)
+			if err != nil {
+				if errors.Is(err, syscall.EADDRINUSE) {
+					return nil
+				}
+			} else {
+				_ = ln.Close()
+			}
 		}
 		time.Sleep(100 * time.Millisecond)
 	}

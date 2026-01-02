@@ -620,6 +620,9 @@ func (s *Service) killProcessesUsingConfig(configPath string) {
 
 func (s *Service) monitorProcess(handle *adapters.ProcessHandle, done chan struct{}) {
 	if handle == nil || handle.Cmd == nil {
+		if handle != nil && handle.LogCloser != nil {
+			_ = handle.LogCloser.Close()
+		}
 		if done != nil {
 			close(done)
 		}
