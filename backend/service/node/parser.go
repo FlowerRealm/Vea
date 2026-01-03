@@ -408,11 +408,67 @@ func ParseMultipleLinks(links string) ([]domain.Node, []error) {
 		}
 		// 如果解析出节点，使用这个候选
 		if len(nodes) > 0 {
-			return nodes, errs
+			return filterSubscriptionNodes(nodes), errs
+		}
+	}
+
+	// 兜底：Clash YAML 订阅
+	for _, candidate := range candidates {
+		if !looksLikeClashYAML(candidate) {
+			continue
+		}
+		yamlNodes, yamlErrs := parseClashYAMLNodes(candidate)
+		if len(yamlErrs) > 0 {
+			errs = append(errs, yamlErrs...)
+		}
+		if len(yamlNodes) > 0 {
+			return filterSubscriptionNodes(yamlNodes), errs
 		}
 	}
 
 	return nodes, errs
+}
+
+func filterSubscriptionNodes(nodes []domain.Node) []domain.Node {
+	if len(nodes) == 0 {
+		return nodes
+	}
+	out := make([]domain.Node, 0, len(nodes))
+	for _, n := range nodes {
+		if isLikelySubscriptionInfoNode(n) {
+			continue
+		}
+		out = append(out, n)
+	}
+	return out
+}
+
+func isLikelySubscriptionInfoNode(node domain.Node) bool {
+	addr := strings.ToLower(strings.TrimSpace(node.Address))
+	name := strings.ToLower(strings.TrimSpace(node.Name))
+	if addr == "" || name == "" {
+		return false
+	}
+
+	isLoopback := addr == "127.0.0.1" || addr == "localhost" || addr == "0.0.0.0"
+	if !isLoopback {
+		return false
+	}
+	if node.Port != 1080 && node.Port != 0 {
+		return false
+	}
+
+	keywords := []string{
+		"剩余", "流量", "到期", "过期", "有效期",
+		"升级", "版本", "客户端", "官网", "教程",
+		"traffic", "expire", "expired", "upgrade", "version",
+	}
+	for _, kw := range keywords {
+		if strings.Contains(name, kw) {
+			return true
+		}
+	}
+	return false
 }
 
 // decodeBase64Flexible 灵活解码 base64（自动补齐 padding）

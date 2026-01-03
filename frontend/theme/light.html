@@ -140,8 +140,24 @@
       background: var(--text-secondary);
     }
 
-    .window-ctrl.close:hover {
-      background: var(--error);
+    /* macOS-style window control colors */
+    #close-btn {
+      background: #ff5f57;
+    }
+    #minimize-btn {
+      background: #febc2e;
+    }
+    #maximize-btn {
+      background: #28c840;
+    }
+    #close-btn:hover {
+      background: #ff7b74;
+    }
+    #minimize-btn:hover {
+      background: #ffd06a;
+    }
+    #maximize-btn:hover {
+      background: #4fe06a;
     }
 
     /* === Sidebar === */
@@ -2199,7 +2215,7 @@
       <div class="panel-header">
         <div class="panel-title">
           <h2>日志</h2>
-          <p>内核（Xray / sing-box）运行日志（独立于终端输出）。</p>
+          <p>内核（Xray / sing-box）与应用（后端）运行日志（独立于终端输出）。</p>
         </div>
       </div>
 
@@ -2222,6 +2238,26 @@
           <pre id="kernel-log-content"></pre>
         </div>
       </div>
+
+      <div class="card log-card">
+        <div class="log-toolbar">
+          <div class="log-meta" id="app-log-meta">-</div>
+          <div class="log-actions">
+            <button class="mini-btn" id="app-log-refresh">刷新</button>
+            <button class="mini-btn" id="app-log-copy">复制</button>
+            <div class="log-autoscroll">
+              <span class="log-label">自动滚动</span>
+              <label class="chain-toggle">
+                <input type="checkbox" id="app-log-autoscroll" checked>
+                <span class="chain-toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="log-container" id="app-log-container">
+          <pre id="app-log-content"></pre>
+        </div>
+      </div>
     </section>
 
     <!-- Settings -->
@@ -2229,7 +2265,7 @@
       <div class="panel-header">
         <div class="panel-title">
           <h2>设置</h2>
-          <p>Application preferences and configurations.</p>
+          <p>应用偏好与配置。</p>
         </div>
         <div class="panel-actions">
           <button id="settings-import-btn">导入设置</button>
@@ -2720,12 +2756,19 @@
 	      let kernelLogOffset = 0;
 	      let kernelLogSession = 0;
 	      let kernelLogStartedAt = "";
+	      let appLogsPollHandle = null;
+	      let appLogOffset = 0;
+	      let appLogStartedAt = "";
 	      const ANSI_ESC = "\x1b";
 	      const ANSI_ESC_SYMBOL = "␛";
 	      let kernelLogAnsiState = createAnsiState();
 	      let kernelLogAnsiCarry = "";
+	      let appLogAnsiState = createAnsiState();
+	      let appLogAnsiCarry = "";
 	      let kernelLogAutoScroll = true;
 	      let kernelLogsPanelInitialized = false;
+	      let appLogAutoScroll = true;
+	      let appLogsPanelInitialized = false;
 	      let nodesLoadInFlight = false;
 		      let homeAutoTestInFlight = false;
 		      let applyFRouterInFlight = false;
@@ -2748,6 +2791,12 @@
 	      function resetKernelLogRender(pre) {
 	        kernelLogAnsiState = createAnsiState();
 	        kernelLogAnsiCarry = "";
+	        if (pre) pre.innerHTML = "";
+	      }
+
+	      function resetAppLogRender(pre) {
+	        appLogAnsiState = createAnsiState();
+	        appLogAnsiCarry = "";
 	        if (pre) pre.innerHTML = "";
 	      }
 
@@ -2989,6 +3038,15 @@
 	        }
 	      }
 
+	      function appendAppLogChunk(pre, chunk) {
+	        if (!pre || !chunk) return;
+	        const { html, carry } = ansiToHtmlChunk(appLogAnsiCarry + chunk, appLogAnsiState);
+	        appLogAnsiCarry = carry || "";
+	        if (html) {
+	          pre.insertAdjacentHTML("beforeend", html);
+	        }
+	      }
+
 	      function ensureFRoutersPolling() {
 	        if (froutersPollHandle) {
 	          return;
@@ -3067,6 +3125,55 @@
 	        }
 	      }
 
+	      function ensureAppLogsPanel() {
+	        if (appLogsPanelInitialized) {
+	          return;
+	        }
+	        appLogsPanelInitialized = true;
+
+	        const refreshBtn = document.getElementById("app-log-refresh");
+	        const copyBtn = document.getElementById("app-log-copy");
+	        const autoScrollToggle = document.getElementById("app-log-autoscroll");
+	        const logContainer = document.getElementById("app-log-container");
+
+	        if (autoScrollToggle) {
+	          appLogAutoScroll = Boolean(autoScrollToggle.checked);
+	          autoScrollToggle.addEventListener("change", (e) => {
+	            appLogAutoScroll = Boolean(e.target.checked);
+	            if (appLogAutoScroll && logContainer) {
+	              logContainer.scrollTop = logContainer.scrollHeight;
+	            }
+	          });
+	        }
+
+	        if (refreshBtn) {
+	          refreshBtn.addEventListener("click", async () => {
+	            appLogOffset = 0;
+	            appLogStartedAt = "";
+	            const pre = document.getElementById("app-log-content");
+	            resetAppLogRender(pre);
+	            await loadAppLogs();
+	          });
+	        }
+
+	        if (copyBtn) {
+	          copyBtn.addEventListener("click", async () => {
+	            const pre = document.getElementById("app-log-content");
+	            const text = pre ? pre.textContent : "";
+	            if (!text) {
+	              showStatus("暂无可复制内容", "info", 1500);
+	              return;
+	            }
+	            try {
+	              await navigator.clipboard.writeText(text);
+	              showStatus("日志已复制到剪贴板", "success", 1600);
+	            } catch (err) {
+	              showStatus(`复制失败：${err.message}`, "error", 3000);
+	            }
+	          });
+	        }
+	      }
+
 	      function startKernelLogsPolling() {
 	        if (kernelLogsPollHandle) {
 	          return;
@@ -3078,12 +3185,31 @@
 	        }, KERNEL_LOGS_POLL_INTERVAL);
 	      }
 
+	      function startAppLogsPolling() {
+	        if (appLogsPollHandle) {
+	          return;
+	        }
+	        appLogsPollHandle = setInterval(() => {
+	          if (currentPanel === "panel-logs") {
+	            loadAppLogs();
+	          }
+	        }, KERNEL_LOGS_POLL_INTERVAL);
+	      }
+
 	      function stopKernelLogsPolling() {
 	        if (!kernelLogsPollHandle) {
 	          return;
 	        }
 	        clearInterval(kernelLogsPollHandle);
 	        kernelLogsPollHandle = null;
+	      }
+
+	      function stopAppLogsPolling() {
+	        if (!appLogsPollHandle) {
+	          return;
+	        }
+	        clearInterval(appLogsPollHandle);
+	        appLogsPollHandle = null;
 	      }
 
 	      async function loadKernelLogs() {
@@ -3120,16 +3246,61 @@
 	            if (data.engine) {
 	              parts.push(String(data.engine));
 	            } else {
-	              parts.push("kernel");
+	              parts.push("内核");
 	            }
-	            if (data.running === false) parts.push("stopped");
+	            if (data.running === false) parts.push("已停止");
 	            if (data.pid) parts.push(`pid ${data.pid}`);
-	            if (startedAt) parts.push(`started ${formatTime(startedAt)}`);
-	            if (data.error) parts.push(`error: ${data.error}`);
+	            if (startedAt) parts.push(`启动于 ${formatTime(startedAt)}`);
+	            if (data.error) parts.push(`错误：${data.error}`);
 	            metaEl.textContent = parts.length ? parts.join(" · ") : "-";
 	          }
 
 	          if (kernelLogAutoScroll && logContainer) {
+	            logContainer.scrollTop = logContainer.scrollHeight;
+	          }
+	        } catch (err) {
+	          if (metaEl) {
+	            metaEl.textContent = `加载失败：${err.message}`;
+	          }
+	        }
+	      }
+
+	      async function loadAppLogs() {
+	        const metaEl = document.getElementById("app-log-meta");
+	        const pre = document.getElementById("app-log-content");
+	        const logContainer = document.getElementById("app-log-container");
+	        if (!pre) return;
+
+	        try {
+	          const payload = await api.get(`/app/logs?since=${appLogOffset}`);
+	          const data = payload || {};
+	          const startedAt = data.startedAt || "";
+	          const lost = Boolean(data.lost);
+	          const chunk = data.text || "";
+
+	          const startedAtChanged = startedAt && startedAt !== appLogStartedAt;
+
+	          const shouldReset = lost || startedAtChanged || appLogOffset === 0;
+	          if (shouldReset) {
+	            resetAppLogRender(pre);
+	          }
+	          appendAppLogChunk(pre, chunk);
+
+	          appLogStartedAt = startedAt || appLogStartedAt;
+	          if (typeof data.to === "number") {
+	            appLogOffset = data.to;
+	          }
+
+	          if (metaEl) {
+	            const parts = ["应用"];
+	            if (data.running === false) parts.push("已停止");
+	            if (data.pid) parts.push(`pid ${data.pid}`);
+	            if (startedAt) parts.push(`启动于 ${formatTime(startedAt)}`);
+	            if (data.error) parts.push(`错误：${data.error}`);
+	            metaEl.textContent = parts.length ? parts.join(" · ") : "-";
+	          }
+
+	          if (appLogAutoScroll && logContainer) {
 	            logContainer.scrollTop = logContainer.scrollHeight;
 	          }
 	        } catch (err) {
@@ -3773,7 +3944,7 @@
 	        let cls = "";
 	        let title = "";
 	        if (n && n.lastLatencyError) {
-	          value = "Error";
+	          value = "错误";
 	          cls = "poor";
 	          title = n.lastLatencyError;
 	        } else if (n && typeof n.lastLatencyMs === "number" && n.lastLatencyMs > 0) {
@@ -3790,7 +3961,7 @@
 	        let cls = "";
 	        let title = "";
 	        if (n && n.lastSpeedError) {
-	          value = "Error";
+	          value = "错误";
 	          cls = "poor";
 	          title = n.lastSpeedError;
 	        } else if (n && typeof n.lastSpeedMbps === "number" && n.lastSpeedMbps > 0) {
@@ -3987,7 +4158,7 @@
               ? frouter.tags.join(" · ")
               : "无标签";
 
-	            let latencyValue = "Ping";
+	            let latencyValue = "延迟";
 	            let latencyClass = "";
 	            const latencyTitle = frouter.lastLatencyError
 	              ? `延迟失败：${frouter.lastLatencyError}`
@@ -3999,13 +4170,13 @@
 	              else latencyClass = "poor";
 	            }
 
-	            let speedValue = "Speed";
+	            let speedValue = "速度";
 	            let speedClass = "";
 	            const speedTitle = frouter.lastSpeedError
 	              ? `测速失败：${frouter.lastSpeedError}`
 	              : "测速";
 	            if (frouter.lastSpeedError) {
-	              speedValue = "Error";
+	              speedValue = "错误";
 	              speedClass = "poor";
 	            } else if (typeof frouter.lastSpeedMbps === "number" && frouter.lastSpeedMbps > 0) {
               const fixed = frouter.lastSpeedMbps >= 10 ? frouter.lastSpeedMbps.toFixed(1) : frouter.lastSpeedMbps.toFixed(2);
@@ -4024,7 +4195,7 @@
 		                <div class="node-row-name">${escapeHtml(frouter.name || "未命名 FRouter")}</div>
                 <div class="node-row-meta">边: ${edgeCount} · 槽: ${slotCount} · ${escapeHtml(tagText)}</div>
               </div>
-              <div class="node-row-protocol">ROUTE</div>
+              <div class="node-row-protocol">路由</div>
             </div>
 
 	            <div class="node-row-metrics">
@@ -4150,7 +4321,7 @@
         latencyEl.textContent = typeof latencyMs === "number" ? `${latencyMs}ms` : "--";
 
         if (speedError) {
-          speedEl.textContent = "Error";
+          speedEl.textContent = "错误";
           speedEl.title = speedError;
           return;
         }
@@ -5220,8 +5391,10 @@
 		        panel3: () => loadComponents(),
 		        "panel-logs": () => {
 		          ensureKernelLogsPanel();
+		          ensureAppLogsPanel();
 		          startKernelLogsPolling();
-		          return loadKernelLogs();
+		          startAppLogsPolling();
+		          return Promise.all([loadKernelLogs(), loadAppLogs()]);
 		        },
 		        "panel-chain": initChainEditor,
 	        "panel-settings": async () => {
@@ -5236,6 +5409,7 @@
         }
         if (currentPanel === "panel-logs") {
           stopKernelLogsPolling();
+          stopAppLogsPolling();
         }
         if (target === currentPanel) {
           loaders[target]?.();
@@ -5264,6 +5438,7 @@
         }
         if (prevPanel === "panel-logs" && target !== "panel-logs") {
           stopKernelLogsPolling();
+          stopAppLogsPolling();
         }
         currentPanel = target;
         menu.querySelectorAll("button").forEach((btn) => btn.classList.remove("active"));
@@ -5276,6 +5451,7 @@
         }
         if (target === "panel-logs") {
           startKernelLogsPolling();
+          startAppLogsPolling();
         }
         loaders[target]?.();
       });

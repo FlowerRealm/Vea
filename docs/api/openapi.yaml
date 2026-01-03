@@ -35,6 +35,8 @@ tags:
     description: 健康检查
   - name: snapshot
     description: 全量状态快照
+  - name: app
+    description: 应用自身能力（日志等）
   - name: nodes
     description: 节点列表与测量
   - name: frouters
@@ -93,6 +95,28 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ServiceState'
+
+  /app/logs:
+    get:
+      tags: [app]
+      summary: 获取应用日志
+      description: 按字节偏移读取应用日志片段（后端 log 输出）
+      operationId: getAppLogs
+      parameters:
+        - name: since
+          in: query
+          description: 从该字节偏移开始读取（默认为 0）
+          required: false
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功返回日志片段
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppLogSnapshot'
 
   /nodes:
     get:
@@ -1798,6 +1822,35 @@ components:
           format: int64
         engine:
           type: string
+        running:
+          type: boolean
+        pid:
+          type: integer
+        startedAt:
+          type: string
+          format: date-time
+        path:
+          type: string
+        from:
+          type: integer
+          format: int64
+        to:
+          type: integer
+          format: int64
+        end:
+          type: integer
+          format: int64
+        lost:
+          type: boolean
+        text:
+          type: string
+        error:
+          type: string
+
+    AppLogSnapshot:
+      type: object
+      description: 应用日志片段
+      properties:
         running:
           type: boolean
         pid:

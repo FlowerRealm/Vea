@@ -68,6 +68,8 @@ func (r *Router) register(engine *gin.Engine) {
 		c.JSON(http.StatusOK, snapshot)
 	})
 
+	engine.GET("/app/logs", r.getAppLogs)
+
 	nodes := engine.Group("/nodes")
 	{
 		nodes.GET("", r.listNodes)

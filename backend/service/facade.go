@@ -4,21 +4,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"os"
 	"strings"
 	"time"
 
 	"vea/backend/domain"
 	"vea/backend/persist"
 	"vea/backend/repository"
+	"vea/backend/service/applog"
 	"vea/backend/service/component"
 	configsvc "vea/backend/service/config"
 	"vea/backend/service/frouter"
 	"vea/backend/service/geo"
-	"vea/backend/service/node"
 	"vea/backend/service/nodes"
 	"vea/backend/service/proxy"
 	"vea/backend/service/shared"
+
+	"github.com/google/uuid"
 )
 
 // Facade 服务门面（API 聚合层）
@@ -29,6 +31,9 @@ type Facade struct {
 	proxy     *proxy.Service
 	component *component.Service
 	geo       *geo.Service
+
+	appLogPath      string
+	appLogStartedAt time.Time
 
 	// Repositories 用于直接访问（settings/rules 等）
 	repos repository.Repositories
@@ -53,6 +58,11 @@ func NewFacade(
 		geo:       geoSvc,
 		repos:     repos,
 	}
+}
+
+func (f *Facade) SetAppLog(path string, startedAt time.Time) {
+	f.appLogPath = path
+	f.appLogStartedAt = startedAt
 }
 
 // Errors 返回所有错误类型（用于 API 层错误处理）
@@ -114,6 +124,59 @@ func (f *Facade) Snapshot() (domain.ServiceState, error) {
 		FrontendSettings: frontendSettings,
 		GeneratedAt:      time.Now(),
 	}, nil
+}
+
+func (f *Facade) EnsureDefaultFRouter(ctx context.Context) error {
+	frouters, err := f.frouter.List(ctx)
+	if err != nil {
+		return err
+	}
+	var picked domain.FRouter
+	if len(frouters) == 0 {
+		created, err := f.frouter.Create(ctx, domain.FRouter{
+			Name: "默认 FRouter",
+			ChainProxy: domain.ChainProxySettings{
+				Slots: []domain.SlotNode{
+					{ID: "slot-1", Name: "配置槽"},
+				},
+				Edges: []domain.ProxyEdge{
+					{
+						ID:       uuid.NewString(),
+						From:     domain.EdgeNodeLocal,
+						To:       domain.EdgeNodeDirect,
+						Priority: 0,
+						Enabled:  true,
+					},
+				},
+			},
+		})
+		if err != nil {
+			return err
+		}
+		picked = created
+	} else {
+		picked = frouters[0]
+		for i := range frouters {
+			if frouters[i].CreatedAt.Before(picked.CreatedAt) {
+				picked = frouters[i]
+			}
+		}
+	}
+
+	cfg, err := f.repos.Settings().GetProxyConfig(ctx)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(cfg.FRouterID) != "" {
+		if _, err := f.frouter.Get(ctx, cfg.FRouterID); err == nil {
+			return nil
+		}
+	}
+
+	cfg.FRouterID = picked.ID
+	cfg.UpdatedAt = time.Now()
+	_, err = f.repos.Settings().UpdateProxyConfig(ctx, cfg)
+	return err
 }
 
 // ========== FRouter 操作 ==========
@@ -242,30 +305,8 @@ func (f *Facade) SyncConfigNodes(configID string) ([]domain.Node, error) {
 		if err := f.config.Sync(ctx, configID); err != nil {
 			return nil, err
 		}
-		cfg, err = f.config.Get(ctx, configID)
-		if err != nil {
-			return nil, err
-		}
 	}
-
-	nodesFromConfig, parseErrs := node.ParseMultipleLinks(cfg.Payload)
-	if len(parseErrs) > 0 {
-		log.Printf("[SyncConfigNodes] parse errors for %s: %d", configID, len(parseErrs))
-	}
-	if len(nodesFromConfig) == 0 {
-		existing, err := f.nodes.List(ctx)
-		if err != nil {
-			return nil, err
-		}
-		out := make([]domain.Node, 0, len(existing))
-		for _, n := range existing {
-			if n.SourceConfigID == configID {
-				out = append(out, n)
-			}
-		}
-		return out, nil
-	}
-	return f.nodes.ReplaceNodesForConfig(ctx, configID, nodesFromConfig)
+	return f.config.PullNodes(ctx, configID)
 }
 
 // ========== Proxy 操作 ==========
@@ -327,6 +368,10 @@ func (f *Facade) StartProxy(config domain.ProxyConfig) error {
 
 func (f *Facade) GetKernelLogs(since int64) proxy.KernelLogSnapshot {
 	return f.proxy.KernelLogsSince(since)
+}
+
+func (f *Facade) GetAppLogs(since int64) applog.AppLogSnapshot {
+	return applog.LogsSince(f.appLogPath, since, os.Getpid(), f.appLogStartedAt)
 }
 
 func (f *Facade) ensureCoreEngineInstalled(ctx context.Context, engine domain.CoreEngineKind) error {

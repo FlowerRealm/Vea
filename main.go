@@ -5,10 +5,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"syscall"
 	"time"
@@ -69,6 +71,11 @@ func run() int {
 		log.SetFlags(log.LstdFlags)
 	}
 
+	appLogPath, appLogStartedAt, closeAppLog := setupAppLogging()
+	if closeAppLog != nil {
+		defer closeAppLog()
+	}
+
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
@@ -123,12 +130,14 @@ func run() int {
 	frouterSvc.SetMeasurer(speedMeasurer)
 
 	configSvc := configsvc.NewService(configRepo, nodeSvc)
+	configSvc.SetFRouterService(frouterSvc)
 	proxySvc := proxy.NewService(frouterRepo, nodeRepo, componentRepo, settingsRepo)
 	componentSvc := component.NewService(componentRepo)
 	geoSvc := geo.NewService(geoRepo)
 
 	// 6. 创建 Facade（门面服务）
 	facade := service.NewFacade(nodeSvc, frouterSvc, configSvc, proxySvc, componentSvc, geoSvc, repos)
+	facade.SetAppLog(appLogPath, appLogStartedAt)
 
 	// 7. 设置持久化（事件驱动）
 	snapshotter := persist.NewSnapshotterV2(*statePath, memStore)
@@ -142,6 +151,11 @@ func run() int {
 	// 7.2 确保默认 Geo 资源存在
 	if err := geoSvc.EnsureDefaultResources(context.Background()); err != nil {
 		log.Printf("ensure default geo resources failed: %v", err)
+	}
+
+	// 7.25 确保默认 FRouter 存在（空状态启动也应可用）
+	if err := facade.EnsureDefaultFRouter(context.Background()); err != nil {
+		log.Printf("ensure default frouter failed: %v", err)
 	}
 
 	// 7.3 启动后台任务（订阅/Geo）
@@ -190,6 +204,26 @@ func run() int {
 	}
 	<-cleanupDone
 	return 0
+}
+
+func setupAppLogging() (path string, startedAt time.Time, closeFn func()) {
+	startedAt = time.Now()
+	path = filepath.Join(shared.ArtifactsRoot, "runtime", "app.log")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		log.Printf("[AppLog] create log dir failed: %v", err)
+		return "", time.Time{}, nil
+	}
+
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		log.Printf("[AppLog] open log file failed (%s): %v", path, err)
+		return "", time.Time{}, nil
+	}
+
+	_, _ = fmt.Fprintf(f, "----- app start %s pid=%d -----\n", startedAt.Format(time.RFC3339Nano), os.Getpid())
+	log.SetOutput(io.MultiWriter(os.Stderr, f))
+	log.Printf("[AppLog] writing to %s", path)
+	return path, startedAt, func() { _ = f.Close() }
 }
 
 // setupTUNMode 设置 TUN 模式权限
