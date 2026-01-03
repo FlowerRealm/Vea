@@ -507,7 +507,10 @@ func measureDownloadFixedDurationWith(
 					lastErr = err
 					lastErrMu.Unlock()
 					if bytesRead == 0 {
-						time.Sleep(20 * time.Millisecond)
+						sleep := clampSleepToRemaining(testCtx, 20*time.Millisecond)
+						if sleep > 0 {
+							time.Sleep(sleep)
+						}
 					}
 					continue
 				}
@@ -558,6 +561,26 @@ func measureDownloadFixedDurationWith(
 		return 0, errors.New("no throughput data collected")
 	}
 	return mbps, nil
+}
+
+func clampSleepToRemaining(ctx context.Context, sleep time.Duration) time.Duration {
+	if sleep <= 0 {
+		return 0
+	}
+	dl, ok := ctx.Deadline()
+	if !ok {
+		return sleep
+	}
+	remaining := time.Until(dl)
+	if remaining <= 0 {
+		return 0
+	}
+	// 窗口太短时不要 sleep：Windows 上 time.Sleep 可能有较粗的粒度，
+	// 小窗口 + 固定 backoff 会直接“睡过头”，导致完全没有重试机会。
+	if remaining < 2*sleep {
+		return 0
+	}
+	return sleep
 }
 
 // downloadViaSocks5Once 单次 SOCKS5 下载
