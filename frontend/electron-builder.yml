@@ -2,7 +2,7 @@ appId: com.vea.app
 productName: Vea
 copyright: Copyright © 2025 FlowerRealm
 
-# 统一文件命名格式: Vea-版本-平台-架构.扩展名
+# 默认文件命名格式: Vea-版本-平台-架构.扩展名（Windows 安装器见 nsis.artifactName）
 artifactName: "${productName}-${version}-${os}-${arch}.${ext}"
 
 directories:
@@ -51,6 +51,9 @@ win:
     - target: nsis
       arch:
         - x64
+    - target: zip
+      arch:
+        - x64
   icon: assets/icon.ico
   requestedExecutionLevel: requireAdministrator
   extraResources:
@@ -62,6 +65,7 @@ win:
         - "**/*"
 
 nsis:
+  artifactName: "${productName}-${version}-${os}-${arch}-installer.${ext}"
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: always

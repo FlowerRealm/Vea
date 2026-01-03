@@ -396,7 +396,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-packages
-          path: release/*.exe
+          path: |
+            release/*.exe
+            release/*.zip
           retention-days: 1
 
   # ===================================
@@ -417,7 +419,7 @@ jobs:
         working-directory: release-dist
         run: |
           mkdir -p ../dist
-          find . -type f \( -name "*.deb" -o -name "*.dmg" -o -name "*.exe" \) -exec mv {} ../dist/ \;
+          find . -type f \( -name "*.deb" -o -name "*.dmg" -o -name "*.exe" -o -name "*.zip" \) -exec mv {} ../dist/ \;
           ls -lh ../dist/
 
       - name: Generate checksums
@@ -446,6 +448,7 @@ jobs:
 
             ### Windows
             - **exe** (x64) - NSIS 安装程序
+            - **zip** (x64) - 免安装压缩包（解压即用）
 
             ## 安装说明
 
