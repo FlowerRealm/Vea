@@ -54,11 +54,27 @@ func parseClashProxy(m map[string]interface{}) (domain.Node, bool, error) {
 		return domain.Node{}, false, nil
 	}
 	name := strings.TrimSpace(getString(m, "name"))
+	if name == "" {
+		return domain.Node{}, false, fmt.Errorf("clash proxy entry: missing name")
+	}
 	proxyType := strings.ToLower(strings.TrimSpace(getString(m, "type")))
+	if proxyType == "" {
+		return domain.Node{}, false, fmt.Errorf("clash proxy %q: missing type", name)
+	}
 	server := strings.TrimSpace(getString(m, "server"))
-	port := getInt(m, "port")
-	if name == "" || proxyType == "" || server == "" || port <= 0 {
-		return domain.Node{}, false, fmt.Errorf("invalid clash proxy entry: name/type/server/port required")
+	if server == "" {
+		return domain.Node{}, false, fmt.Errorf("clash proxy %q: missing server", name)
+	}
+	rawPort, ok := getValue(m, "port")
+	if !ok {
+		return domain.Node{}, false, fmt.Errorf("clash proxy %q: missing port", name)
+	}
+	port, ok := toInt(rawPort)
+	if !ok {
+		return domain.Node{}, false, fmt.Errorf("clash proxy %q: invalid port %v", name, rawPort)
+	}
+	if port <= 0 {
+		return domain.Node{}, false, fmt.Errorf("clash proxy %q: invalid port %d", name, port)
 	}
 
 	switch proxyType {
@@ -325,6 +341,18 @@ func getString(m map[string]interface{}, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+func getValue(m map[string]interface{}, keys ...string) (interface{}, bool) {
+	for _, k := range keys {
+		if v, ok := m[k]; ok {
+			return v, true
+		}
+		if v, ok := m[normalizeKey(k)]; ok {
+			return v, true
+		}
+	}
+	return nil, false
 }
 
 func getInt(m map[string]interface{}, keys ...string) int {

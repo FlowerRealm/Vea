@@ -26,7 +26,7 @@ func TestService_Create_WithSourceURL_DownloadsPayloadAndChecksum(t *testing.T) 
 	t.Cleanup(srv.Close)
 
 	repo := memory.NewConfigRepo(memory.NewStore(events.NewBus()))
-	svc := NewService(repo, nil)
+	svc := NewService(repo, nil, nil)
 
 	created, err := svc.Create(context.Background(), domain.Config{
 		Name:      "cfg-1",
@@ -65,7 +65,7 @@ func TestService_Sync_UnchangedChecksum_OnlyUpdatesLastSyncedAt(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	repo := memory.NewConfigRepo(memory.NewStore(events.NewBus()))
-	svc := NewService(repo, nil)
+	svc := NewService(repo, nil, nil)
 
 	sum := sha256.Sum256([]byte(payload))
 	checksum := hex.EncodeToString(sum[:])

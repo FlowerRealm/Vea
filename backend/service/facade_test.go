@@ -39,7 +39,7 @@ func TestFacade_Snapshot_IncludesRuntimeMetrics(t *testing.T) {
 	nodeSvc.SetMeasurer(speedMeasurer)
 	frouterSvc.SetMeasurer(speedMeasurer)
 
-	configSvc := configsvc.NewService(configRepo, nodeSvc)
+	configSvc := configsvc.NewService(configRepo, nodeSvc, nil)
 	proxySvc := proxy.NewService(frouterRepo, nodeRepo, componentRepo, settingsRepo)
 	componentSvc := component.NewService(componentRepo)
 	geoSvc := geo.NewService(geoRepo)

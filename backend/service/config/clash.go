@@ -31,7 +31,7 @@ func parseClashYAMLRulesAndGroups(payload string) ([]clashProxyGroup, []clashRul
 
 	var raw map[string]interface{}
 	if err := yaml.Unmarshal([]byte(text), &raw); err != nil {
-		return nil, nil, false, nil
+		return nil, nil, false, []error{fmt.Errorf("invalid clash yaml: %w", err)}
 	}
 
 	norm := normalizeTopLevelKeys(raw)

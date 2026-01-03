@@ -44,7 +44,7 @@ func newTestRouterWithRepos(t *testing.T) (*memory.NodeRepo, *memory.FRouterRepo
 	nodeSvc.SetMeasurer(speedMeasurer)
 	frouterSvc.SetMeasurer(speedMeasurer)
 
-	configSvc := configsvc.NewService(configRepo, nodeSvc)
+	configSvc := configsvc.NewService(configRepo, nodeSvc, nil)
 	proxySvc := proxy.NewService(frouterRepo, nodeRepo, componentRepo, settingsRepo)
 	componentSvc := component.NewService(componentRepo)
 	geoSvc := geo.NewService(geoRepo)

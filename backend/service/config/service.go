@@ -13,7 +13,6 @@ import (
 
 	"vea/backend/domain"
 	"vea/backend/repository"
-	"vea/backend/service/frouter"
 	"vea/backend/service/node"
 	"vea/backend/service/nodegroup"
 	"vea/backend/service/nodes"
@@ -33,23 +32,25 @@ var (
 	ErrSyncFailed     = errors.New("sync failed")
 )
 
+type FRouterService interface {
+	List(ctx context.Context) ([]domain.FRouter, error)
+	Create(ctx context.Context, frouter domain.FRouter) (domain.FRouter, error)
+}
+
 // Service 配置服务
 type Service struct {
 	repo        repository.ConfigRepository
 	nodeService *nodes.Service
-	frouterSvc  *frouter.Service
+	frouterSvc  FRouterService
 }
 
 // NewService 创建配置服务
-func NewService(repo repository.ConfigRepository, nodeService *nodes.Service) *Service {
+func NewService(repo repository.ConfigRepository, nodeService *nodes.Service, frouterSvc FRouterService) *Service {
 	return &Service{
 		repo:        repo,
 		nodeService: nodeService,
+		frouterSvc:  frouterSvc,
 	}
-}
-
-func (s *Service) SetFRouterService(frouterSvc *frouter.Service) {
-	s.frouterSvc = frouterSvc
 }
 
 // ========== CRUD 操作 ==========
@@ -203,7 +204,7 @@ func (s *Service) ensureFRouterFromPayload(ctx context.Context, cfg domain.Confi
 
 	groups, rules, ok, errs := parseClashYAMLRulesAndGroups(cfg.Payload)
 	if len(errs) > 0 {
-		log.Printf("[ConfigSync] clash parse errors for %s: %d", cfg.ID, len(errs))
+		log.Printf("[ConfigSync] clash parse error for %s: %v", cfg.ID, errs[0])
 	}
 	if !ok {
 		return
