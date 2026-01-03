@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -64,18 +65,42 @@ func (f *Facade) Errors() (nodeNotFound, frouterNotFound, configNotFound, geoNot
 }
 
 // Snapshot 获取完整状态快照
-func (f *Facade) Snapshot() domain.ServiceState {
+func (f *Facade) Snapshot() (domain.ServiceState, error) {
 	ctx := context.Background()
 
-	nodes, _ := f.nodes.List(ctx)
-	frouters, _ := f.frouter.List(ctx)
-	configs, _ := f.config.List(ctx)
-	geoResources, _ := f.geo.List(ctx)
-	components, _ := f.component.List(ctx)
+	nodes, err := f.nodes.List(ctx)
+	if err != nil {
+		return domain.ServiceState{}, err
+	}
+	frouters, err := f.frouter.List(ctx)
+	if err != nil {
+		return domain.ServiceState{}, err
+	}
+	configs, err := f.config.List(ctx)
+	if err != nil {
+		return domain.ServiceState{}, err
+	}
+	geoResources, err := f.geo.List(ctx)
+	if err != nil {
+		return domain.ServiceState{}, err
+	}
+	components, err := f.component.List(ctx)
+	if err != nil {
+		return domain.ServiceState{}, err
+	}
 
-	systemProxy, _ := f.repos.Settings().GetSystemProxy(ctx)
-	proxyConfig, _ := f.repos.Settings().GetProxyConfig(ctx)
-	frontendSettings, _ := f.repos.Settings().GetFrontend(ctx)
+	systemProxy, err := f.repos.Settings().GetSystemProxy(ctx)
+	if err != nil {
+		return domain.ServiceState{}, err
+	}
+	proxyConfig, err := f.repos.Settings().GetProxyConfig(ctx)
+	if err != nil {
+		return domain.ServiceState{}, err
+	}
+	frontendSettings, err := f.repos.Settings().GetFrontend(ctx)
+	if err != nil {
+		return domain.ServiceState{}, err
+	}
 
 	return domain.ServiceState{
 		SchemaVersion:    persist.SchemaVersion,
@@ -88,15 +113,14 @@ func (f *Facade) Snapshot() domain.ServiceState {
 		ProxyConfig:      proxyConfig,
 		FrontendSettings: frontendSettings,
 		GeneratedAt:      time.Now(),
-	}
+	}, nil
 }
 
 // ========== FRouter 操作 ==========
 
 // ListFRouters 列出所有 FRouter
-func (f *Facade) ListFRouters() []domain.FRouter {
-	frouters, _ := f.frouter.List(context.Background())
-	return frouters
+func (f *Facade) ListFRouters() ([]domain.FRouter, error) {
+	return f.frouter.List(context.Background())
 }
 
 // GetFRouter 获取 FRouter
@@ -105,9 +129,8 @@ func (f *Facade) GetFRouter(id string) (domain.FRouter, error) {
 }
 
 // CreateFRouter 创建 FRouter
-func (f *Facade) CreateFRouter(frouter domain.FRouter) domain.FRouter {
-	created, _ := f.frouter.Create(context.Background(), frouter)
-	return created
+func (f *Facade) CreateFRouter(frouter domain.FRouter) (domain.FRouter, error) {
+	return f.frouter.Create(context.Background(), frouter)
 }
 
 // UpdateFRouter 更新 FRouter
@@ -140,9 +163,8 @@ func (f *Facade) MeasureFRouterSpeedAsync(id string) {
 
 // ========== Node 操作 ==========
 
-func (f *Facade) ListNodes() []domain.Node {
-	nodes, _ := f.nodes.List(context.Background())
-	return nodes
+func (f *Facade) ListNodes() ([]domain.Node, error) {
+	return f.nodes.List(context.Background())
 }
 
 func (f *Facade) CreateNode(node domain.Node) (domain.Node, error) {
@@ -172,9 +194,8 @@ func (f *Facade) MeasureNodeSpeedAsync(id string) {
 // ========== Config 操作 ==========
 
 // ListConfigs 列出所有配置
-func (f *Facade) ListConfigs() []domain.Config {
-	configs, _ := f.config.List(context.Background())
-	return configs
+func (f *Facade) ListConfigs() ([]domain.Config, error) {
+	return f.config.List(context.Background())
 }
 
 // CreateConfig 创建配置
@@ -227,7 +248,10 @@ func (f *Facade) SyncConfigNodes(configID string) ([]domain.Node, error) {
 		}
 	}
 
-	nodesFromConfig, _ := node.ParseMultipleLinks(cfg.Payload)
+	nodesFromConfig, parseErrs := node.ParseMultipleLinks(cfg.Payload)
+	if len(parseErrs) > 0 {
+		log.Printf("[SyncConfigNodes] parse errors for %s: %d", configID, len(parseErrs))
+	}
 	if len(nodesFromConfig) == 0 {
 		existing, err := f.nodes.List(ctx)
 		if err != nil {
@@ -339,9 +363,8 @@ func (f *Facade) ensureCoreEngineInstalled(ctx context.Context, engine domain.Co
 // ========== Component 操作 ==========
 
 // ListComponents 列出所有组件
-func (f *Facade) ListComponents() []domain.CoreComponent {
-	components, _ := f.component.List(context.Background())
-	return components
+func (f *Facade) ListComponents() ([]domain.CoreComponent, error) {
+	return f.component.List(context.Background())
 }
 
 // CreateComponent 创建组件
@@ -375,15 +398,13 @@ func (f *Facade) InstallComponentAsync(id string) (domain.CoreComponent, error) 
 // ========== Geo 操作 ==========
 
 // ListGeo 列出所有 Geo 资源
-func (f *Facade) ListGeo() []domain.GeoResource {
-	resources, _ := f.geo.List(context.Background())
-	return resources
+func (f *Facade) ListGeo() ([]domain.GeoResource, error) {
+	return f.geo.List(context.Background())
 }
 
 // UpsertGeo 插入或更新 Geo 资源
-func (f *Facade) UpsertGeo(geo domain.GeoResource) domain.GeoResource {
-	result, _ := f.geo.Upsert(context.Background(), geo)
-	return result
+func (f *Facade) UpsertGeo(geo domain.GeoResource) (domain.GeoResource, error) {
+	return f.geo.Upsert(context.Background(), geo)
 }
 
 // DeleteGeo 删除 Geo 资源
@@ -402,9 +423,8 @@ func (f *Facade) RefreshGeo(id string) (domain.GeoResource, error) {
 // ========== Settings 操作 ==========
 
 // SystemProxySettings 获取系统代理设置
-func (f *Facade) SystemProxySettings() domain.SystemProxySettings {
-	settings, _ := f.repos.Settings().GetSystemProxy(context.Background())
-	return settings
+func (f *Facade) SystemProxySettings() (domain.SystemProxySettings, error) {
+	return f.repos.Settings().GetSystemProxy(context.Background())
 }
 
 // UpdateSystemProxySettings 更新系统代理设置
@@ -493,9 +513,8 @@ func (f *Facade) UpdateSystemProxySettings(settings domain.SystemProxySettings) 
 }
 
 // GetProxyConfig 获取代理运行配置（单例）
-func (f *Facade) GetProxyConfig() domain.ProxyConfig {
-	config, _ := f.repos.Settings().GetProxyConfig(context.Background())
-	return config
+func (f *Facade) GetProxyConfig() (domain.ProxyConfig, error) {
+	return f.repos.Settings().GetProxyConfig(context.Background())
 }
 
 // UpdateProxyConfig 更新代理运行配置
@@ -512,9 +531,8 @@ func (f *Facade) UpdateProxyConfig(updateFn func(domain.ProxyConfig) (domain.Pro
 }
 
 // GetFrontendSettings 获取前端设置
-func (f *Facade) GetFrontendSettings() map[string]interface{} {
-	settings, _ := f.repos.Settings().GetFrontend(context.Background())
-	return settings
+func (f *Facade) GetFrontendSettings() (map[string]interface{}, error) {
+	return f.repos.Settings().GetFrontend(context.Background())
 }
 
 // SaveFrontendSettings 保存前端设置

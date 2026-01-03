@@ -20,7 +20,11 @@ func (r *Router) getProxyStatus(c *gin.Context) {
 }
 
 func (r *Router) getProxyConfig(c *gin.Context) {
-	config := r.service.GetProxyConfig()
+	config, err := r.service.GetProxyConfig()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
 	c.JSON(http.StatusOK, config)
 }
 
@@ -63,7 +67,12 @@ func (r *Router) startProxy(c *gin.Context) {
 		}
 	}
 
-	cfg := r.service.GetProxyConfig().ApplyPatch(req)
+	current, err := r.service.GetProxyConfig()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	cfg := current.ApplyPatch(req)
 
 	if err := r.service.StartProxy(cfg); err != nil {
 		r.handleError(c, err)

@@ -60,7 +60,12 @@ func (r *Router) register(engine *gin.Engine) {
 	})
 
 	engine.GET("/snapshot", func(c *gin.Context) {
-		c.JSON(http.StatusOK, r.service.Snapshot())
+		snapshot, err := r.service.Snapshot()
+		if err != nil {
+			r.handleError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, snapshot)
 	})
 
 	nodes := engine.Group("/nodes")
@@ -180,14 +185,22 @@ type nodeRequest struct {
 }
 
 func (r *Router) listFRouters(c *gin.Context) {
-	frouters := r.service.ListFRouters()
+	frouters, err := r.service.ListFRouters()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"frouters": frouters,
 	})
 }
 
 func (r *Router) listNodes(c *gin.Context) {
-	nodes := r.service.ListNodes()
+	nodes, err := r.service.ListNodes()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"nodes": nodes,
 	})
@@ -407,7 +420,12 @@ func (r *Router) bulkPingNodes(c *gin.Context) {
 	}
 	var targetIDs []string
 	if len(ids.IDs) == 0 {
-		for _, node := range r.service.ListNodes() {
+		nodes, err := r.service.ListNodes()
+		if err != nil {
+			r.handleError(c, err)
+			return
+		}
+		for _, node := range nodes {
 			targetIDs = append(targetIDs, node.ID)
 		}
 	} else {
@@ -432,7 +450,12 @@ func (r *Router) bulkSpeedtestNodes(c *gin.Context) {
 	}
 	var targetIDs []string
 	if len(ids.IDs) == 0 {
-		for _, node := range r.service.ListNodes() {
+		nodes, err := r.service.ListNodes()
+		if err != nil {
+			r.handleError(c, err)
+			return
+		}
+		for _, node := range nodes {
 			targetIDs = append(targetIDs, node.ID)
 		}
 	} else {
@@ -477,7 +500,12 @@ func (r *Router) createFRouter(c *gin.Context) {
 		}
 	}
 	frouter.ChainProxy.Edges = normalizeChainEdges(frouter.ChainProxy.Edges)
-	if _, err := nodegroup.CompileFRouter(frouter, r.service.ListNodes()); err != nil {
+	nodes, err := r.service.ListNodes()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	if _, err := nodegroup.CompileFRouter(frouter, nodes); err != nil {
 		var ce *nodegroup.CompileError
 		if errors.As(err, &ce) {
 			c.JSON(http.StatusBadRequest, gin.H{
@@ -489,7 +517,11 @@ func (r *Router) createFRouter(c *gin.Context) {
 		badRequest(c, err)
 		return
 	}
-	created := r.service.CreateFRouter(frouter)
+	created, err := r.service.CreateFRouter(frouter)
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
 	c.JSON(http.StatusCreated, created)
 }
 
@@ -506,7 +538,11 @@ func (r *Router) updateFRouter(c *gin.Context) {
 			frouter.ChainProxy = *req.ChainProxy
 		}
 		frouter.ChainProxy.Edges = normalizeChainEdges(frouter.ChainProxy.Edges)
-		if _, err := nodegroup.CompileFRouter(frouter, r.service.ListNodes()); err != nil {
+		nodes, err := r.service.ListNodes()
+		if err != nil {
+			return domain.FRouter{}, err
+		}
+		if _, err := nodegroup.CompileFRouter(frouter, nodes); err != nil {
 			return domain.FRouter{}, err
 		}
 		frouter.Tags = req.Tags
@@ -550,7 +586,12 @@ func (r *Router) bulkPingFRouters(c *gin.Context) {
 	}
 	var targetIDs []string
 	if len(ids.IDs) == 0 {
-		for _, frouter := range r.service.ListFRouters() {
+		frouters, err := r.service.ListFRouters()
+		if err != nil {
+			r.handleError(c, err)
+			return
+		}
+		for _, frouter := range frouters {
 			targetIDs = append(targetIDs, frouter.ID)
 		}
 	} else {
@@ -574,8 +615,13 @@ func (r *Router) resetFRouterSpeed(c *gin.Context) {
 		return
 	}
 	targetIDs := make(map[string]struct{})
+	frouters, err := r.service.ListFRouters()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
 	if len(ids.IDs) == 0 {
-		for _, frouter := range r.service.ListFRouters() {
+		for _, frouter := range frouters {
 			targetIDs[frouter.ID] = struct{}{}
 		}
 	} else {
@@ -583,16 +629,19 @@ func (r *Router) resetFRouterSpeed(c *gin.Context) {
 			targetIDs[id] = struct{}{}
 		}
 	}
-	for _, frouter := range r.service.ListFRouters() {
+	for _, frouter := range frouters {
 		if _, ok := targetIDs[frouter.ID]; !ok {
 			continue
 		}
-		_, _ = r.service.UpdateFRouter(frouter.ID, func(rp domain.FRouter) (domain.FRouter, error) {
+		if _, err := r.service.UpdateFRouter(frouter.ID, func(rp domain.FRouter) (domain.FRouter, error) {
 			rp.LastSpeedMbps = 0
 			rp.LastSpeedAt = time.Time{}
 			rp.LastSpeedError = ""
 			return rp, nil
-		})
+		}); err != nil {
+			r.handleError(c, err)
+			return
+		}
 	}
 	c.Status(http.StatusNoContent)
 }
@@ -607,7 +656,12 @@ type configRequest struct {
 }
 
 func (r *Router) listConfigs(c *gin.Context) {
-	c.JSON(http.StatusOK, r.service.ListConfigs())
+	configs, err := r.service.ListConfigs()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, configs)
 }
 
 func (r *Router) importConfig(c *gin.Context) {
@@ -703,7 +757,12 @@ type geoRequest struct {
 }
 
 func (r *Router) listGeo(c *gin.Context) {
-	c.JSON(http.StatusOK, r.service.ListGeo())
+	resources, err := r.service.ListGeo()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resources)
 }
 
 func (r *Router) upsertGeo(c *gin.Context) {
@@ -721,7 +780,11 @@ func (r *Router) upsertGeo(c *gin.Context) {
 		Checksum:  req.Checksum,
 		Version:   req.Version,
 	}
-	updated := r.service.UpsertGeo(res)
+	updated, err := r.service.UpsertGeo(res)
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
 	status := http.StatusOK
 	if id == "" {
 		status = http.StatusCreated
@@ -756,7 +819,12 @@ type componentRequest struct {
 }
 
 func (r *Router) listComponents(c *gin.Context) {
-	c.JSON(http.StatusOK, r.service.ListComponents())
+	components, err := r.service.ListComponents()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, components)
 }
 
 func (r *Router) createComponent(c *gin.Context) {
@@ -824,8 +892,13 @@ func (r *Router) installComponent(c *gin.Context) {
 }
 
 func (r *Router) getSystemProxySettings(c *gin.Context) {
+	settings, err := r.service.SystemProxySettings()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
-		"settings": r.service.SystemProxySettings(),
+		"settings": settings,
 		"message":  "",
 	})
 }
@@ -856,7 +929,11 @@ func (r *Router) updateSystemProxySettings(c *gin.Context) {
 }
 
 func (r *Router) getFrontendSettings(c *gin.Context) {
-	settings := r.service.GetFrontendSettings()
+	settings, err := r.service.GetFrontendSettings()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
 	c.JSON(http.StatusOK, settings)
 }
 
@@ -916,6 +993,7 @@ func (r *Router) handleError(c *gin.Context, err error) {
 		return
 	}
 
+	log.Printf("[API] %s %s: %v", c.Request.Method, c.Request.URL.Path, err)
 	c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 }
 
@@ -1004,7 +1082,12 @@ func (r *Router) saveFRouterGraph(c *gin.Context) {
 		draft.ChainProxy.Slots = []domain.SlotNode{}
 	}
 
-	if _, err := nodegroup.CompileFRouter(draft, r.service.ListNodes()); err != nil {
+	nodes, err := r.service.ListNodes()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	if _, err := nodegroup.CompileFRouter(draft, nodes); err != nil {
 		var ce *nodegroup.CompileError
 		if errors.As(err, &ce) {
 			c.JSON(http.StatusBadRequest, gin.H{
@@ -1032,37 +1115,44 @@ func (r *Router) saveFRouterGraph(c *gin.Context) {
 	// 如果代理正在运行，自动重启以应用新配置
 	status := r.service.GetProxyStatus()
 	if running, ok := status["running"].(bool); ok && running {
-		cfg := r.service.GetProxyConfig()
-		if cfg.FRouterID == "" {
-			if id, ok := status["frouterId"].(string); ok && id != "" {
-				cfg.FRouterID = id
+		cfg, err := r.service.GetProxyConfig()
+		if err != nil {
+			log.Printf("[FRouterGraph] 获取代理配置失败，跳过自动重启: %v", err)
+		} else {
+			if cfg.FRouterID == "" {
+				if id, ok := status["frouterId"].(string); ok && id != "" {
+					cfg.FRouterID = id
+				}
 			}
-		}
-		if cfg.FRouterID != "" {
-			c.Header("X-Vea-Effects", "proxy_restart_scheduled")
-			log.Printf("[FRouterGraph] 图配置已更新，重启代理以应用更改")
-			go func(cfg domain.ProxyConfig) {
-				// StopProxy 会强制关闭系统代理并持久化（防止“内核停了但系统代理还指向黑洞”）。
-				// 但这里是“重启内核以应用配置”，用户期望系统代理在重启后保持原状态，因此需要恢复。
-				originalSystemProxy := r.service.SystemProxySettings()
-				restoreSystemProxy := originalSystemProxy.Enabled
-
-				if err := r.service.StopProxy(); err != nil {
-					log.Printf("[FRouterGraph] 停止代理失败: %v", err)
-					return
-				}
-				if err := r.service.StartProxy(cfg); err != nil {
-					log.Printf("[FRouterGraph] 重启代理失败: %v", err)
-					return
-				}
-
-				if restoreSystemProxy {
-					originalSystemProxy.Enabled = true
-					if _, _, err := r.service.UpdateSystemProxySettings(originalSystemProxy); err != nil {
-						log.Printf("[FRouterGraph] 恢复系统代理失败: %v", err)
+			if cfg.FRouterID != "" {
+				c.Header("X-Vea-Effects", "proxy_restart_scheduled")
+				log.Printf("[FRouterGraph] 图配置已更新，重启代理以应用更改")
+				go func(cfg domain.ProxyConfig) {
+					// StopProxy 会强制关闭系统代理并持久化（防止“内核停了但系统代理还指向黑洞”）。
+					// 但这里是“重启内核以应用配置”，用户期望系统代理在重启后保持原状态，因此需要恢复。
+					originalSystemProxy, err := r.service.SystemProxySettings()
+					restoreSystemProxy := err == nil && originalSystemProxy.Enabled
+					if err != nil {
+						log.Printf("[FRouterGraph] 获取系统代理设置失败，跳过恢复: %v", err)
 					}
-				}
-			}(cfg)
+
+					if err := r.service.StopProxy(); err != nil {
+						log.Printf("[FRouterGraph] 停止代理失败: %v", err)
+						return
+					}
+					if err := r.service.StartProxy(cfg); err != nil {
+						log.Printf("[FRouterGraph] 重启代理失败: %v", err)
+						return
+					}
+
+					if restoreSystemProxy {
+						originalSystemProxy.Enabled = true
+						if _, _, err := r.service.UpdateSystemProxySettings(originalSystemProxy); err != nil {
+							log.Printf("[FRouterGraph] 恢复系统代理失败: %v", err)
+						}
+					}
+				}(cfg)
+			}
 		}
 	}
 
@@ -1119,7 +1209,12 @@ func (r *Router) validateFRouterGraph(c *gin.Context) {
 		draft.ChainProxy.Positions = req.Positions
 	}
 
-	compiled, err := nodegroup.CompileFRouter(draft, r.service.ListNodes())
+	nodes, err := r.service.ListNodes()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	compiled, err := nodegroup.CompileFRouter(draft, nodes)
 	if err != nil {
 		var ce *nodegroup.CompileError
 		if errors.As(err, &ce) {

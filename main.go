@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -30,18 +32,25 @@ import (
 )
 
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
 	// 检查是否是子命令
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "setup-tun":
-			setupTUNMode()
-			return
+			if err := setupTUNMode(os.Args[2:]); err != nil {
+				log.Print(err)
+				return 1
+			}
+			return 0
 		case "resolvectl-helper":
 			runResolvectlHelper()
-			return
+			return 0
 		case "resolvectl-shim":
 			runResolvectlShim()
-			return
+			return 0
 		}
 	}
 
@@ -84,7 +93,7 @@ func main() {
 		log.Printf("load snapshot failed: %v", err)
 		log.Printf("拒绝启动以避免覆盖 state 文件: %s", *statePath)
 		log.Printf("请移动/删除该文件或修正 schemaVersion 后重试")
-		os.Exit(1)
+		return 1
 	}
 
 	memStore.LoadState(state)
@@ -146,6 +155,7 @@ func main() {
 		Handler: router,
 	}
 
+	cleanupDone := make(chan struct{})
 	go func() {
 		<-ctx.Done()
 		log.Println("收到退出信号，正在清理...")
@@ -168,33 +178,39 @@ func main() {
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			log.Printf("graceful shutdown failed: %v", err)
 		}
+		close(cleanupDone)
 	}()
 
 	log.Printf("server listening on %s", srv.Addr)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("listen: %v", err)
+		log.Printf("listen: %v", err)
+		cancel()
+		<-cleanupDone
+		return 1
 	}
+	<-cleanupDone
+	return 0
 }
 
 // setupTUNMode 设置 TUN 模式权限
-func setupTUNMode() {
+func setupTUNMode(args []string) error {
 	log.Println("Setting up TUN mode privileges...")
 
 	fs := flag.NewFlagSet("setup-tun", flag.ContinueOnError)
 	singBoxBinary := fs.String("singbox-binary", "", "path to sing-box binary (optional)")
-	if err := fs.Parse(os.Args[2:]); err != nil {
-		log.Fatal(err)
+	if err := fs.Parse(args); err != nil {
+		return err
 	}
 
 	switch runtime.GOOS {
 	case "windows":
-		log.Fatal("TUN setup is not needed on Windows. Just run Vea as Administrator.")
+		return errors.New("TUN setup is not needed on Windows. Just run Vea as Administrator.")
 	case "darwin":
-		log.Fatal("TUN setup is not needed on macOS. Just run Vea with sudo.")
+		return errors.New("TUN setup is not needed on macOS. Just run Vea with sudo.")
 	case "linux":
 		// Linux 平台需要 root 权限（该子命令一般通过 sudo 调用）
 		if os.Geteuid() != 0 {
-			log.Fatal("TUN setup requires root privileges. Run: sudo vea setup-tun")
+			return errors.New("TUN setup requires root privileges. Run: sudo vea setup-tun")
 		}
 		var err error
 		if *singBoxBinary != "" {
@@ -203,10 +219,11 @@ func setupTUNMode() {
 			err = shared.SetupTUN()
 		}
 		if err != nil {
-			log.Fatalf("TUN setup failed: %v", err)
+			return fmt.Errorf("TUN setup failed: %w", err)
 		}
 		log.Println("TUN setup complete.")
+		return nil
 	default:
-		log.Fatalf("TUN setup is not supported on %s", runtime.GOOS)
+		return fmt.Errorf("TUN setup is not supported on %s", runtime.GOOS)
 	}
 }
