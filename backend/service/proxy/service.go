@@ -100,31 +100,69 @@ func (s *Service) Start(ctx context.Context, cfg domain.ProxyConfig) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	previousTunInterface := ""
-	if s.activeCfg.InboundMode == domain.InboundTUN {
-		previousTunInterface = "tun0"
-		if s.activeCfg.TUNSettings != nil && s.activeCfg.TUNSettings.InterfaceName != "" {
-			previousTunInterface = s.activeCfg.TUNSettings.InterfaceName
-		}
-	}
+	hadPrevious := s.mainHandle != nil
+	previousCfg := s.activeCfg
+	previousEngine := s.mainEngine
+	previousAdapter := s.adapters[previousEngine]
 	previousConfigPath := ""
+	previousBinaryPath := ""
 	if s.mainHandle != nil {
 		previousConfigPath = strings.TrimSpace(s.mainHandle.ConfigPath)
+		previousBinaryPath = strings.TrimSpace(s.mainHandle.BinaryPath)
 	}
-
-	// 停止现有代理
-	s.stopLocked()
-	if previousTunInterface != "" {
-		// 避免重启过快导致 tun 设备尚未释放就再次创建，触发 "device or resource busy"。
-		if err := s.waitForTUNAbsent(previousTunInterface, 10*time.Second); err != nil {
-			// 处理历史遗留：曾经用 pkexec 启动过 sing-box 时，后端无法以普通用户态 stop root 进程，
-			// 可能留下孤儿 sing-box 占用 tun 设备。这里做一次 best-effort 清理。
-			s.killProcessesUsingConfig(previousConfigPath)
-			if err2 := s.waitForTUNAbsent(previousTunInterface, 10*time.Second); err2 != nil {
-				return fmt.Errorf("previous TUN is still busy: %w", err2)
-			}
+	previousConfigBytes := []byte(nil)
+	if previousConfigPath != "" {
+		if b, err := os.ReadFile(previousConfigPath); err == nil {
+			previousConfigBytes = b
 		}
 	}
+	previousTunInterface := ""
+	if previousCfg.InboundMode == domain.InboundTUN {
+		previousTunInterface = "tun0"
+		if previousCfg.TUNSettings != nil && previousCfg.TUNSettings.InterfaceName != "" {
+			previousTunInterface = previousCfg.TUNSettings.InterfaceName
+		}
+	}
+
+	rollback := func(cause error) error {
+		if !hadPrevious {
+			return cause
+		}
+		if previousEngine == "" {
+			return errors.Join(cause, errors.New("rollback: previous engine is empty"))
+		}
+		if previousAdapter == nil {
+			return errors.Join(cause, fmt.Errorf("rollback: adapter not found for engine: %s", previousEngine))
+		}
+		if previousConfigPath == "" {
+			return errors.Join(cause, errors.New("rollback: previous config path is empty"))
+		}
+
+		if len(previousConfigBytes) > 0 {
+			_ = os.MkdirAll(filepath.Dir(previousConfigPath), 0o755)
+			if err := os.WriteFile(previousConfigPath, previousConfigBytes, 0o600); err != nil {
+				return errors.Join(cause, fmt.Errorf("rollback: restore previous config: %w", err))
+			}
+		}
+
+		binaryPath := previousBinaryPath
+		if binaryPath == "" {
+			p, err := s.getEngineBinary(ctx, previousEngine, previousAdapter)
+			if err != nil {
+				return errors.Join(cause, fmt.Errorf("rollback: resolve previous binary: %w", err))
+			}
+			binaryPath = p
+		}
+
+		if err := s.startProcess(previousAdapter, previousEngine, binaryPath, previousConfigPath, previousCfg); err != nil {
+			return errors.Join(cause, fmt.Errorf("rollback: restart previous proxy: %w", err))
+		}
+
+		s.activeCfg = previousCfg
+		log.Printf("[Proxy] 启动失败，已回滚到上一次可用配置: %v", cause)
+		return cause
+	}
+
 	cfg = s.applyConfigDefaults(cfg)
 
 	// 获取 FRouter 与链式代理设置
@@ -143,6 +181,8 @@ func (s *Service) Start(ctx context.Context, cfg domain.ProxyConfig) error {
 	if err != nil {
 		return err
 	}
+
+	// 直到这里都不应该停掉现有代理；避免“新配置编译失败就把用户网络断掉”这种灾难。
 
 	// 获取适配器
 	adapter := s.adapters[engine]
@@ -179,14 +219,28 @@ func (s *Service) Start(ctx context.Context, cfg domain.ProxyConfig) error {
 		return err
 	}
 
+	// 停止现有代理（现在新配置已经准备好，失败概率大幅降低）。
+	s.stopLocked()
+	if hadPrevious && previousTunInterface != "" {
+		// 避免重启过快导致 tun 设备尚未释放就再次创建，触发 "device or resource busy"。
+		if err := s.waitForTUNAbsent(previousTunInterface, 10*time.Second); err != nil {
+			// 处理历史遗留：曾经用 pkexec 启动过 sing-box 时，后端无法以普通用户态 stop root 进程，
+			// 可能留下孤儿 sing-box 占用 tun 设备。这里做一次 best-effort 清理。
+			s.killProcessesUsingConfig(previousConfigPath)
+			if err2 := s.waitForTUNAbsent(previousTunInterface, 10*time.Second); err2 != nil {
+				return rollback(fmt.Errorf("previous TUN is still busy: %w", err2))
+			}
+		}
+	}
+
 	// 写入配置文件
 	configDir := engineConfigDir(engine)
 	configPath := filepath.Join(configDir, "config.json")
 	if err := os.MkdirAll(configDir, 0755); err != nil {
-		return fmt.Errorf("failed to create config dir: %w", err)
+		return rollback(fmt.Errorf("failed to create config dir: %w", err))
 	}
 	if err := os.WriteFile(configPath, configBytes, 0600); err != nil {
-		return fmt.Errorf("failed to write config: %w", err)
+		return rollback(fmt.Errorf("failed to write config: %w", err))
 	}
 
 	// 写入可读诊断信息（不影响启动流程）
@@ -195,7 +249,7 @@ func (s *Service) Start(ctx context.Context, cfg domain.ProxyConfig) error {
 
 	// 启动进程
 	if err := s.startProcess(adapter, engine, binaryPath, configPath, cfg); err != nil {
-		return err
+		return rollback(err)
 	}
 
 	if s.settings != nil {

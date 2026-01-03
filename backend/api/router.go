@@ -1129,30 +1129,23 @@ func (r *Router) saveFRouterGraph(c *gin.Context) {
 				r.service.MarkProxyRestartScheduled()
 				log.Printf("[FRouterGraph] 图配置已更新，重启代理以应用更改")
 				go func(cfg domain.ProxyConfig) {
-					// StopProxy 会强制关闭系统代理并持久化（防止“内核停了但系统代理还指向黑洞”）。
-					// 但这里是“重启内核以应用配置”，用户期望系统代理在重启后保持原状态，因此需要恢复。
-					originalSystemProxy, err := r.service.SystemProxySettings()
-					restoreSystemProxy := err == nil && originalSystemProxy.Enabled
-					if err != nil {
-						log.Printf("[FRouterGraph] 获取系统代理设置失败，跳过恢复: %v", err)
-					}
-
-					if err := r.service.StopProxy(); err != nil {
-						r.service.MarkProxyRestartFailed(err)
-						log.Printf("[FRouterGraph] 停止代理失败: %v", err)
-						return
-					}
 					if err := r.service.StartProxy(cfg); err != nil {
 						r.service.MarkProxyRestartFailed(err)
 						log.Printf("[FRouterGraph] 重启代理失败: %v", err)
-						return
-					}
 
-					if restoreSystemProxy {
-						originalSystemProxy.Enabled = true
-						if _, _, err := r.service.UpdateSystemProxySettings(originalSystemProxy); err != nil {
-							log.Printf("[FRouterGraph] 恢复系统代理失败: %v", err)
+						// 如果重启失败且代理未运行，系统代理继续指向本地端口会让用户“直接断网”。
+						// 这里兜底强制关闭系统代理并持久化，避免黑洞。
+						if status := r.service.GetProxyStatus(); status != nil {
+							if busy, ok := status["busy"].(bool); ok && busy {
+								return
+							}
+							if running, ok := status["running"].(bool); !ok || !running {
+								if err2 := r.service.StopProxy(); err2 != nil {
+									log.Printf("[FRouterGraph] 重启失败后关闭系统代理也失败: %v", err2)
+								}
+							}
 						}
+						return
 					}
 				}(cfg)
 			}

@@ -25,6 +25,7 @@ type fakeCoreAdapter struct {
 	startCalls         int
 	lastStartCfg       coreadapters.ProcessConfig
 	lastStartConfig    string
+	startErrs          []error
 	startErr           error
 	stopCalls          int
 	waitForReadyCalls  int
@@ -51,6 +52,9 @@ func (a *fakeCoreAdapter) Start(cfg coreadapters.ProcessConfig, configPath strin
 	a.startCalls++
 	a.lastStartCfg = cfg
 	a.lastStartConfig = configPath
+	if idx := a.startCalls - 1; idx >= 0 && idx < len(a.startErrs) && a.startErrs[idx] != nil {
+		return nil, a.startErrs[idx]
+	}
 	if a.startErr != nil {
 		return nil, a.startErr
 	}
@@ -192,6 +196,98 @@ func TestService_Start_MissingFRouterIDIsInvalidData(t *testing.T) {
 	}
 }
 
+func TestService_Start_DoesNotStopPreviousProxyOnCompileError(t *testing.T) {
+	ctx := context.Background()
+
+	oldRoot := shared.ArtifactsRoot
+	shared.ArtifactsRoot = t.TempDir()
+	t.Cleanup(func() { shared.ArtifactsRoot = oldRoot })
+
+	store := memory.NewStore(nil)
+	frouterRepo := memory.NewFRouterRepo(store)
+	componentRepo := memory.NewComponentRepo(store)
+	settingsRepo := memory.NewSettingsRepo(store)
+
+	frouter, err := frouterRepo.Create(ctx, domain.FRouter{
+		Name: "fr-1",
+		ChainProxy: domain.ChainProxySettings{
+			Edges: []domain.ProxyEdge{
+				{ID: "e-default", From: domain.EdgeNodeLocal, To: domain.EdgeNodeDirect, Enabled: true},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create frouter: %v", err)
+	}
+
+	comp, err := componentRepo.Create(ctx, domain.CoreComponent{Kind: domain.ComponentXray, Name: "Xray"})
+	if err != nil {
+		t.Fatalf("create component: %v", err)
+	}
+	installDir := filepath.Join(t.TempDir(), "xray")
+	if err := os.MkdirAll(installDir, 0o755); err != nil {
+		t.Fatalf("mkdir install dir: %v", err)
+	}
+	binPath := filepath.Join(installDir, "xray")
+	if err := os.WriteFile(binPath, []byte("dummy"), 0o644); err != nil {
+		t.Fatalf("write dummy binary: %v", err)
+	}
+	if err := componentRepo.SetInstalled(ctx, comp.ID, installDir, "test", ""); err != nil {
+		t.Fatalf("set installed: %v", err)
+	}
+
+	adapter := &fakeCoreAdapter{
+		kind:        domain.EngineXray,
+		binaryNames: []string{"xray"},
+	}
+	svc := NewService(frouterRepo, nil, componentRepo, settingsRepo)
+	svc.adapters = map[domain.CoreEngineKind]coreadapters.CoreAdapter{
+		domain.EngineXray: adapter,
+	}
+
+	cfg := domain.ProxyConfig{
+		FRouterID:       frouter.ID,
+		InboundMode:     domain.InboundSOCKS,
+		InboundPort:     1081,
+		PreferredEngine: domain.EngineXray,
+	}
+	if err := svc.Start(ctx, cfg); err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+
+	beforeHandle := svc.mainHandle
+	beforeEngine := svc.mainEngine
+
+	current, err := frouterRepo.Get(ctx, frouter.ID)
+	if err != nil {
+		t.Fatalf("get frouter: %v", err)
+	}
+	current.ChainProxy.Edges = []domain.ProxyEdge{}
+	if _, err := frouterRepo.Update(ctx, frouter.ID, current); err != nil {
+		t.Fatalf("update frouter: %v", err)
+	}
+
+	err = svc.Start(ctx, cfg)
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if adapter.stopCalls != 0 {
+		t.Fatalf("expected adapter.Stop not to be called, got %d", adapter.stopCalls)
+	}
+	if adapter.startCalls != 1 {
+		t.Fatalf("expected adapter.Start not to be called again, got %d", adapter.startCalls)
+	}
+	if svc.mainHandle != beforeHandle {
+		t.Fatalf("expected mainHandle to remain unchanged on compile error")
+	}
+	if svc.mainEngine != beforeEngine {
+		t.Fatalf("expected mainEngine to remain unchanged on compile error")
+	}
+	if svc.mainHandle == nil {
+		t.Fatalf("expected proxy to still be running (mainHandle != nil)")
+	}
+}
+
 func TestService_Start_InvalidFRouterIsCompileErrorAndInvalidData(t *testing.T) {
 	t.Parallel()
 
@@ -227,6 +323,86 @@ func TestService_Start_InvalidFRouterIsCompileErrorAndInvalidData(t *testing.T) 
 	}
 	if !errors.Is(err, repository.ErrInvalidData) {
 		t.Fatalf("expected errors.Is(..., ErrInvalidData)=true, got err=%v", err)
+	}
+}
+
+func TestService_Start_RollbackToPreviousProxyOnStartFailure(t *testing.T) {
+	ctx := context.Background()
+
+	oldRoot := shared.ArtifactsRoot
+	shared.ArtifactsRoot = t.TempDir()
+	t.Cleanup(func() { shared.ArtifactsRoot = oldRoot })
+
+	store := memory.NewStore(nil)
+	frouterRepo := memory.NewFRouterRepo(store)
+	componentRepo := memory.NewComponentRepo(store)
+	settingsRepo := memory.NewSettingsRepo(store)
+
+	frouter, err := frouterRepo.Create(ctx, domain.FRouter{
+		Name: "fr-1",
+		ChainProxy: domain.ChainProxySettings{
+			Edges: []domain.ProxyEdge{
+				{ID: "e-default", From: domain.EdgeNodeLocal, To: domain.EdgeNodeDirect, Enabled: true},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create frouter: %v", err)
+	}
+
+	comp, err := componentRepo.Create(ctx, domain.CoreComponent{Kind: domain.ComponentXray, Name: "Xray"})
+	if err != nil {
+		t.Fatalf("create component: %v", err)
+	}
+	installDir := filepath.Join(t.TempDir(), "xray")
+	if err := os.MkdirAll(installDir, 0o755); err != nil {
+		t.Fatalf("mkdir install dir: %v", err)
+	}
+	binPath := filepath.Join(installDir, "xray")
+	if err := os.WriteFile(binPath, []byte("dummy"), 0o644); err != nil {
+		t.Fatalf("write dummy binary: %v", err)
+	}
+	if err := componentRepo.SetInstalled(ctx, comp.ID, installDir, "test", ""); err != nil {
+		t.Fatalf("set installed: %v", err)
+	}
+
+	adapter := &fakeCoreAdapter{
+		kind:        domain.EngineXray,
+		binaryNames: []string{"xray"},
+		startErrs:   []error{nil, errors.New("boom"), nil},
+	}
+	svc := NewService(frouterRepo, nil, componentRepo, settingsRepo)
+	svc.adapters = map[domain.CoreEngineKind]coreadapters.CoreAdapter{
+		domain.EngineXray: adapter,
+	}
+
+	cfg := domain.ProxyConfig{
+		FRouterID:       frouter.ID,
+		InboundMode:     domain.InboundSOCKS,
+		InboundPort:     1081,
+		PreferredEngine: domain.EngineXray,
+	}
+	if err := svc.Start(ctx, cfg); err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+
+	beforeCfg := svc.activeCfg
+
+	err = svc.Start(ctx, cfg)
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if adapter.startCalls != 3 {
+		t.Fatalf("expected adapter.Start to be called 3 times (start + fail + rollback), got %d", adapter.startCalls)
+	}
+	if adapter.stopCalls != 1 {
+		t.Fatalf("expected adapter.Stop to be called once (stop previous), got %d", adapter.stopCalls)
+	}
+	if svc.mainHandle == nil {
+		t.Fatalf("expected proxy to be running after rollback (mainHandle != nil)")
+	}
+	if svc.activeCfg.FRouterID != beforeCfg.FRouterID {
+		t.Fatalf("expected activeCfg to be rolled back to previous config")
 	}
 }
 
