@@ -2,14 +2,19 @@ package adapters
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
+	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
+	"syscall"
+	"time"
 
 	"vea/backend/domain"
+	"vea/backend/service/nodegroup"
 )
 
 // getDefaultInterface 获取系统默认网络接口名称
@@ -18,26 +23,54 @@ func getDefaultInterface() string {
 		return ""
 	}
 
-	// 使用 ip route 获取默认接口
-	cmd := exec.Command("ip", "route", "get", "8.8.8.8")
-	out, err := cmd.Output()
-	if err != nil {
-		return ""
+	// 注意：TUN 模式开启后，系统的默认路由可能会被策略路由指向 tun 设备。
+	// 这时如果直接用 `ip route get 8.8.8.8`，很容易拿到 tun0，导致生成的配置把出站绑回 tun0，形成死循环。
+	// 所以优先从 main 表读默认路由，拿到真实的物理出口网卡。
+	candidates := [][]string{
+		{"ip", "route", "show", "default", "table", "main"},
+		{"ip", "route", "get", "8.8.8.8"},
 	}
 
-	// 解析输出: "8.8.8.8 via 192.168.1.1 dev eno1 src 192.168.1.108"
 	re := regexp.MustCompile(`dev\s+(\S+)`)
-	matches := re.FindStringSubmatch(string(out))
-	if len(matches) > 1 {
-		return matches[1]
+	for _, args := range candidates {
+		out, err := exec.Command(args[0], args[1:]...).Output()
+		if err != nil {
+			continue
+		}
+
+		matches := re.FindStringSubmatch(string(out))
+		if len(matches) < 2 {
+			continue
+		}
+
+		iface := strings.TrimSpace(matches[1])
+		if iface == "" {
+			continue
+		}
+		if iface == "lo" || strings.HasPrefix(iface, "tun") || strings.HasPrefix(iface, "tap") {
+			continue
+		}
+		return iface
 	}
+
 	return ""
 }
 
-// SingBoxAdapter sing-box 适配器
-type SingBoxAdapter struct {
-	SupportsDNSAction bool
+func formatSingBoxDurationSeconds(seconds int) string {
+	if seconds <= 0 {
+		return ""
+	}
+	if seconds%3600 == 0 {
+		return fmt.Sprintf("%dh", seconds/3600)
+	}
+	if seconds%60 == 0 {
+		return fmt.Sprintf("%dm", seconds/60)
+	}
+	return fmt.Sprintf("%ds", seconds)
 }
+
+// SingBoxAdapter sing-box 适配器
+type SingBoxAdapter struct{}
 
 // Kind 返回内核类型
 func (a *SingBoxAdapter) Kind() domain.CoreEngineKind {
@@ -56,8 +89,8 @@ func (a *SingBoxAdapter) SupportedProtocols() []domain.NodeProtocol {
 		domain.ProtocolVMess,
 		domain.ProtocolTrojan,
 		domain.ProtocolShadowsocks,
-		"hysteria2", // sing-box 独有
-		"tuic",      // sing-box 独有
+		domain.ProtocolHysteria2, // sing-box 独有
+		domain.ProtocolTUIC,      // sing-box 独有
 	}
 }
 
@@ -66,42 +99,48 @@ func (a *SingBoxAdapter) SupportsInbound(mode domain.InboundMode) bool {
 	return true
 }
 
-// BuildConfig 生成 sing-box 配置
-func (a *SingBoxAdapter) BuildConfig(profile domain.ProxyProfile, nodes []domain.Node, geo GeoFiles) ([]byte, error) {
-	if len(nodes) == 0 {
-		return nil, fmt.Errorf("no nodes available to build sing-box config")
+// BuildConfig 根据运行计划生成 sing-box 配置
+func (a *SingBoxAdapter) BuildConfig(plan nodegroup.RuntimePlan, geo GeoFiles) ([]byte, error) {
+	switch plan.Purpose {
+	case nodegroup.PurposeProxy:
+		return a.buildProxyConfig(plan, geo)
+	case nodegroup.PurposeMeasurement:
+		return a.buildMeasurementConfig(plan, geo)
+	default:
+		return nil, fmt.Errorf("unsupported plan purpose: %s", plan.Purpose)
 	}
+}
 
-	// 1. 构建入站配置
-	inbounds, err := a.buildInbounds(profile)
+func (a *SingBoxAdapter) buildProxyConfig(plan nodegroup.RuntimePlan, geo GeoFiles) ([]byte, error) {
+	inbounds, err := a.buildInbounds(plan.ProxyConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	// 2. 构建出站配置
-	outbounds, defaultTag := a.buildOutbounds(nodes, profile.DefaultNode, geo)
+	outbounds, tagMap, err := a.buildOutbounds(plan, geo)
+	if err != nil {
+		return nil, err
+	}
 
-	// 添加 direct 和 block 出站
-	// direct 需要 bind_interface 防止被 TUN 捕获（两层代理模式下 SOCKS 层的 direct 流量）
+	defaultTag, err := singboxOutboundTag(plan.Compiled.Default, tagMap)
+	if err != nil {
+		return nil, err
+	}
+
 	directOutbound := map[string]interface{}{"type": "direct", "tag": "direct"}
 	if iface := getDefaultInterface(); iface != "" {
 		directOutbound["bind_interface"] = iface
 	}
 	outbounds = append(outbounds, directOutbound, map[string]interface{}{"type": "block", "tag": "block"})
 
-	// 3. 构建路由规则
-	route := a.buildRoute(profile, defaultTag, geo, nodes)
+	route, err := a.buildRoute(plan, geo, tagMap, defaultTag)
+	if err != nil {
+		return nil, err
+	}
+	dnsConfig := a.buildDNS(plan.ProxyConfig, defaultTag)
+	logConfig := a.buildLog(plan.ProxyConfig)
+	services := a.buildServices(plan.ProxyConfig)
 
-	// 4. 构建 DNS 配置（TUN 模式下优先走代理的远程 DNS）
-	dnsConfig := a.buildDNS(profile, defaultTag)
-
-	// 5. 构建日志配置
-	logConfig := a.buildLog(profile)
-
-	// 6. 构建 services 配置（resolved service）
-	services := a.buildServices(profile)
-
-	// 7. 组装完整配置
 	config := map[string]interface{}{
 		"log":       logConfig,
 		"inbounds":  inbounds,
@@ -110,14 +149,11 @@ func (a *SingBoxAdapter) BuildConfig(profile domain.ProxyProfile, nodes []domain
 		"dns":       dnsConfig,
 	}
 
-	// 添加 services（如果有）
-	// 注意：services 必须是数组，即使只有一个元素
 	if len(services) > 0 {
 		config["services"] = services
 	}
 
-	// 8. 添加实验性功能配置
-	experimental := a.buildExperimental(profile)
+	experimental := a.buildExperimental(plan.ProxyConfig)
 	if len(experimental) > 0 {
 		config["experimental"] = experimental
 	}
@@ -125,95 +161,63 @@ func (a *SingBoxAdapter) BuildConfig(profile domain.ProxyProfile, nodes []domain
 	return json.MarshalIndent(config, "", "  ")
 }
 
-// RequiresPrivileges 检查是否需要特权（TUN 模式需要）
-func (a *SingBoxAdapter) RequiresPrivileges(profile domain.ProxyProfile) bool {
-	return profile.InboundMode == domain.InboundTUN
-}
-
-// BuildTUNOnlyConfig 生成纯 TUN 配置（v2rayN 风格）
-// proxy outbound 指向本地 SOCKS，由另一个进程处理实际代理
-func (a *SingBoxAdapter) BuildTUNOnlyConfig(localSOCKSPort int, geo GeoFiles) ([]byte, error) {
-	// TUN inbound
-	tun := map[string]interface{}{
-		"type":                       "tun",
-		"tag":                        "tun-in",
-		"interface_name":             "singbox_tun",
-		"address":                    []string{"172.18.0.1/30"},
-		"mtu":                        9000,
-		"auto_route":                 true,
-		"strict_route":               true,
-		"stack":                      "gvisor",
-		"sniff":                      true,
-		"sniff_override_destination": true, // 用 sniff 检测到的域名覆盖被污染的 IP
+func (a *SingBoxAdapter) buildMeasurementConfig(plan nodegroup.RuntimePlan, geo GeoFiles) ([]byte, error) {
+	if plan.InboundPort <= 0 {
+		return nil, fmt.Errorf("measurement plan missing inbound port")
 	}
 
-	// Outbounds: proxy -> 本地 SOCKS, direct, block, dns
-	outbounds := []map[string]interface{}{
+	outbounds, tagMap, err := a.buildOutbounds(plan, geo)
+	if err != nil {
+		return nil, err
+	}
+
+	defaultTag, err := singboxOutboundTag(plan.Compiled.Default, tagMap)
+	if err != nil {
+		return nil, err
+	}
+
+	outbounds = append(outbounds,
+		map[string]interface{}{"type": "direct", "tag": "direct"},
+		map[string]interface{}{"type": "block", "tag": "block"},
+	)
+
+	inbounds := []map[string]interface{}{
 		{
 			"type":        "socks",
-			"tag":         "proxy",
-			"server":      "127.0.0.1",
-			"server_port": localSOCKSPort,
-			"version":     "5",
+			"tag":         "socks-in",
+			"listen":      "127.0.0.1",
+			"listen_port": plan.InboundPort,
 		},
-		{"type": "direct", "tag": "direct"},
-		{"type": "block", "tag": "block"},
-		{"type": "dns", "tag": "dns_out"},
 	}
 
-	// DNS 配置
-	dns := map[string]interface{}{
-		"servers": []map[string]interface{}{
-			{"tag": "remote", "address": "tcp://8.8.8.8", "strategy": "prefer_ipv4", "detour": "proxy"},
-			{"tag": "local", "address": "223.5.5.5", "strategy": "prefer_ipv4", "detour": "direct"},
-			{"tag": "local-fallback", "address": "8.8.8.8", "strategy": "prefer_ipv4", "detour": "direct"},
-			{"tag": "block", "address": "rcode://success"},
-		},
-		"rules": []map[string]interface{}{
-			{"server": "remote", "clash_mode": "Global"},
-			{"server": "local", "clash_mode": "Direct"},
-			{"server": "local", "rule_set": []string{"geosite-cn"}},
-			{"server": "block", "rule_set": []string{"geosite-category-ads-all"}},
-		},
-		"final": "remote",
+	route, err := a.buildRoute(plan, geo, tagMap, defaultTag)
+	if err != nil {
+		return nil, err
 	}
 
-	// 路由规则
-	ruleSetDir := filepath.Join(geo.ArtifactsDir, "core", "sing-box", "rule-set")
-	route := map[string]interface{}{
-		"auto_detect_interface": true,
-		"rules": []map[string]interface{}{
-			// 排除代理进程，避免 SOCKS 层流量被 TUN 捕获形成循环
-			{"outbound": "direct", "process_name": []string{"sing-box", "xray", "v2ray"}},
-			{"outbound": "proxy", "clash_mode": "Global"},
-			{"outbound": "direct", "clash_mode": "Direct"},
-			{"outbound": "dns_out", "protocol": []string{"dns"}},
-			{"outbound": "block", "rule_set": []string{"geosite-category-ads-all"}},
-			{"outbound": "direct", "ip_is_private": true},
-			{"outbound": "direct", "rule_set": []string{"geoip-cn"}},
-			{"outbound": "direct", "rule_set": []string{"geosite-cn"}},
-		},
-		"rule_set": []map[string]interface{}{
-			{"tag": "geosite-category-ads-all", "type": "local", "format": "binary", "path": filepath.Join(ruleSetDir, "geosite-category-ads-all.srs")},
-			{"tag": "geosite-cn", "type": "local", "format": "binary", "path": filepath.Join(ruleSetDir, "geosite-cn.srs")},
-			{"tag": "geoip-cn", "type": "local", "format": "binary", "path": filepath.Join(ruleSetDir, "geoip-cn.srs")},
-		},
-		"final": "proxy",
-	}
+	dns := a.buildDNS(plan.ProxyConfig, defaultTag)
 
 	config := map[string]interface{}{
-		"log":       map[string]interface{}{"level": "info", "timestamp": true},
-		"inbounds":  []map[string]interface{}{tun},
+		"log": map[string]interface{}{
+			"level":     "debug",
+			"timestamp": true,
+		},
+		"inbounds":  inbounds,
 		"outbounds": outbounds,
-		"dns":       dns,
 		"route":     route,
+		"dns":       dns,
 	}
 
 	return json.MarshalIndent(config, "", "  ")
 }
 
+// RequiresPrivileges 检查是否需要特权（TUN 模式需要）
+func (a *SingBoxAdapter) RequiresPrivileges(profile domain.ProxyConfig) bool {
+	return profile.InboundMode == domain.InboundTUN
+}
+
 // buildInbounds 构建入站配置
-func (a *SingBoxAdapter) buildInbounds(profile domain.ProxyProfile) ([]map[string]interface{}, error) {
+func (a *SingBoxAdapter) buildInbounds(profile domain.ProxyConfig) ([]map[string]interface{}, error) {
 	var inbounds []map[string]interface{}
 
 	switch profile.InboundMode {
@@ -223,20 +227,38 @@ func (a *SingBoxAdapter) buildInbounds(profile domain.ProxyProfile) ([]map[strin
 		}
 
 		// sing-box 1.12+ 使用新的地址字段格式
+		stack := profile.TUNSettings.Stack
+		if stack == "" {
+			stack = "mixed"
+		}
 		tun := map[string]interface{}{
 			"type":                       "tun",
 			"tag":                        "tun-in",
 			"interface_name":             profile.TUNSettings.InterfaceName,
 			"mtu":                        profile.TUNSettings.MTU,
 			"address":                    profile.TUNSettings.Address, // 新格式：address 替代 inet4_address
-			"auto_route":                 true,                        // 强制开启自动路由
-			"strict_route":               false,                       // 关闭严格路由，允许 bind_interface 生效
-			"stack":                      "gvisor", // 使用 gvisor stack，和 v2rayN 一致
+			"auto_route":                 profile.TUNSettings.AutoRoute,
+			"strict_route":               profile.TUNSettings.StrictRoute,
+			"stack":                      stack,
 			"sniff":                      true,
-			"sniff_override_destination": true,
+			"sniff_override_destination": false,
 		}
 
-		// 简化配置：只使用 auto_route，通过 process_name 规则排除代理进程避免循环
+		if runtime.GOOS == "linux" && profile.TUNSettings.AutoRedirect {
+			tun["auto_redirect"] = true
+		}
+		if profile.TUNSettings.EndpointIndependentNat {
+			tun["endpoint_independent_nat"] = true
+		}
+		if profile.TUNSettings.UDPTimeout > 0 {
+			tun["udp_timeout"] = formatSingBoxDurationSeconds(profile.TUNSettings.UDPTimeout)
+		}
+		if len(profile.TUNSettings.RouteAddress) > 0 {
+			tun["route_address"] = profile.TUNSettings.RouteAddress
+		}
+		if len(profile.TUNSettings.RouteExcludeAddress) > 0 {
+			tun["route_exclude_address"] = profile.TUNSettings.RouteExcludeAddress
+		}
 
 		inbounds = append(inbounds, tun)
 
@@ -275,41 +297,34 @@ func (a *SingBoxAdapter) buildInbounds(profile domain.ProxyProfile) ([]map[strin
 	return inbounds, nil
 }
 
-// buildOutbounds 构建出站配置
-func (a *SingBoxAdapter) buildOutbounds(nodes []domain.Node, defaultNodeID string, geo GeoFiles) ([]map[string]interface{}, string) {
-	var (
-		outbounds  []map[string]interface{}
-		defaultTag string
-	)
-
-	// Legacy: 专用 DNS 出站，处理 DNS 数据包
-	if !a.SupportsDNSAction {
-		outbounds = append(outbounds, map[string]interface{}{
-			"type": "dns",
-			"tag":  "dns-out",
-		})
+func (a *SingBoxAdapter) buildOutbounds(plan nodegroup.RuntimePlan, geo GeoFiles) ([]map[string]interface{}, map[string]string, error) {
+	tagMap := make(map[string]string, len(plan.Nodes))
+	for _, node := range plan.Nodes {
+		tagMap[node.ID] = fmt.Sprintf("node-%s", shortenID(node.ID))
 	}
 
-	for _, node := range nodes {
+	outbounds := make([]map[string]interface{}, 0, len(plan.Nodes)+2)
+
+	for _, node := range plan.Nodes {
 		outbound, tag := a.buildOutbound(node, geo)
-		if outbound != nil {
-			outbounds = append(outbounds, outbound)
+		if outbound == nil {
+			return nil, nil, fmt.Errorf("build outbound failed: %s", node.ID)
+		}
 
-			// 确定默认节点
-			if defaultTag == "" || node.ID == defaultNodeID {
-				defaultTag = tag
+		// detour chaining
+		if upstreamID := plan.Compiled.DetourUpstream[node.ID]; upstreamID != "" {
+			upstreamTag, ok := tagMap[upstreamID]
+			if !ok {
+				return nil, nil, fmt.Errorf("detour upstream node not found: %s", upstreamID)
 			}
+			outbound["detour"] = upstreamTag
 		}
+
+		outbounds = append(outbounds, outbound)
+		tagMap[node.ID] = tag
 	}
 
-	if defaultTag == "" && len(outbounds) > 0 {
-		// 使用第一个节点作为默认
-		if tag, ok := outbounds[0]["tag"].(string); ok {
-			defaultTag = tag
-		}
-	}
-
-	return outbounds, defaultTag
+	return outbounds, tagMap, nil
 }
 
 // buildOutbound 构建单个节点的出站配置
@@ -364,13 +379,13 @@ func (a *SingBoxAdapter) buildOutbound(node domain.Node, geo GeoFiles) (map[stri
 			}
 		}
 
-	case "hysteria2":
+	case domain.ProtocolHysteria2:
 		outbound["type"] = "hysteria2"
 		outbound["password"] = sec.Password
 		outbound["up_mbps"] = 100
 		outbound["down_mbps"] = 100
 
-	case "tuic":
+	case domain.ProtocolTUIC:
 		outbound["type"] = "tuic"
 		outbound["uuid"] = sec.UUID
 		outbound["password"] = sec.Password
@@ -449,132 +464,107 @@ func (a *SingBoxAdapter) buildOutbound(node domain.Node, geo GeoFiles) (map[stri
 	return outbound, tag
 }
 
-// buildRoute 构建路由配置
-func (a *SingBoxAdapter) buildRoute(profile domain.ProxyProfile, defaultTag string, geo GeoFiles, nodes []domain.Node) map[string]interface{} {
-	// 使用本地 rule-set 文件（在组件下载时捆绑）
-	// 必须使用绝对路径，因为 Electron 从 frontend/ 目录启动
-	ruleSetDir := filepath.Join(geo.ArtifactsDir, "core", "sing-box", "rule-set")
-	ruleSets := []map[string]interface{}{
-		{
-			"tag":    "geosite-category-ads-all",
-			"type":   "local",
-			"format": "binary",
-			"path":   filepath.Join(ruleSetDir, "geosite-category-ads-all.srs"),
-		},
-		{
-			"tag":    "geosite-cn",
-			"type":   "local",
-			"format": "binary",
-			"path":   filepath.Join(ruleSetDir, "geosite-cn.srs"),
-		},
-		{
-			"tag":    "geoip-cn",
-			"type":   "local",
-			"format": "binary",
-			"path":   filepath.Join(ruleSetDir, "geoip-cn.srs"),
-		},
+func (a *SingBoxAdapter) buildRoute(plan nodegroup.RuntimePlan, geo GeoFiles, tagMap map[string]string, defaultTag string) (map[string]interface{}, error) {
+	ruleSetManager := NewRuleSetManager(geo.ArtifactsDir)
+	// buildDNS() 会引用 geosite-cn；这里必须声明对应 rule-set，否则 sing-box 会在运行期报错。
+	ruleSetManager.AddGeoSite("cn")
+
+	rules := make([]map[string]interface{}, 0, len(plan.Compiled.Rules)+4)
+
+	// DNS hijack（TUN 可选）：避免 DNS 泄漏；关闭时让 DNS 流量走普通路由。
+	hijackDNS := true
+	if plan.InboundMode == domain.InboundTUN && plan.ProxyConfig.TUNSettings != nil {
+		hijackDNS = plan.ProxyConfig.TUNSettings.DNSHijack
+	}
+	if hijackDNS {
+		rules = append(rules, map[string]interface{}{
+			"protocol": []string{"dns"},
+			"action":   "hijack-dns",
+		})
 	}
 
-	rules := []map[string]interface{}{
-		{
-			"rule_set": []string{"geosite-category-ads-all"},
+	// TUN + 浏览器：QUIC(UDP/443) 经常在部分链路上表现很差（UDP 不通/丢包/被限速），
+	// 表现为“Google 打不开但其他 TCP 应用还能用”。直接拦 QUIC，强制浏览器回落到 TCP/HTTPS。
+	if plan.InboundMode == domain.InboundTUN {
+		rules = append(rules, map[string]interface{}{
+			"protocol": []string{"quic"},
 			"outbound": "block",
-		},
-	}
-
-	if a.SupportsDNSAction {
-		rules = append(rules, map[string]interface{}{
-			"protocol": []string{"dns"},
-			"action":   "dns",
-		})
-	} else {
-		rules = append(rules, map[string]interface{}{
-			"protocol": []string{"dns"},
-			"outbound": "dns-out",
 		})
 	}
 
-	// TUN 模式：排除代理进程，避免流量循环
-	// sing-box 发出的流量直接走 direct，不经过 TUN
-	if profile.InboundMode == domain.InboundTUN {
+	// TUN 模式：排除代理进程，避免流量循环（自保规则，不属于用户路由语义）
+	if plan.InboundMode == domain.InboundTUN {
 		rules = append(rules, map[string]interface{}{
-			"process_name": []string{
-				"sing-box",
-				"xray",
-				"v2ray",
-			},
-			"outbound": "direct",
+			"process_name": []string{"sing-box", "xray", "v2ray"},
+			"outbound":     "direct",
 		})
 	}
 
-	// 提取所有代理服务器域名，确保它们走 direct（避免循环）
-	// 代理服务器的 IP 地址必须直连，否则会形成循环：TUN → proxy → DNS → proxy IP → TUN
-	proxyDomains := []string{}
-	for _, node := range nodes {
-		if node.Address != "" {
-			// 检查是否是域名（不是 IP）
-			if !isIPAddress(node.Address) {
-				proxyDomains = append(proxyDomains, node.Address)
-			}
+	for _, r := range plan.Compiled.Rules {
+		outbound, err := singboxOutboundTag(r.Action, tagMap)
+		if err != nil {
+			return nil, fmt.Errorf("edge %s: %w", r.EdgeID, err)
 		}
-	}
-	// 添加代理服务器域名直连规则（优先级高于 geosite-cn）
-	if len(proxyDomains) > 0 {
-		rules = append(rules, map[string]interface{}{
-			"domain":   proxyDomains,
-			"outbound": "direct",
-		})
+		entry, err := ruleSetManager.ConvertRouteMatchRule(&r.Match, outbound)
+		if err != nil {
+			return nil, fmt.Errorf("edge %s: %w", r.EdgeID, err)
+		}
+		rules = append(rules, entry.ToSingBoxRule())
 	}
 
-	// 私有 IP 直连（局域网、本地回环等）
-	// 官方文档推荐：https://sing-box.sagernet.org/configuration/route/rule/
-	rules = append(rules, map[string]interface{}{
-		"ip_is_private": true,
-		"outbound":      "direct",
-	})
-
-	// 若要全局代理，把 direct 改为 defaultTag
-	rules = append(rules,
-		map[string]interface{}{
-			"rule_set": []string{"geosite-cn"},
-			"outbound": "direct",
-		},
-		map[string]interface{}{
-			"rule_set": []string{"geoip-cn"},
-			"outbound": "direct",
-		},
-	)
-
-	// 确定 default_domain_resolver - 用于解析出站域名
-	// 使用 dns-local 直连解析，避免 DNS 循环依赖
-	defaultDomainResolver := "dns-local"
+	// 默认规则（广告拦截 + 私有/国内直连），放在用户规则之后，避免覆盖显式配置。
+	if defaults := ruleSetManager.BuildDefaultRoutingRules("direct"); len(defaults) > 0 {
+		rules = append(rules, defaults...)
+	}
 
 	route := map[string]interface{}{
 		"rules":                   rules,
-		"rule_set":                ruleSets,
 		"final":                   defaultTag,
 		"auto_detect_interface":   true,
-		"default_domain_resolver": defaultDomainResolver,
+		"default_domain_resolver": "dns-local",
+	}
+	if ruleSets := ruleSetManager.GetRuleSets(); len(ruleSets) > 0 {
+		route["rule_set"] = ruleSets
 	}
 
-	// TUN 模式下设置默认出站接口
-	if profile.InboundMode == domain.InboundTUN {
+	if plan.InboundMode == domain.InboundTUN {
 		if iface := getDefaultInterface(); iface != "" {
 			route["default_interface"] = iface
 		}
 	}
 
-	return route
+	return route, nil
+}
+
+func singboxOutboundTag(action nodegroup.Action, tagMap map[string]string) (string, error) {
+	switch action.Kind {
+	case nodegroup.ActionDirect:
+		return "direct", nil
+	case nodegroup.ActionBlock:
+		return "block", nil
+	case nodegroup.ActionNode:
+		tag, ok := tagMap[action.NodeID]
+		if !ok {
+			return "", fmt.Errorf("node outbound not found: %s", action.NodeID)
+		}
+		return tag, nil
+	default:
+		return "", fmt.Errorf("unknown action: %s", action.Kind)
+	}
 }
 
 // buildDNS 构建 DNS 配置
 // 使用分流策略：中国域名走国内 DNS（直连），国际域名走远程 DNS（代理）
 // 参考官方文档: https://sing-box.sagernet.org/configuration/dns/
-func (a *SingBoxAdapter) buildDNS(profile domain.ProxyProfile, defaultTag string) map[string]interface{} {
+func (a *SingBoxAdapter) buildDNS(profile domain.ProxyConfig, defaultTag string) map[string]interface{} {
 	strategy := "prefer_ipv4"
 	if profile.DNSConfig != nil && profile.DNSConfig.Strategy != "" {
 		strategy = profile.DNSConfig.Strategy
 	}
+
+	// 创建规则集管理器（仅用于获取 geosite-cn 标签）
+	ruleSetManager := NewRuleSetManager("")
+	geositeCN := ruleSetManager.AddGeoSite("cn")
 
 	// DNS 服务器配置 (sing-box 1.12.0+ 新格式)
 	// 1. dns-local: 国内 DNS，用于解析国内域名（直连）
@@ -584,20 +574,26 @@ func (a *SingBoxAdapter) buildDNS(profile domain.ProxyProfile, defaultTag string
 			"tag":    "dns-local",
 			"type":   "udp",
 			"server": "223.5.5.5", // 阿里 DNS，国内访问快
-			"detour": "direct",
-		},
-		{
-			"tag":    "dns-remote",
-			"type":   "udp",
-			"server": "8.8.8.8", // Google DNS，走代理
-			"detour": defaultTag,
 		},
 	}
+	dnsRemote := map[string]interface{}{
+		"tag": "dns-remote",
+		// 重要：默认用 TCP，避免很多代理链路/插件不支持 UDP 导致外网域名解析卡死。
+		"type":   "tcp",
+		"server": "8.8.8.8", // Google DNS，走代理
+	}
+	// sing-box 会在运行期拒绝「DNS server detour 指向一个空的 direct outbound」。
+	// 当 defaultTag=direct 且 direct outbound 没有 dialer 参数时，显式 detour="direct" 会直接 FATAL。
+	// 因此：仅在 defaultTag 不是 direct 时才显式写 detour。
+	if defaultTag != "" && defaultTag != "direct" {
+		dnsRemote["detour"] = defaultTag
+	}
+	servers = append(servers, dnsRemote)
 
 	// DNS 规则：中国域名走国内 DNS，其他走远程 DNS
 	rules := []map[string]interface{}{
 		{
-			"rule_set": []string{"geosite-cn"},
+			"rule_set": []string{geositeCN},
 			"server":   "dns-local",
 		},
 	}
@@ -611,7 +607,7 @@ func (a *SingBoxAdapter) buildDNS(profile domain.ProxyProfile, defaultTag string
 }
 
 // applyInboundConfig 应用 InboundConfig 到 inbound 配置
-func (a *SingBoxAdapter) applyInboundConfig(inbound map[string]interface{}, profile domain.ProxyProfile) {
+func (a *SingBoxAdapter) applyInboundConfig(inbound map[string]interface{}, profile domain.ProxyConfig) {
 	if profile.InboundConfig == nil {
 		return
 	}
@@ -643,7 +639,7 @@ func (a *SingBoxAdapter) applyInboundConfig(inbound map[string]interface{}, prof
 }
 
 // buildLog 构建日志配置
-func (a *SingBoxAdapter) buildLog(profile domain.ProxyProfile) map[string]interface{} {
+func (a *SingBoxAdapter) buildLog(profile domain.ProxyConfig) map[string]interface{} {
 	if profile.LogConfig == nil {
 		return map[string]interface{}{
 			"level":     "info",
@@ -665,7 +661,7 @@ func (a *SingBoxAdapter) buildLog(profile domain.ProxyProfile) map[string]interf
 }
 
 // buildServices 构建 services 配置（resolved service）
-func (a *SingBoxAdapter) buildServices(profile domain.ProxyProfile) []map[string]interface{} {
+func (a *SingBoxAdapter) buildServices(profile domain.ProxyConfig) []map[string]interface{} {
 	var services []map[string]interface{}
 
 	// 如果启用 resolved service
@@ -682,7 +678,7 @@ func (a *SingBoxAdapter) buildServices(profile domain.ProxyProfile) []map[string
 }
 
 // buildExperimental 构建实验性功能配置
-func (a *SingBoxAdapter) buildExperimental(profile domain.ProxyProfile) map[string]interface{} {
+func (a *SingBoxAdapter) buildExperimental(profile domain.ProxyConfig) map[string]interface{} {
 	if profile.PerformanceConfig == nil {
 		return nil
 	}
@@ -702,26 +698,140 @@ func (a *SingBoxAdapter) buildExperimental(profile domain.ProxyProfile) map[stri
 	return experimental
 }
 
-// isIPAddress 检查字符串是否是 IP 地址（IPv4 或 IPv6）
-func isIPAddress(s string) bool {
-	// 简单检查：包含冒号是 IPv6，全是数字和点是 IPv4
-	if strings.Contains(s, ":") {
-		return true // 可能是 IPv6
-	}
-	// IPv4: 检查是否符合 x.x.x.x 格式
-	parts := strings.Split(s, ".")
-	if len(parts) != 4 {
-		return false
-	}
-	for _, part := range parts {
-		if len(part) == 0 || len(part) > 3 {
-			return false
+// ========== 新增 CoreAdapter 接口方法实现 ==========
+
+// SupportsProtocol 检查是否支持特定协议
+func (a *SingBoxAdapter) SupportsProtocol(protocol domain.NodeProtocol) bool {
+	for _, p := range a.SupportedProtocols() {
+		if p == protocol {
+			return true
 		}
-		for _, c := range part {
-			if c < '0' || c > '9' {
-				return false
+	}
+	return false
+}
+
+// GetCommandArgs 返回启动 sing-box 的命令行参数
+func (a *SingBoxAdapter) GetCommandArgs(configPath string) []string {
+	return []string{"run", "-c", configPath}
+}
+
+// Start 启动 sing-box 进程
+func (a *SingBoxAdapter) Start(cfg ProcessConfig, configPath string) (*ProcessHandle, error) {
+	args := a.GetCommandArgs(configPath)
+	command := cfg.BinaryPath
+	commandArgs := args
+	if cfg.UsePkexec {
+		if _, err := exec.LookPath("pkexec"); err == nil {
+			command = "pkexec"
+			commandArgs = append([]string{"--keep-cwd", cfg.BinaryPath}, args...)
+		}
+	}
+
+	cmd := exec.Command(command, commandArgs...)
+	cmd.Dir = cfg.ConfigDir
+	if cfg.Stdout != nil {
+		cmd.Stdout = cfg.Stdout
+	} else {
+		cmd.Stdout = os.Stdout
+	}
+	if cfg.Stderr != nil {
+		cmd.Stderr = cfg.Stderr
+	} else {
+		cmd.Stderr = os.Stderr
+	}
+
+	// 设置环境变量
+	cmd.Env = mergeEnv(os.Environ(), cfg.Environment)
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("启动 sing-box 失败: %w", err)
+	}
+
+	return &ProcessHandle{
+		Cmd:        cmd,
+		ConfigPath: configPath,
+		BinaryPath: cfg.BinaryPath,
+		StartedAt:  time.Now(),
+		Port:       0,
+	}, nil
+}
+
+// Stop 停止 sing-box 进程
+func (a *SingBoxAdapter) Stop(handle *ProcessHandle) error {
+	if handle == nil || handle.Cmd == nil || handle.Cmd.Process == nil {
+		return nil
+	}
+
+	// 重要：不要直接 SIGKILL。
+	// sing-box(TUN/auto_route) 需要在退出时清理 ip rule/route 等系统状态；
+	// SIGKILL 会留下残留规则，导致下一次启动报：
+	//   "configure tun interface: device or resource busy"
+	if runtime.GOOS == "windows" {
+		_ = handle.Cmd.Process.Kill()
+	} else {
+		_ = handle.Cmd.Process.Signal(syscall.SIGTERM)
+	}
+
+	// 等待进程退出（如果外部已有 waiter，就等 Done，避免重复 Wait）
+	if handle.Done != nil {
+		select {
+		case <-handle.Done:
+		case <-time.After(10 * time.Second):
+		}
+		return nil
+	}
+
+	// 兜底：如果没有 Done，直接 Wait（并在超时后强杀）
+	exited := make(chan struct{})
+	go func() {
+		_ = handle.Cmd.Wait()
+		close(exited)
+	}()
+	select {
+	case <-exited:
+		return nil
+	case <-time.After(10 * time.Second):
+	}
+
+	_ = handle.Cmd.Process.Kill()
+	<-exited
+	return nil
+}
+
+// WaitForReady 等待 sing-box 就绪（检测端口监听）
+func (a *SingBoxAdapter) WaitForReady(handle *ProcessHandle, timeout time.Duration) error {
+	if handle.Port <= 0 {
+		// 没有指定端口，只等待一小段时间让进程启动
+		time.Sleep(500 * time.Millisecond)
+		return nil
+	}
+
+	deadline := time.Now().Add(timeout)
+	addr := fmt.Sprintf("127.0.0.1:%d", handle.Port)
+
+	for time.Now().Before(deadline) {
+		if runtime.GOOS == "windows" {
+			// Windows 上 net.Listen 可能因为 SO_REUSEADDR 语义导致“端口已被监听仍能 Listen 成功”，
+			// 用 Dial 做探测更可靠。
+			conn, err := net.DialTimeout("tcp", addr, 200*time.Millisecond)
+			if err == nil {
+				_ = conn.Close()
+				return nil
+			}
+		} else {
+			// 不用 Dial 做 readiness probe：Dial 会在 debug 日志下制造一条“inbound connection + EOF”的噪音。
+			// 用 Listen 探测端口是否已被占用即可（占用 = 有进程监听）。
+			ln, err := net.Listen("tcp", addr)
+			if err != nil {
+				if errors.Is(err, syscall.EADDRINUSE) {
+					return nil
+				}
+			} else {
+				_ = ln.Close()
 			}
 		}
+		time.Sleep(100 * time.Millisecond)
 	}
-	return true
+
+	return fmt.Errorf("等待 sing-box 就绪超时（端口 %d）", handle.Port)
 }

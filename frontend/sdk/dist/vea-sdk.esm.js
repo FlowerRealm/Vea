@@ -1,6 +1,6 @@
 /**
  * @vea/sdk v1.0.0
- * (c) 2025 Vea Project
+ * (c) 2026 Vea Project
  * @license MIT
  */
 /**
@@ -27,20 +27,17 @@ class VeaError extends Error {
 
 class VeaClient {
   constructor(options = {}) {
-    this.baseURL = (options.baseURL || 'http://localhost:18080').replace(/\/$/, '');
+    this.baseURL = (options.baseURL || 'http://localhost:19080').replace(/\/$/, '');
     this.timeout = options.timeout || 300000; // 5分钟
     this.headers = options.headers || {};
 
-    // 初始化资源API
     this.nodes = new NodesAPI(this);
+    this.frouters = new FRoutersAPI(this);
     this.configs = new ConfigsAPI(this);
     this.geo = new GeoAPI(this);
     this.components = new ComponentsAPI(this);
-    this.xray = new XrayAPI(this);
-    this.traffic = new TrafficAPI(this);
     this.settings = new SettingsAPI(this);
     this.proxy = new ProxyAPI(this);
-    this.proxyProfiles = new ProxyProfilesAPI(this);
   }
 
   async request(options) {
@@ -140,6 +137,64 @@ class VeaClient {
   }
 }
 
+class FRoutersAPI {
+  constructor(client) {
+    this.client = client;
+  }
+
+  async list() {
+    return this.client.get('/frouters')
+  }
+
+  async create(data) {
+    return this.client.post('/frouters', data)
+  }
+
+  async update(id, data) {
+    return this.client.put(`/frouters/${id}`, data)
+  }
+
+  async delete(id) {
+    return this.client.delete(`/frouters/${id}`)
+  }
+
+  async ping(id) {
+    return this.client.post(`/frouters/${id}/ping`)
+  }
+
+  async speedtest(id) {
+    return this.client.post(`/frouters/${id}/speedtest`)
+  }
+
+  async measureLatency(id) {
+    return this.client.post(`/frouters/${id}/ping`)
+  }
+
+  async measureSpeed(id) {
+    return this.client.post(`/frouters/${id}/speedtest`)
+  }
+
+  async bulkPing(ids = []) {
+    return this.client.post('/frouters/bulk/ping', { ids })
+  }
+
+  async resetSpeed(ids = []) {
+    return this.client.post('/frouters/reset-speed', { ids })
+  }
+
+  async getGraph(id) {
+    return this.client.get(`/frouters/${id}/graph`)
+  }
+
+  async saveGraph(id, data) {
+    return this.client.put(`/frouters/${id}/graph`, data)
+  }
+
+  async validateGraph(id, data) {
+    return this.client.post(`/frouters/${id}/graph/validate`, data)
+  }
+}
+
 class NodesAPI {
   constructor(client) {
     this.client = client;
@@ -153,20 +208,24 @@ class NodesAPI {
     return this.client.post('/nodes', data)
   }
 
+  async createFromLink(data) {
+    return this.client.post('/nodes/from-link', data)
+  }
+
   async update(id, data) {
     return this.client.put(`/nodes/${id}`, data)
   }
 
-  async delete(id) {
-    return this.client.delete(`/nodes/${id}`)
+  async updateMeta(id, data) {
+    return this.client.put(`/nodes/${id}/meta`, data)
   }
 
-  async resetTraffic(id) {
-    return this.client.post(`/nodes/${id}/reset-traffic`)
+  async bulkPing(ids = []) {
+    return this.client.post('/nodes/bulk/ping', { ids })
   }
 
-  async incrementTraffic(id, traffic) {
-    return this.client.post(`/nodes/${id}/traffic`, traffic)
+  async bulkSpeedtest(ids = []) {
+    return this.client.post('/nodes/bulk/speedtest', { ids })
   }
 
   async ping(id) {
@@ -175,18 +234,6 @@ class NodesAPI {
 
   async speedtest(id) {
     return this.client.post(`/nodes/${id}/speedtest`)
-  }
-
-  async select(id) {
-    return this.client.post(`/nodes/${id}/select`)
-  }
-
-  async bulkPing(ids = []) {
-    return this.client.post('/nodes/bulk/ping', { ids })
-  }
-
-  async resetSpeed(ids = []) {
-    return this.client.post('/nodes/reset-speed', { ids })
   }
 }
 
@@ -217,10 +264,6 @@ class ConfigsAPI {
 
   async pullNodes(id) {
     return this.client.post(`/configs/${id}/pull-nodes`)
-  }
-
-  async incrementTraffic(id, traffic) {
-    return this.client.post(`/configs/${id}/traffic`, traffic)
   }
 }
 
@@ -276,102 +319,29 @@ class ComponentsAPI {
   }
 }
 
-class XrayAPI {
-  constructor(client) {
-    this.client = client;
-  }
-
-  async status() {
-    return this.client.get('/xray/status')
-  }
-
-  async start(options = {}) {
-    return this.client.post('/xray/start', options)
-  }
-
-  async stop() {
-    return this.client.post('/xray/stop')
-  }
-}
-
 class ProxyAPI {
   constructor(client) {
     this.client = client;
+  }
+
+  async getConfig() {
+    return this.client.get('/proxy/config')
+  }
+
+  async updateConfig(data) {
+    return this.client.put('/proxy/config', data)
   }
 
   async status() {
     return this.client.get('/proxy/status')
   }
 
+  async start(data = {}) {
+    return this.client.post('/proxy/start', data)
+  }
+
   async stop() {
     return this.client.post('/proxy/stop')
-  }
-}
-
-class ProxyProfilesAPI {
-  constructor(client) {
-    this.client = client;
-  }
-
-  async list() {
-    return this.client.get('/proxy-profiles')
-  }
-
-  async create(data) {
-    return this.client.post('/proxy-profiles', data)
-  }
-
-  async get(id) {
-    return this.client.get(`/proxy-profiles/${id}`)
-  }
-
-  async update(id, data) {
-    return this.client.put(`/proxy-profiles/${id}`, data)
-  }
-
-  async delete(id) {
-    return this.client.delete(`/proxy-profiles/${id}`)
-  }
-
-  async start(id) {
-    return this.client.post(`/proxy-profiles/${id}/start`)
-  }
-}
-
-class TrafficAPI {
-  constructor(client) {
-    this.client = client;
-    this.rules = new TrafficRulesAPI(client);
-  }
-
-  async getProfile() {
-    return this.client.get('/traffic/profile')
-  }
-
-  async updateProfile(data) {
-    return this.client.put('/traffic/profile', data)
-  }
-}
-
-class TrafficRulesAPI {
-  constructor(client) {
-    this.client = client;
-  }
-
-  async list() {
-    return this.client.get('/traffic/rules')
-  }
-
-  async create(data) {
-    return this.client.post('/traffic/rules', data)
-  }
-
-  async update(id, data) {
-    return this.client.put(`/traffic/rules/${id}`, data)
-  }
-
-  async delete(id) {
-    return this.client.delete(`/traffic/rules/${id}`)
   }
 }
 
@@ -415,84 +385,14 @@ function createAPI(baseURL = '') {
 
     // Expose all client APIs
     nodes: client.nodes,
+    frouters: client.frouters,
     configs: client.configs,
     geo: client.geo,
     components: client.components,
-    xray: client.xray,
-    traffic: client.traffic,
     settings: client.settings,
     proxy: client.proxy,
-    proxyProfiles: client.proxyProfiles,
 
     client
-  }
-}
-
-function createNodeManager(client, interval = 1000) {
-  let nodesCache = [];
-  let activeNodeId = '';
-  let lastSelectedNodeId = '';
-  let pollingTimer = null;
-  let listeners = [];
-
-  async function fetchNodes() {
-    try {
-      const result = await client.nodes.list();
-      nodesCache = result.nodes || [];
-      activeNodeId = result.activeNodeId || '';
-      lastSelectedNodeId = result.lastSelectedNodeId || '';
-
-      listeners.forEach(fn => {
-        try {
-          fn({ nodes: nodesCache, activeNodeId, lastSelectedNodeId });
-        } catch (err) {
-          console.error('Node listener error:', err);
-        }
-      });
-
-      return result
-    } catch (error) {
-      console.error('Failed to fetch nodes:', error);
-      throw error
-    }
-  }
-
-  return {
-    getNodes() {
-      return nodesCache
-    },
-
-    getActiveNodeId() {
-      return activeNodeId
-    },
-
-    getLastSelectedNodeId() {
-      return lastSelectedNodeId
-    },
-
-    async refresh() {
-      return fetchNodes()
-    },
-
-    startPolling() {
-      if (pollingTimer) return
-      fetchNodes();
-      pollingTimer = setInterval(fetchNodes, interval);
-    },
-
-    stopPolling() {
-      if (pollingTimer) {
-        clearInterval(pollingTimer);
-        pollingTimer = null;
-      }
-    },
-
-    onUpdate(callback) {
-      listeners.push(callback);
-      return () => {
-        listeners = listeners.filter(fn => fn !== callback);
-      }
-    }
   }
 }
 
@@ -550,8 +450,8 @@ function formatLatency(ms) {
 
 function formatSpeed(mbps) {
   if (!mbps || mbps <= 0) return '-'
-  if (mbps >= 10) return `${mbps.toFixed(1)} MB/s`
-  return `${mbps.toFixed(2)} MB/s`
+  if (mbps >= 10) return `${mbps.toFixed(1)} Mbps`
+  return `${mbps.toFixed(2)} Mbps`
 }
 
 function sleep(ms) {
@@ -646,227 +546,6 @@ async function retry(fn, options = {}) {
 }
 
 // ============================================================================
-// State Management
-// ============================================================================
-
-function createNodeStateManager(options = {}) {
-  const {
-    pingCooldown = 60000,
-    speedtestCooldown = 60000
-  } = options;
-
-  const pingState = {
-    running: false,
-    lastNodeId: '',
-    lastTriggeredAt: 0
-  };
-
-  const speedtestState = {
-    running: false,
-    lastNodeId: '',
-    lastTriggeredAt: 0
-  };
-
-  return {
-    canPing(nodeId, node = null, force = false) {
-      if (force) return true
-
-      const now = Date.now();
-
-      if (pingState.running && now - pingState.lastTriggeredAt < pingCooldown) {
-        return false
-      }
-
-      if (pingState.lastNodeId === nodeId && now - pingState.lastTriggeredAt < pingCooldown) {
-        return false
-      }
-
-      if (node) {
-        const lastLatencyAt = node.lastLatencyAt ? Date.parse(node.lastLatencyAt) : NaN;
-        if (!Number.isNaN(lastLatencyAt) && now - lastLatencyAt < pingCooldown) {
-          return false
-        }
-      }
-
-      return true
-    },
-
-    startPing(nodeId) {
-      pingState.running = true;
-      pingState.lastNodeId = nodeId;
-      pingState.lastTriggeredAt = Date.now();
-    },
-
-    endPing() {
-      pingState.running = false;
-    },
-
-    canSpeedtest(nodeId, node = null, force = false) {
-      if (force) return true
-
-      const now = Date.now();
-
-      if (speedtestState.running && now - speedtestState.lastTriggeredAt < speedtestCooldown) {
-        return false
-      }
-
-      if (speedtestState.lastNodeId === nodeId && now - speedtestState.lastTriggeredAt < speedtestCooldown) {
-        return false
-      }
-
-      if (node && (!node.lastSpeedError || node.lastSpeedError.length === 0)) {
-        const lastSpeedAt = node.lastSpeedAt ? Date.parse(node.lastSpeedAt) : NaN;
-        if (!Number.isNaN(lastSpeedAt) && now - lastSpeedAt < speedtestCooldown) {
-          return false
-        }
-      }
-
-      return true
-    },
-
-    startSpeedtest(nodeId) {
-      speedtestState.running = true;
-      speedtestState.lastNodeId = nodeId;
-      speedtestState.lastTriggeredAt = Date.now();
-    },
-
-    endSpeedtest() {
-      speedtestState.running = false;
-    }
-  }
-}
-
-function resolvePreferredNode(options) {
-  const { nodes, activeNodeId, lastSelectedNodeId, savedNodeId } = options;
-
-  if (!Array.isArray(nodes) || nodes.length === 0) {
-    return ''
-  }
-
-  const hasNode = (id) => !!id && nodes.some((node) => node && node.id === id);
-
-  if (savedNodeId && hasNode(savedNodeId)) {
-    return savedNodeId
-  }
-  if (hasNode(lastSelectedNodeId)) {
-    return lastSelectedNodeId
-  }
-  if (hasNode(activeNodeId)) {
-    return activeNodeId
-  }
-  if (nodes.length > 0 && nodes[0] && nodes[0].id) {
-    return nodes[0].id
-  }
-
-  return ''
-}
-
-function createNodeIdStorage(key = 'vea_selected_node_id') {
-  return {
-    get() {
-      try {
-        return localStorage.getItem(key) || ''
-      } catch {
-        return ''
-      }
-    },
-
-    set(nodeId) {
-      try {
-        if (nodeId) {
-          localStorage.setItem(key, nodeId);
-        } else {
-          localStorage.removeItem(key);
-        }
-      } catch (err) {
-        console.error('Failed to save node ID:', err);
-      }
-    },
-
-    remove() {
-      try {
-        localStorage.removeItem(key);
-      } catch (err) {
-        console.error('Failed to remove node ID:', err);
-      }
-    }
-  }
-}
-
-function createThemeManager() {
-  const STORAGE_KEY = 'theme';
-  const THEMES = {
-    DARK: 'dark',
-    LIGHT: 'light'
-  };
-
-  return {
-    getCurrent() {
-      try {
-        return localStorage.getItem(STORAGE_KEY) || THEMES.DARK
-      } catch {
-        return THEMES.DARK
-      }
-    },
-
-    switch(theme) {
-      try {
-        localStorage.setItem(STORAGE_KEY, theme);
-        const file = theme === THEMES.DARK ? 'dark.html' : 'light.html';
-        window.location.href = file;
-      } catch (err) {
-        console.error('Failed to switch theme:', err);
-      }
-    },
-
-    detectFromFilename() {
-      const currentFile = window.location.pathname.split('/').pop();
-      return currentFile.includes('light') ? THEMES.LIGHT : THEMES.DARK
-    },
-
-    autoRedirect() {
-      const savedTheme = this.getCurrent();
-      const currentTheme = this.detectFromFilename();
-
-      if (savedTheme !== currentTheme) {
-        this.switch(savedTheme);
-      }
-    },
-
-    THEMES
-  }
-}
-
-function extractNodeTags(nodes) {
-  const tags = new Set();
-
-  if (Array.isArray(nodes)) {
-    nodes.forEach((node) => {
-      if (Array.isArray(node.tags)) {
-        node.tags.forEach((tag) => {
-          const trimmed = String(tag || '').trim();
-          if (trimmed) {
-            tags.add(trimmed);
-          }
-        });
-      }
-    });
-  }
-
-  return ['全部', ...Array.from(tags).sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))]
-}
-
-function filterNodesByTag(nodes, tag) {
-  if (!tag || tag === '全部') {
-    return nodes
-  }
-
-  return nodes.filter((node) =>
-    Array.isArray(node.tags) && node.tags.includes(tag)
-  )
-}
-
-// ============================================================================
 // Exports
 // ============================================================================
 
@@ -886,13 +565,4 @@ const utils = {
   retry
 };
 
-const state = {
-  createNodeStateManager,
-  resolvePreferredNode,
-  createNodeIdStorage,
-  createThemeManager,
-  extractNodeTags,
-  filterNodesByTag
-};
-
-export { VeaClient, VeaError, createAPI, createNodeIdStorage, createNodeManager, createNodeStateManager, createPoller, createThemeManager, debounce, VeaClient as default, escapeHtml, extractNodeTags, filterNodesByTag, formatBytes, formatInterval, formatLatency, formatSpeed, formatTime, parseList, parseNumber, resolvePreferredNode, retry, sleep, state, throttle, utils };
+export { VeaClient, VeaError, createAPI, createPoller, debounce, VeaClient as default, escapeHtml, formatBytes, formatInterval, formatLatency, formatSpeed, formatTime, parseList, parseNumber, retry, sleep, throttle, utils };

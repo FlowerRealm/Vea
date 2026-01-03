@@ -2,11 +2,19 @@ package adapters
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"syscall"
+	"time"
 
 	"vea/backend/domain"
+	"vea/backend/service/nodegroup"
 )
 
 const (
@@ -46,55 +54,113 @@ func (a *XrayAdapter) SupportsInbound(mode domain.InboundMode) bool {
 		mode == domain.InboundMixed
 }
 
-// BuildConfig 生成 Xray 配置
-func (a *XrayAdapter) BuildConfig(profile domain.ProxyProfile, nodes []domain.Node, geo GeoFiles) ([]byte, error) {
-	if len(nodes) == 0 {
-		return nil, fmt.Errorf("no nodes available to build xray config")
+// BuildConfig 根据运行计划生成 Xray 配置
+func (a *XrayAdapter) BuildConfig(plan nodegroup.RuntimePlan, geo GeoFiles) ([]byte, error) {
+	switch plan.Purpose {
+	case nodegroup.PurposeProxy:
+		return a.buildProxyConfig(plan, geo)
+	case nodegroup.PurposeMeasurement:
+		return a.buildMeasurementConfig(plan, geo)
+	default:
+		return nil, fmt.Errorf("unsupported plan purpose: %s", plan.Purpose)
 	}
+}
 
-	// 1. 构建出站配置
-	outbounds, defaultTag, err := a.buildOutbounds(nodes, profile.DefaultNode, profile.XrayConfig)
+func (a *XrayAdapter) buildProxyConfig(plan nodegroup.RuntimePlan, geo GeoFiles) ([]byte, error) {
+	outbounds, tagMap, err := a.buildOutbounds(plan)
 	if err != nil {
 		return nil, err
 	}
 
-	// 添加 direct 和 block 出站
 	outbounds = append(outbounds,
 		map[string]interface{}{"tag": xrayDirectTag, "protocol": "freedom"},
-		map[string]interface{}{"tag": xrayBlockTag, "protocol": "blackhole"},
+		map[string]interface{}{
+			"tag":      xrayBlockTag,
+			"protocol": "blackhole",
+			"settings": map[string]interface{}{
+				"response": map[string]interface{}{
+					"type": "http",
+				},
+			},
+		},
 	)
 
-	// 2. 构建入站配置
-	inbounds := a.buildInbounds(profile)
+	routing, err := a.buildRouting(plan.Compiled, tagMap, geo, plan.ProxyConfig.XrayConfig)
+	if err != nil {
+		return nil, err
+	}
 
-	// 3. 构建路由规则
-	routing := a.buildRouting(defaultTag, geo, profile.XrayConfig)
-
-	// 4. DNS 配置
-	dnsConfig := a.buildDNS(profile)
-
-	// 5. 日志配置
-	logConfig := a.buildLog(profile)
-
-	// 6. 组装完整配置
 	config := map[string]interface{}{
-		"log":       logConfig,
+		"log":       a.buildLog(plan.ProxyConfig),
+		"inbounds":  a.buildInbounds(plan.ProxyConfig),
+		"outbounds": outbounds,
+		"routing":   routing,
+		"dns":       a.buildDNS(plan.ProxyConfig),
+	}
+
+	return json.MarshalIndent(config, "", "  ")
+}
+
+func (a *XrayAdapter) buildMeasurementConfig(plan nodegroup.RuntimePlan, geo GeoFiles) ([]byte, error) {
+	if plan.InboundPort <= 0 {
+		return nil, fmt.Errorf("measurement plan missing inbound port")
+	}
+
+	outbounds, tagMap, err := a.buildOutbounds(plan)
+	if err != nil {
+		return nil, err
+	}
+
+	outbounds = append(outbounds,
+		map[string]interface{}{"tag": xrayDirectTag, "protocol": "freedom"},
+		map[string]interface{}{
+			"tag":      xrayBlockTag,
+			"protocol": "blackhole",
+			"settings": map[string]interface{}{
+				"response": map[string]interface{}{
+					"type": "http",
+				},
+			},
+		},
+	)
+
+	routing, err := a.buildRouting(plan.Compiled, tagMap, geo, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	inbounds := []map[string]interface{}{
+		{
+			"tag":      "socks-in",
+			"listen":   "127.0.0.1",
+			"port":     plan.InboundPort,
+			"protocol": "socks",
+			"settings": map[string]interface{}{
+				"auth": "noauth",
+				"udp":  true,
+			},
+		},
+	}
+
+	config := map[string]interface{}{
+		"log": map[string]interface{}{
+			"loglevel": "debug",
+		},
 		"inbounds":  inbounds,
 		"outbounds": outbounds,
 		"routing":   routing,
-		"dns":       dnsConfig,
 	}
 
 	return json.MarshalIndent(config, "", "  ")
 }
 
 // RequiresPrivileges Xray 不支持 TUN，所以永远不需要特权
-func (a *XrayAdapter) RequiresPrivileges(profile domain.ProxyProfile) bool {
+func (a *XrayAdapter) RequiresPrivileges(profile domain.ProxyConfig) bool {
 	return false
 }
 
 // buildInbounds 构建入站配置
-func (a *XrayAdapter) buildInbounds(profile domain.ProxyProfile) []map[string]interface{} {
+func (a *XrayAdapter) buildInbounds(profile domain.ProxyConfig) []map[string]interface{} {
 	var inbounds []map[string]interface{}
 
 	switch profile.InboundMode {
@@ -150,24 +216,24 @@ func (a *XrayAdapter) buildInbounds(profile domain.ProxyProfile) []map[string]in
 	return inbounds
 }
 
-// buildOutbounds 构建出站配置
-func (a *XrayAdapter) buildOutbounds(nodes []domain.Node, defaultNodeID string, xrayConfig *domain.XrayConfiguration) ([]map[string]interface{}, string, error) {
-	var (
-		outbounds  []map[string]interface{}
-		defaultTag string
-	)
+func (a *XrayAdapter) buildOutbounds(plan nodegroup.RuntimePlan) ([]map[string]interface{}, map[string]string, error) {
+	tagMap := make(map[string]string, len(plan.Nodes))
+	for _, node := range plan.Nodes {
+		tagMap[node.ID] = fmt.Sprintf("node-%s", shortenID(node.ID))
+	}
 
-	for _, node := range nodes {
+	outbounds := make([]map[string]interface{}, 0, len(plan.Nodes)+2)
+	for _, node := range plan.Nodes {
 		outbound, tag, err := a.buildOutbound(node)
 		if err != nil {
-			return nil, "", fmt.Errorf("build outbound for %s: %w", node.Name, err)
+			return nil, nil, fmt.Errorf("build node outbound %s: %w", node.ID, err)
 		}
 
 		// 应用 Mux 配置
-		if xrayConfig != nil {
+		if plan.ProxyConfig.XrayConfig != nil {
 			outbound["mux"] = map[string]interface{}{
-				"enabled":     xrayConfig.MuxEnabled,
-				"concurrency": xrayConfig.MuxConcurrency,
+				"enabled":     plan.ProxyConfig.XrayConfig.MuxEnabled,
+				"concurrency": plan.ProxyConfig.XrayConfig.MuxConcurrency,
 			}
 		} else {
 			outbound["mux"] = map[string]interface{}{
@@ -176,19 +242,22 @@ func (a *XrayAdapter) buildOutbounds(nodes []domain.Node, defaultNodeID string, 
 			}
 		}
 
-		outbounds = append(outbounds, outbound)
-
-		// 确定默认节点
-		if defaultTag == "" || node.ID == defaultNodeID {
-			defaultTag = tag
+		// detour chaining
+		if upstreamID := plan.Compiled.DetourUpstream[node.ID]; upstreamID != "" {
+			upstreamTag, ok := tagMap[upstreamID]
+			if !ok {
+				return nil, nil, fmt.Errorf("detour upstream node not found: %s", upstreamID)
+			}
+			outbound["proxySettings"] = map[string]interface{}{
+				"tag": upstreamTag,
+			}
 		}
+
+		outbounds = append(outbounds, outbound)
+		tagMap[node.ID] = tag
 	}
 
-	if defaultTag == "" {
-		return nil, "", fmt.Errorf("no valid node tags")
-	}
-
-	return outbounds, defaultTag, nil
+	return outbounds, tagMap, nil
 }
 
 // buildOutbound 构建单个节点的出站配置
@@ -279,30 +348,54 @@ func (a *XrayAdapter) buildOutbound(node domain.Node) (map[string]interface{}, s
 	return outbound, tag, nil
 }
 
-// buildRouting 构建路由规则
-func (a *XrayAdapter) buildRouting(defaultTag string, geo GeoFiles, xrayConfig *domain.XrayConfiguration) map[string]interface{} {
-	rules := []map[string]interface{}{
-		{
+func (a *XrayAdapter) buildRouting(compiled nodegroup.CompiledFRouter, tagMap map[string]string, geo GeoFiles, xrayConfig *domain.XrayConfiguration) (map[string]interface{}, error) {
+	rules := make([]map[string]interface{}, 0, len(compiled.Rules)+1)
+	for _, r := range compiled.Rules {
+		outboundTag, err := xrayOutboundTag(r.Action, tagMap)
+		if err != nil {
+			return nil, fmt.Errorf("edge %s: %w", r.EdgeID, err)
+		}
+		rule := map[string]interface{}{
+			"type":        "field",
+			"outboundTag": outboundTag,
+		}
+		if len(r.Match.Domains) > 0 {
+			rule["domain"] = r.Match.Domains
+		}
+		if len(r.Match.IPs) > 0 {
+			rule["ip"] = r.Match.IPs
+		}
+		rules = append(rules, rule)
+	}
+
+	// 默认规则（广告拦截 + 私有/国内直连），放在用户规则之后。
+	rules = append(rules,
+		map[string]interface{}{
 			"type":        "field",
 			"domain":      []string{"geosite:category-ads-all"},
 			"outboundTag": xrayBlockTag,
 		},
-		{
+		map[string]interface{}{
 			"type":        "field",
 			"domain":      []string{"geosite:cn", "geosite:private"},
 			"outboundTag": xrayDirectTag,
 		},
-		{
+		map[string]interface{}{
 			"type":        "field",
 			"ip":          []string{"geoip:cn", "geoip:private"},
 			"outboundTag": xrayDirectTag,
 		},
-		{
-			"type":        "field",
-			"network":     "tcp,udp",
-			"outboundTag": defaultTag,
-		},
+	)
+
+	defaultTag, err := xrayOutboundTag(compiled.Default, tagMap)
+	if err != nil {
+		return nil, err
 	}
+	rules = append(rules, map[string]interface{}{
+		"type":        "field",
+		"network":     "tcp,udp",
+		"outboundTag": defaultTag,
+	})
 
 	domainStrategy := "AsIs"
 	if xrayConfig != nil && xrayConfig.DomainStrategy != "" {
@@ -325,8 +418,24 @@ func (a *XrayAdapter) buildRouting(defaultTag string, geo GeoFiles, xrayConfig *
 			{"file": filepath.Clean(geo.GeoSite)},
 		}
 	}
+	return routing, nil
+}
 
-	return routing
+func xrayOutboundTag(action nodegroup.Action, tagMap map[string]string) (string, error) {
+	switch action.Kind {
+	case nodegroup.ActionDirect:
+		return xrayDirectTag, nil
+	case nodegroup.ActionBlock:
+		return xrayBlockTag, nil
+	case nodegroup.ActionNode:
+		tag, ok := tagMap[action.NodeID]
+		if !ok {
+			return "", fmt.Errorf("node outbound not found: %s", action.NodeID)
+		}
+		return tag, nil
+	default:
+		return "", fmt.Errorf("unknown action: %s", action.Kind)
+	}
 }
 
 // buildXrayStreamSettings 构建传输层配置
@@ -404,14 +513,6 @@ func buildXrayStreamSettings(transport *domain.NodeTransport, tls *domain.NodeTL
 	return stream
 }
 
-// shortenID 截短 ID 用于标签
-func shortenID(id string) string {
-	if len(id) > 8 {
-		return id[:8]
-	}
-	return id
-}
-
 // firstNonEmpty 返回第一个非空字符串
 func firstNonEmpty(values ...string) string {
 	for _, v := range values {
@@ -423,7 +524,7 @@ func firstNonEmpty(values ...string) string {
 }
 
 // buildDNS 构建 DNS 配置
-func (a *XrayAdapter) buildDNS(profile domain.ProxyProfile) map[string]interface{} {
+func (a *XrayAdapter) buildDNS(profile domain.ProxyConfig) map[string]interface{} {
 	servers := []string{"1.1.1.1", "8.8.8.8"}
 	if profile.XrayConfig != nil && len(profile.XrayConfig.DNSServers) > 0 {
 		servers = profile.XrayConfig.DNSServers
@@ -434,7 +535,7 @@ func (a *XrayAdapter) buildDNS(profile domain.ProxyProfile) map[string]interface
 }
 
 // buildLog 构建日志配置
-func (a *XrayAdapter) buildLog(profile domain.ProxyProfile) map[string]interface{} {
+func (a *XrayAdapter) buildLog(profile domain.ProxyConfig) map[string]interface{} {
 	logLevel := "info"
 	if profile.LogConfig != nil && profile.LogConfig.Level != "" {
 		logLevel = profile.LogConfig.Level
@@ -442,4 +543,146 @@ func (a *XrayAdapter) buildLog(profile domain.ProxyProfile) map[string]interface
 	return map[string]interface{}{
 		"loglevel": logLevel,
 	}
+}
+
+// ========== 新增接口方法实现 ==========
+
+// SupportsProtocol 检查是否支持特定协议
+func (a *XrayAdapter) SupportsProtocol(protocol domain.NodeProtocol) bool {
+	for _, p := range a.SupportedProtocols() {
+		if p == protocol {
+			return true
+		}
+	}
+	return false
+}
+
+// GetCommandArgs 返回启动 Xray 的命令行参数
+func (a *XrayAdapter) GetCommandArgs(configPath string) []string {
+	// Xray CLI 使用 `run -c <config>`（与集成测试/现有调用保持一致）。
+	return []string{"run", "-c", configPath}
+}
+
+// Start 启动 Xray 进程
+func (a *XrayAdapter) Start(cfg ProcessConfig, configPath string) (*ProcessHandle, error) {
+	args := a.GetCommandArgs(configPath)
+	cmd := exec.Command(cfg.BinaryPath, args...)
+	cmd.Dir = cfg.ConfigDir
+	if cfg.Stdout != nil {
+		cmd.Stdout = cfg.Stdout
+	} else {
+		cmd.Stdout = os.Stdout
+	}
+	if cfg.Stderr != nil {
+		cmd.Stderr = cfg.Stderr
+	} else {
+		cmd.Stderr = os.Stderr
+	}
+
+	// 设置环境变量（确保 cfg.Environment 覆盖默认环境）
+	env := mergeEnv(os.Environ(), cfg.Environment)
+	// 将二进制所在目录添加到 PATH（用于加载插件）
+	binDir := filepath.Dir(cfg.BinaryPath)
+	env = prependPath(env, binDir)
+	cmd.Env = env
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("启动 Xray 失败: %w", err)
+	}
+
+	return &ProcessHandle{
+		Cmd:        cmd,
+		ConfigPath: configPath,
+		BinaryPath: cfg.BinaryPath,
+		StartedAt:  time.Now(),
+		Port:       0, // Xray 的端口需要从配置中读取
+	}, nil
+}
+
+// Stop 停止 Xray 进程
+func (a *XrayAdapter) Stop(handle *ProcessHandle) error {
+	if handle == nil || handle.Cmd == nil || handle.Cmd.Process == nil {
+		return nil
+	}
+
+	// 优先优雅退出，避免留下半写入的状态文件/日志。
+	//（TUN 主要由 sing-box 承担，但这里统一行为，简单且可预测。）
+	if runtime.GOOS == "windows" {
+		_ = handle.Cmd.Process.Kill()
+	} else {
+		_ = handle.Cmd.Process.Signal(syscall.SIGTERM)
+	}
+
+	// 等待进程退出（如果外部已有 waiter，就等 Done，避免重复 Wait）
+	if handle.Done != nil {
+		select {
+		case <-handle.Done:
+		case <-time.After(5 * time.Second):
+		}
+		return nil
+	}
+
+	exited := make(chan struct{})
+	go func() {
+		_ = handle.Cmd.Wait()
+		close(exited)
+	}()
+	select {
+	case <-exited:
+		return nil
+	case <-time.After(5 * time.Second):
+	}
+
+	_ = handle.Cmd.Process.Kill()
+	<-exited
+	return nil
+}
+
+// WaitForReady 等待 Xray 就绪（检测端口监听）
+func (a *XrayAdapter) WaitForReady(handle *ProcessHandle, timeout time.Duration) error {
+	if handle.Port <= 0 {
+		// 没有指定端口，只等待一小段时间让进程启动
+		time.Sleep(500 * time.Millisecond)
+		return nil
+	}
+
+	deadline := time.Now().Add(timeout)
+	addr := fmt.Sprintf("127.0.0.1:%d", handle.Port)
+
+	for time.Now().Before(deadline) {
+		if runtime.GOOS == "windows" {
+			// Windows 上 net.Listen 可能因为 SO_REUSEADDR 语义导致“端口已被监听仍能 Listen 成功”，
+			// 用 Dial 做探测更可靠。
+			conn, err := net.DialTimeout("tcp", addr, 200*time.Millisecond)
+			if err == nil {
+				_ = conn.Close()
+				return nil
+			}
+		} else {
+			// 不用 Dial 做 readiness probe：Dial 会制造一次“入站连接后立刻断开”，在 debug 日志下很吵。
+			// 用 Listen 探测端口是否已被占用即可（占用 = 有进程监听）。
+			ln, err := net.Listen("tcp", addr)
+			if err != nil {
+				if errors.Is(err, syscall.EADDRINUSE) {
+					return nil
+				}
+			} else {
+				_ = ln.Close()
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	return fmt.Errorf("等待 Xray 就绪超时（端口 %d）", handle.Port)
+}
+
+// prependPath 将目录添加到 PATH 环境变量的前面
+func prependPath(env []string, dir string) []string {
+	for i, e := range env {
+		if strings.HasPrefix(e, "PATH=") {
+			env[i] = "PATH=" + dir + string(os.PathListSeparator) + e[5:]
+			return env
+		}
+	}
+	return append(env, "PATH="+dir)
 }

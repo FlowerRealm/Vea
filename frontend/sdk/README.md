@@ -1,6 +1,6 @@
 # Vea SDK
 
-Xray 代理管理 JavaScript SDK - 单文件、零依赖、TypeScript类型支持
+Vea 后端 HTTP API JavaScript SDK - 单文件、零依赖、TypeScript类型支持
 
 ## 特性
 
@@ -33,19 +33,15 @@ npm install @vea/sdk
 import { createAPI, utils } from '@vea/sdk'
 
 // 创建API客户端
-const api = createAPI('http://localhost:8080')
+const api = createAPI('http://localhost:19080')
 
-// 获取节点列表
-const { nodes } = await api.get('/nodes')
-console.log(`加载了 ${nodes.length} 个节点`)
+// 获取 FRouter 列表
+const { frouters } = await api.get('/frouters')
+console.log(`加载了 ${frouters.length} 个 FRouter`)
 
-// 创建节点
-await api.post('/nodes', {
-  name: '香港节点',
-  address: 'hk.example.com',
-  port: 443,
-  protocol: 'vless',
-  security: { uuid: 'your-uuid' }
+// 创建 FRouter
+await api.post('/frouters', {
+  name: '香港 FRouter'
 })
 
 // 使用工具函数
@@ -63,12 +59,12 @@ console.log(formatTime(new Date())) // "2025/11/20 09:30:00"
 创建简化版API客户端
 
 ```javascript
-const api = createAPI('http://localhost:8080')
+const api = createAPI('http://localhost:19080')
 
-await api.get('/nodes')
-await api.post('/nodes', { name: 'test' })
-await api.put('/nodes/123', { name: 'updated' })
-await api.delete('/nodes/123')
+await api.get('/frouters')
+await api.post('/frouters', { name: 'test' })
+await api.put('/frouters/123', { name: 'updated' })
+await api.delete('/frouters/123')
 ```
 
 #### VeaClient
@@ -79,48 +75,42 @@ await api.delete('/nodes/123')
 import { VeaClient } from '@vea/sdk'
 
 const client = new VeaClient({
-  baseURL: 'http://localhost:8080',
+  baseURL: 'http://localhost:19080',
   timeout: 300000,  // 5分钟
   headers: { 'Authorization': 'Bearer token' }
 })
 
 // 使用资源API
-await client.nodes.list()
+await client.frouters.list()
 await client.configs.import({ sourceUrl: '...' })
-await client.xray.start()
+
+// 启动代理：以 FRouter 为中心（更新配置 + 启动）
+await client.proxy.updateConfig({
+  inboundMode: 'mixed',
+  inboundPort: 1080,
+  preferredEngine: 'auto'
+})
+await client.proxy.start({ frouterId: 'frouter-id' })
 ```
 
 ### 资源API
 
-#### Nodes API
+#### FRouters API
 
 ```javascript
-// 列出所有节点
-const { nodes, activeNodeId, lastSelectedNodeId } = await client.nodes.list()
+// 列出所有 FRouter
+const { frouters } = await client.frouters.list()
 
-// 创建节点（通过分享链接）
-await client.nodes.create({ shareLink: 'vmess://...' })
+// 创建 FRouter
+await client.frouters.create({ name: '香港 FRouter' })
 
-// 创建节点（手动）
-await client.nodes.create({
-  name: '香港节点',
-  address: 'hk.example.com',
-  port: 443,
-  protocol: 'vless',
-  tags: ['香港', '高速'],
-  security: { uuid: 'your-uuid' }
-})
-
-// 测试延迟/速度
-await client.nodes.ping('node-id')
-await client.nodes.speedtest('node-id')
-
-// 选择节点
-await client.nodes.select('node-id')
+// FRouter 测量
+await client.frouters.measureLatency('frouter-id')
+await client.frouters.measureSpeed('frouter-id')
 
 // 批量操作
-await client.nodes.bulkPing(['id1', 'id2'])
-await client.nodes.resetSpeed(['id1', 'id2'])
+await client.frouters.bulkPing(['id1', 'id2'])
+await client.frouters.resetSpeed(['id1', 'id2'])
 ```
 
 #### Configs API
@@ -136,20 +126,26 @@ await client.configs.import({
 // 刷新配置
 await client.configs.refresh('config-id')
 
-// 拉取配置中的节点
-const nodes = await client.configs.pullNodes('config-id')
+// 同步配置中的节点
+const { nodes } = await client.configs.pullNodes('config-id')
 ```
 
-#### Xray API
+#### Proxy API
 
 ```javascript
-// 获取状态
-const status = await client.xray.status()
-// { enabled: true, running: true, activeNodeId: 'xxx', binary: '/path' }
+// 获取/更新运行配置（单例）
+const config = await client.proxy.getConfig()
+await client.proxy.updateConfig({ inboundMode: 'tun' })
 
-// 启动/停止
-await client.xray.start({ activeNodeId: 'node-id' })
-await client.xray.stop()
+// 启动代理（切换只需要换 frouterId）
+await client.proxy.start({ frouterId: 'frouter-id' })
+
+// 获取状态
+const status = await client.proxy.status()
+// { running: true, pid: 1234, engine: 'xray', inboundMode: 'mixed', inboundPort: 1080, frouterId: '...' }
+
+// 停止代理
+await client.proxy.stop()
 ```
 
 #### Components API
@@ -159,26 +155,6 @@ await client.xray.stop()
 const components = await client.components.list()
 await client.components.create({ kind: 'xray' })
 await client.components.install('component-id')
-```
-
-#### Traffic API
-
-```javascript
-// 流量策略
-const profile = await client.traffic.getProfile()
-await client.traffic.updateProfile({
-  defaultNodeId: 'node-id',
-  dns: { strategy: 'UseIPv4', servers: ['8.8.8.8'] }
-})
-
-// 分流规则
-await client.traffic.rules.list()
-await client.traffic.rules.create({
-  name: 'Google服务',
-  targets: ['google.com', 'youtube.com'],
-  nodeId: 'hk-node',
-  priority: 10
-})
 ```
 
 #### Settings API
@@ -192,74 +168,6 @@ await client.settings.updateSystemProxy({
 })
 ```
 
-### 状态管理
-
-#### createNodeStateManager(options)
-
-节点状态管理器（Ping/测速cooldown）
-
-```javascript
-import { createNodeStateManager } from '@vea/sdk'
-
-const stateManager = createNodeStateManager({
-  pingCooldown: 60000,      // Ping冷却60秒
-  speedtestCooldown: 60000  // 测速冷却60秒
-})
-
-if (stateManager.canPing('node-id', node)) {
-  stateManager.startPing('node-id')
-  await client.nodes.ping('node-id')
-  stateManager.endPing()
-}
-```
-
-#### resolvePreferredNode(options)
-
-解析首选节点ID（优先级：savedNodeId > lastSelectedNodeId > activeNodeId > 第一个节点）
-
-```javascript
-import { resolvePreferredNode } from '@vea/sdk'
-
-const nodeId = resolvePreferredNode({
-  nodes, activeNodeId, lastSelectedNodeId, savedNodeId
-})
-```
-
-#### createNodeIdStorage(key)
-
-localStorage节点ID管理器
-
-```javascript
-import { createNodeIdStorage } from '@vea/sdk'
-
-const storage = createNodeIdStorage('vea_selected_node_id')
-storage.set('node-123')
-const nodeId = storage.get()
-```
-
-#### createThemeManager()
-
-主题管理器
-
-```javascript
-import { createThemeManager } from '@vea/sdk'
-
-const themeManager = createThemeManager()
-themeManager.switch('dark')  // 跳转到dark.html
-themeManager.autoRedirect()  // 自动重定向到保存的主题
-```
-
-#### extractNodeTags(nodes) / filterNodesByTag(nodes, tag)
-
-标签处理
-
-```javascript
-import { extractNodeTags, filterNodesByTag } from '@vea/sdk'
-
-const tags = extractNodeTags(nodes)  // ['全部', '香港', '美国']
-const filtered = filterNodesByTag(nodes, '香港')
-```
-
 ### 工具函数
 
 ```javascript
@@ -270,7 +178,7 @@ utils.formatTime('2025-11-20T09:30:00Z')  // "2025/11/20 09:30:00"
 utils.formatBytes(1048576)                // "1.0 MB"
 utils.formatInterval(3600000000000)       // "60 分钟"
 utils.formatLatency(50)                   // "50 ms"
-utils.formatSpeed(15.678)                 // "15.7 MB/s"
+utils.formatSpeed(15.678)                 // "15.7 Mbps"
 
 // HTML转义
 utils.escapeHtml('<script>')              // "&lt;script&gt;"
@@ -281,41 +189,12 @@ utils.parseNumber('123')                  // 123
 
 // 异步工具
 utils.sleep(1000)                         // Promise<void>
-await utils.retry(() => api.get('/nodes'), { maxRetries: 3 })
+await utils.retry(() => api.get('/frouters'), { maxRetries: 3 })
 
 // 性能工具
 const debounced = utils.debounce(fn, 500)
 const throttled = utils.throttle(fn, 100)
 const poller = utils.createPoller(fn, 1000)
-```
-
-### NodeManager
-
-带轮询的节点管理器
-
-```javascript
-import { createNodeManager, VeaClient } from '@vea/sdk'
-
-const client = new VeaClient()
-const nodeManager = createNodeManager(client, 1000)
-
-// 监听节点变化
-nodeManager.onUpdate(({ nodes, activeNodeId }) => {
-  console.log(`更新了 ${nodes.length} 个节点`)
-})
-
-// 启动轮询
-nodeManager.startPolling()
-
-// 获取缓存
-const nodes = nodeManager.getNodes()
-const activeId = nodeManager.getActiveNodeId()
-
-// 手动刷新
-await nodeManager.refresh()
-
-// 停止轮询
-nodeManager.stopPolling()
 ```
 
 ## TypeScript支持
@@ -328,7 +207,7 @@ import { VeaClient, VeaError } from '@vea/sdk'
 const client: VeaClient = new VeaClient()
 
 try {
-  await client.nodes.list()
+  await client.frouters.list()
 } catch (error) {
   if (error instanceof VeaError) {
     console.error(`HTTP ${error.statusCode}: ${error.message}`)
@@ -344,7 +223,7 @@ try {
 import { VeaError } from '@vea/sdk'
 
 try {
-  await client.nodes.create({ name: 'test' })
+  await client.frouters.create({ name: 'test' })
 } catch (error) {
   if (error instanceof VeaError) {
     console.error(`状态码: ${error.statusCode}`)

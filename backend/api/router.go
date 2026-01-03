@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -9,24 +10,27 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"vea/backend/domain"
+	"vea/backend/repository"
 	"vea/backend/service"
+	nodeshare "vea/backend/service/node"
+	"vea/backend/service/nodegroup"
 )
 
 type Router struct {
-	service              *service.Service
+	service              *service.Facade
 	nodeNotFoundErr      error
+	frouterNotFoundErr   error
 	configNotFoundErr    error
 	geoNotFoundErr       error
-	ruleNotFoundErr      error
 	componentNotFoundErr error
 }
 
-func NewRouter(service *service.Service) *gin.Engine {
-	gin.SetMode(gin.ReleaseMode)
-	r := &Router{service: service}
-	r.nodeNotFoundErr, r.configNotFoundErr, r.geoNotFoundErr, r.ruleNotFoundErr, r.componentNotFoundErr = service.Errors()
+func NewRouter(svc *service.Facade) *gin.Engine {
+	r := &Router{service: svc}
+	r.nodeNotFoundErr, r.frouterNotFoundErr, r.configNotFoundErr, r.geoNotFoundErr, r.componentNotFoundErr = svc.Errors()
 	engine := gin.New()
 	engine.Use(gin.Recovery())
 	r.register(engine)
@@ -56,22 +60,42 @@ func (r *Router) register(engine *gin.Engine) {
 	})
 
 	engine.GET("/snapshot", func(c *gin.Context) {
-		c.JSON(http.StatusOK, r.service.Snapshot())
+		snapshot, err := r.service.Snapshot()
+		if err != nil {
+			r.handleError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, snapshot)
 	})
 
 	nodes := engine.Group("/nodes")
 	{
 		nodes.GET("", r.listNodes)
 		nodes.POST("", r.createNode)
+		nodes.POST("/from-link", r.createNodesFromLink)
+		nodes.PUT(":id/meta", r.updateNodeMeta)
 		nodes.PUT(":id", r.updateNode)
-		nodes.DELETE(":id", r.deleteNode)
-		nodes.POST(":id/reset-traffic", r.resetNodeTraffic)
-		nodes.POST(":id/traffic", r.incrementNodeTraffic)
 		nodes.POST(":id/ping", r.pingNode)
 		nodes.POST(":id/speedtest", r.speedtestNode)
-		nodes.POST(":id/select", r.selectNode)
 		nodes.POST("/bulk/ping", r.bulkPingNodes)
-		nodes.POST("/reset-speed", r.resetNodeSpeed)
+		nodes.POST("/bulk/speedtest", r.bulkSpeedtestNodes)
+	}
+
+	frouters := engine.Group("/frouters")
+	{
+		frouters.GET("", r.listFRouters)
+		frouters.POST("", r.createFRouter)
+		frouters.PUT(":id", r.updateFRouter)
+		frouters.DELETE(":id", r.deleteFRouter)
+		frouters.POST(":id/ping", r.pingFRouter)
+		frouters.POST(":id/speedtest", r.speedtestFRouter)
+		frouters.POST("/bulk/ping", r.bulkPingFRouters)
+		frouters.POST("/reset-speed", r.resetFRouterSpeed)
+
+		// FRouter 图编辑
+		frouters.GET(":id/graph", r.getFRouterGraph)
+		frouters.PUT(":id/graph", r.saveFRouterGraph)
+		frouters.POST(":id/graph/validate", r.validateFRouterGraph)
 	}
 
 	configs := engine.Group("/configs")
@@ -82,7 +106,6 @@ func (r *Router) register(engine *gin.Engine) {
 		configs.DELETE(":id", r.deleteConfig)
 		configs.POST(":id/refresh", r.refreshConfig)
 		configs.POST(":id/pull-nodes", r.pullConfigNodes)
-		configs.POST(":id/traffic", r.incrementConfigTraffic)
 	}
 
 	geo := engine.Group("/geo")
@@ -107,33 +130,17 @@ func (r *Router) register(engine *gin.Engine) {
 	{
 		settings.GET("/system-proxy", r.getSystemProxySettings)
 		settings.PUT("/system-proxy", r.updateSystemProxySettings)
-		settings.GET("/tun", r.getTUNSettings)
-		settings.PUT("/tun", r.updateTUNSettings)
 		settings.GET("/frontend", r.getFrontendSettings)
 		settings.PUT("/frontend", r.saveFrontendSettings)
-	}
-
-	xray := engine.Group("/xray")
-	{
-		xray.GET("/status", r.xrayStatus)
-		xray.POST("/start", r.startXray)
-		xray.POST("/stop", r.stopXray)
-	}
-
-	// 新的 ProxyProfile API
-	profiles := engine.Group("/proxy-profiles")
-	{
-		profiles.GET("", r.listProxyProfiles)
-		profiles.POST("", r.createProxyProfile)
-		profiles.GET(":id", r.getProxyProfile)
-		profiles.PUT(":id", r.updateProxyProfile)
-		profiles.DELETE(":id", r.deleteProxyProfile)
-		profiles.POST(":id/start", r.startProxyProfile)
 	}
 
 	proxy := engine.Group("/proxy")
 	{
 		proxy.GET("/status", r.getProxyStatus)
+		proxy.GET("/kernel/logs", r.getKernelLogs)
+		proxy.GET("/config", r.getProxyConfig)
+		proxy.PUT("/config", r.updateProxyConfig)
+		proxy.POST("/start", r.startProxy)
 		proxy.POST("/stop", r.stopProxy)
 	}
 
@@ -141,129 +148,179 @@ func (r *Router) register(engine *gin.Engine) {
 	engine.GET("/tun/check", r.checkTUNCapabilities)
 	engine.POST("/tun/setup", r.setupTUN)
 
+	// Engine 推荐 API
+	eng := engine.Group("/engine")
+	{
+		eng.GET("/recommend", r.getEngineRecommendation)
+		eng.GET("/status", r.getEngineStatus)
+	}
+
 	// IP Geo API
 	engine.GET("/ip/geo", r.getIPGeo)
 
-	traffic := engine.Group("/traffic")
-	{
-		traffic.GET("/profile", r.getTrafficProfile)
-		traffic.PUT("/profile", r.updateTrafficProfile)
-		traffic.GET("/rules", r.listTrafficRules)
-		traffic.POST("/rules", r.createTrafficRule)
-		traffic.PUT("/rules/:id", r.updateTrafficRule)
-		traffic.DELETE("/rules/:id", r.deleteTrafficRule)
-	}
+	// 图编辑属于 FRouter：/frouters/:id/graph
 }
 
-func (r *Router) xrayStatus(c *gin.Context) {
-	c.JSON(http.StatusOK, r.service.XrayStatus())
+type frouterCreateRequest struct {
+	Name       string                     `json:"name" binding:"required"`
+	ChainProxy *domain.ChainProxySettings `json:"chainProxy,omitempty"`
+	Tags       []string                   `json:"tags,omitempty"`
 }
 
-func (r *Router) startXray(c *gin.Context) {
-	var req struct {
-		ActiveNodeID string `json:"activeNodeId"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
-		badRequest(c, err)
-		return
-	}
-	if err := r.service.EnableXray(req.ActiveNodeID); err != nil {
-		r.handleError(c, err)
-		return
-	}
-	c.Status(http.StatusAccepted)
+type frouterUpdateRequest struct {
+	Name       string                     `json:"name" binding:"required"`
+	ChainProxy *domain.ChainProxySettings `json:"chainProxy,omitempty"`
+	Tags       []string                   `json:"tags,omitempty"`
 }
 
-func (r *Router) stopXray(c *gin.Context) {
-	if err := r.service.DisableXray(); err != nil {
-		r.handleError(c, err)
-		return
-	}
-	c.Status(http.StatusNoContent)
-}
-
-type nodeCreateRequest struct {
-	ShareLink string              `json:"shareLink"`
-	Name      string              `json:"name"`
-	Address   string              `json:"address"`
-	Port      int                 `json:"port"`
-	Protocol  domain.NodeProtocol `json:"protocol"`
-	Tags      []string            `json:"tags"`
+type nodeRequest struct {
+	Name      string                `json:"name" binding:"required"`
+	Address   string                `json:"address" binding:"required"`
+	Port      int                   `json:"port" binding:"required"`
+	Protocol  domain.NodeProtocol   `json:"protocol" binding:"required"`
+	Tags      []string              `json:"tags,omitempty"`
 	Security  *domain.NodeSecurity  `json:"security,omitempty"`
 	Transport *domain.NodeTransport `json:"transport,omitempty"`
 	TLS       *domain.NodeTLS       `json:"tls,omitempty"`
 }
 
-type nodeUpdateRequest struct {
-	Name     string              `json:"name" binding:"required"`
-	Address  string              `json:"address" binding:"required"`
-	Port     int                 `json:"port" binding:"required,min=1,max=65535"`
-	Protocol domain.NodeProtocol `json:"protocol" binding:"required"`
-	Tags     []string            `json:"tags"`
-}
-
-type nodeTrafficRequest struct {
-	UploadBytes   int64 `json:"uploadBytes"`
-	DownloadBytes int64 `json:"downloadBytes"`
+func (r *Router) listFRouters(c *gin.Context) {
+	frouters, err := r.service.ListFRouters()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"frouters": frouters,
+	})
 }
 
 func (r *Router) listNodes(c *gin.Context) {
-	nodes := r.service.ListNodes()
+	nodes, err := r.service.ListNodes()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
-		"nodes":              nodes,
-		"activeNodeId":       r.service.ActiveXrayNodeID(),
-		"lastSelectedNodeId": r.service.LastSelectedNodeID(),
+		"nodes": nodes,
 	})
 }
 
 func (r *Router) createNode(c *gin.Context) {
-	var req nodeCreateRequest
+	var req nodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		badRequest(c, err)
 		return
 	}
-	if share := strings.TrimSpace(req.ShareLink); share != "" {
-		created, err := r.service.CreateNodeFromShare(share)
-		if err != nil {
-			badRequest(c, err)
-			return
-		}
-		c.JSON(http.StatusCreated, created)
+	node, err := buildNodeFromRequest(req)
+	if err != nil {
+		r.handleError(c, err)
 		return
 	}
-	if req.Name == "" || req.Address == "" || req.Port <= 0 || req.Protocol == "" {
-		badRequest(c, errors.New("name, address, port and protocol are required"))
+	created, err := r.service.CreateNode(node)
+	if err != nil {
+		r.handleError(c, err)
 		return
 	}
-
-	node := domain.Node{
-		Name:      req.Name,
-		Address:   req.Address,
-		Port:      req.Port,
-		Protocol:  req.Protocol,
-		Tags:      req.Tags,
-		Security:  req.Security,
-		Transport: req.Transport,
-		TLS:       req.TLS,
-	}
-
-	created := r.service.CreateNode(node)
 	c.JSON(http.StatusCreated, created)
 }
 
+type nodeFromLinkRequest struct {
+	ShareLink string   `json:"shareLink" binding:"required"`
+	Tags      []string `json:"tags,omitempty"`
+}
+
+func (r *Router) createNodesFromLink(c *gin.Context) {
+	var req nodeFromLinkRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+
+	parsed, errs := nodeshare.ParseMultipleLinks(req.ShareLink)
+	if len(parsed) == 0 {
+		if len(errs) > 0 {
+			badRequest(c, errs[0])
+			return
+		}
+		badRequest(c, fmt.Errorf("%w: no nodes found in share link", repository.ErrInvalidData))
+		return
+	}
+
+	created := make([]domain.Node, 0, len(parsed))
+	for _, node := range parsed {
+		node.ID = ""
+		node.SourceConfigID = ""
+		if strings.TrimSpace(node.Name) == "" {
+			if strings.TrimSpace(node.Address) != "" {
+				node.Name = node.Address
+			} else {
+				node.Name = "node"
+			}
+		}
+		if req.Tags != nil {
+			node.Tags = req.Tags
+		}
+		next, err := r.service.CreateNode(node)
+		if err != nil {
+			r.handleError(c, err)
+			return
+		}
+		created = append(created, next)
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"nodes": created})
+}
+
 func (r *Router) updateNode(c *gin.Context) {
-	var req nodeUpdateRequest
+	var req nodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		badRequest(c, err)
 		return
 	}
 	id := c.Param("id")
 	updated, err := r.service.UpdateNode(id, func(node domain.Node) (domain.Node, error) {
-		node.Name = req.Name
-		node.Address = req.Address
-		node.Port = req.Port
-		node.Protocol = req.Protocol
-		node.Tags = req.Tags
+		if strings.TrimSpace(node.SourceConfigID) != "" {
+			return domain.Node{}, fmt.Errorf("%w: subscription node is read-only", repository.ErrInvalidData)
+		}
+		next, err := buildNodeFromRequest(req)
+		if err != nil {
+			return domain.Node{}, err
+		}
+		next.SourceConfigID = node.SourceConfigID
+		return next, nil
+	})
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, updated)
+}
+
+type nodeMetaRequest struct {
+	Name string   `json:"name,omitempty"`
+	Tags []string `json:"tags,omitempty"`
+}
+
+func (r *Router) updateNodeMeta(c *gin.Context) {
+	var req nodeMetaRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	if strings.TrimSpace(req.Name) == "" && req.Tags == nil {
+		badRequest(c, fmt.Errorf("%w: name or tags is required", repository.ErrInvalidData))
+		return
+	}
+
+	id := c.Param("id")
+	updated, err := r.service.UpdateNode(id, func(node domain.Node) (domain.Node, error) {
+		if strings.TrimSpace(req.Name) != "" {
+			node.Name = strings.TrimSpace(req.Name)
+		}
+		if req.Tags != nil {
+			node.Tags = req.Tags
+		}
 		return node, nil
 	})
 	if err != nil {
@@ -273,60 +330,253 @@ func (r *Router) updateNode(c *gin.Context) {
 	c.JSON(http.StatusOK, updated)
 }
 
-func (r *Router) deleteNode(c *gin.Context) {
+func buildNodeFromRequest(req nodeRequest) (domain.Node, error) {
+	if err := validateNodeRequest(req); err != nil {
+		return domain.Node{}, err
+	}
+	node := domain.Node{
+		Name:      strings.TrimSpace(req.Name),
+		Address:   strings.TrimSpace(req.Address),
+		Port:      req.Port,
+		Protocol:  req.Protocol,
+		Tags:      req.Tags,
+		Security:  req.Security,
+		Transport: req.Transport,
+		TLS:       req.TLS,
+	}
+	if node.Protocol == domain.ProtocolVMess && node.Security != nil {
+		if node.Security.Encryption == "" && node.Security.Method != "" {
+			node.Security.Encryption = node.Security.Method
+		}
+		if node.Security.Method == "" && node.Security.Encryption != "" {
+			node.Security.Method = node.Security.Encryption
+		}
+	}
+	if node.TLS != nil && node.TLS.Enabled && node.TLS.Type == "" {
+		node.TLS.Type = "tls"
+	}
+	return node, nil
+}
+
+func validateNodeRequest(req nodeRequest) error {
+	if strings.TrimSpace(req.Name) == "" {
+		return fmt.Errorf("%w: name is required", repository.ErrInvalidData)
+	}
+	if strings.TrimSpace(req.Address) == "" {
+		return fmt.Errorf("%w: address is required", repository.ErrInvalidData)
+	}
+	if req.Port <= 0 || req.Port > 65535 {
+		return fmt.Errorf("%w: port is invalid", repository.ErrInvalidData)
+	}
+	switch req.Protocol {
+	case domain.ProtocolVLESS, domain.ProtocolVMess, domain.ProtocolTrojan, domain.ProtocolShadowsocks, domain.ProtocolHysteria2, domain.ProtocolTUIC:
+	default:
+		return fmt.Errorf("%w: protocol is invalid", repository.ErrInvalidData)
+	}
+	switch req.Protocol {
+	case domain.ProtocolShadowsocks:
+		if req.Security == nil || strings.TrimSpace(req.Security.Method) == "" || strings.TrimSpace(req.Security.Password) == "" {
+			return fmt.Errorf("%w: shadowsocks requires method and password", repository.ErrInvalidData)
+		}
+	case domain.ProtocolVMess, domain.ProtocolVLESS:
+		if req.Security == nil || strings.TrimSpace(req.Security.UUID) == "" {
+			return fmt.Errorf("%w: vmess/vless requires uuid", repository.ErrInvalidData)
+		}
+	case domain.ProtocolTrojan:
+		if req.Security == nil || strings.TrimSpace(req.Security.Password) == "" {
+			return fmt.Errorf("%w: trojan requires password", repository.ErrInvalidData)
+		}
+	case domain.ProtocolHysteria2:
+		if req.Security == nil || strings.TrimSpace(req.Security.Password) == "" {
+			return fmt.Errorf("%w: hysteria2 requires password", repository.ErrInvalidData)
+		}
+	case domain.ProtocolTUIC:
+		if req.Security == nil || strings.TrimSpace(req.Security.UUID) == "" || strings.TrimSpace(req.Security.Password) == "" {
+			return fmt.Errorf("%w: tuic requires uuid and password", repository.ErrInvalidData)
+		}
+	}
+	return nil
+}
+
+func (r *Router) pingNode(c *gin.Context) {
 	id := c.Param("id")
-	if err := r.service.DeleteNode(id); err != nil {
+	r.service.MeasureNodeLatencyAsync(id)
+	c.Status(http.StatusAccepted)
+}
+
+func (r *Router) speedtestNode(c *gin.Context) {
+	id := c.Param("id")
+	r.service.MeasureNodeSpeedAsync(id)
+	c.Status(http.StatusAccepted)
+}
+
+func (r *Router) bulkPingNodes(c *gin.Context) {
+	ids := struct {
+		IDs []string `json:"ids"`
+	}{}
+	if err := c.ShouldBindJSON(&ids); err != nil && !errors.Is(err, io.EOF) {
+		badRequest(c, err)
+		return
+	}
+	var targetIDs []string
+	if len(ids.IDs) == 0 {
+		nodes, err := r.service.ListNodes()
+		if err != nil {
+			r.handleError(c, err)
+			return
+		}
+		for _, node := range nodes {
+			targetIDs = append(targetIDs, node.ID)
+		}
+	} else {
+		targetIDs = ids.IDs
+	}
+	for _, id := range targetIDs {
+		if strings.TrimSpace(id) == "" {
+			continue
+		}
+		r.service.MeasureNodeLatencyAsync(id)
+	}
+	c.Status(http.StatusAccepted)
+}
+
+func (r *Router) bulkSpeedtestNodes(c *gin.Context) {
+	ids := struct {
+		IDs []string `json:"ids"`
+	}{}
+	if err := c.ShouldBindJSON(&ids); err != nil && !errors.Is(err, io.EOF) {
+		badRequest(c, err)
+		return
+	}
+	var targetIDs []string
+	if len(ids.IDs) == 0 {
+		nodes, err := r.service.ListNodes()
+		if err != nil {
+			r.handleError(c, err)
+			return
+		}
+		for _, node := range nodes {
+			targetIDs = append(targetIDs, node.ID)
+		}
+	} else {
+		targetIDs = ids.IDs
+	}
+	for _, id := range targetIDs {
+		if strings.TrimSpace(id) == "" {
+			continue
+		}
+		r.service.MeasureNodeSpeedAsync(id)
+	}
+	c.Status(http.StatusAccepted)
+}
+
+func (r *Router) createFRouter(c *gin.Context) {
+	var req frouterCreateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	frouter := domain.FRouter{
+		Name: req.Name,
+		Tags: req.Tags,
+	}
+	if req.ChainProxy != nil {
+		frouter.ChainProxy = *req.ChainProxy
+	}
+	if len(frouter.ChainProxy.Slots) == 0 {
+		frouter.ChainProxy.Slots = []domain.SlotNode{
+			{ID: "slot-1", Name: "配置槽"},
+		}
+	}
+	if len(frouter.ChainProxy.Edges) == 0 {
+		frouter.ChainProxy.Edges = []domain.ProxyEdge{
+			{
+				ID:       uuid.NewString(),
+				From:     domain.EdgeNodeLocal,
+				To:       domain.EdgeNodeDirect,
+				Priority: 0,
+				Enabled:  true,
+			},
+		}
+	}
+	frouter.ChainProxy.Edges = normalizeChainEdges(frouter.ChainProxy.Edges)
+	nodes, err := r.service.ListNodes()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	if _, err := nodegroup.CompileFRouter(frouter, nodes); err != nil {
+		var ce *nodegroup.CompileError
+		if errors.As(err, &ce) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":    "invalid frouter",
+				"problems": ce.Problems,
+			})
+			return
+		}
+		badRequest(c, err)
+		return
+	}
+	created, err := r.service.CreateFRouter(frouter)
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, created)
+}
+
+func (r *Router) updateFRouter(c *gin.Context) {
+	var req frouterUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	id := c.Param("id")
+	updated, err := r.service.UpdateFRouter(id, func(frouter domain.FRouter) (domain.FRouter, error) {
+		frouter.Name = req.Name
+		if req.ChainProxy != nil {
+			frouter.ChainProxy = *req.ChainProxy
+		}
+		frouter.ChainProxy.Edges = normalizeChainEdges(frouter.ChainProxy.Edges)
+		nodes, err := r.service.ListNodes()
+		if err != nil {
+			return domain.FRouter{}, err
+		}
+		if _, err := nodegroup.CompileFRouter(frouter, nodes); err != nil {
+			return domain.FRouter{}, err
+		}
+		frouter.Tags = req.Tags
+		return frouter, nil
+	})
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, updated)
+}
+
+func (r *Router) deleteFRouter(c *gin.Context) {
+	id := c.Param("id")
+	if err := r.service.DeleteFRouter(id); err != nil {
 		r.handleError(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)
 }
 
-func (r *Router) resetNodeTraffic(c *gin.Context) {
+func (r *Router) pingFRouter(c *gin.Context) {
 	id := c.Param("id")
-	node, err := r.service.ResetNodeTraffic(id)
-	if err != nil {
-		r.handleError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, node)
-}
-
-func (r *Router) incrementNodeTraffic(c *gin.Context) {
-	var req nodeTrafficRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		badRequest(c, err)
-		return
-	}
-	id := c.Param("id")
-	node, err := r.service.IncrementNodeTraffic(id, req.UploadBytes, req.DownloadBytes)
-	if err != nil {
-		r.handleError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, node)
-}
-
-func (r *Router) pingNode(c *gin.Context) {
-	id := c.Param("id")
-	r.service.PingAsync(id)
+	r.service.MeasureFRouterLatencyAsync(id)
 	c.Status(http.StatusAccepted)
 }
 
-func (r *Router) speedtestNode(c *gin.Context) {
+func (r *Router) speedtestFRouter(c *gin.Context) {
 	id := c.Param("id")
-	r.service.SpeedtestAsync(id)
+	r.service.MeasureFRouterSpeedAsync(id)
 	c.Status(http.StatusAccepted)
 }
 
-func (r *Router) selectNode(c *gin.Context) {
-	id := c.Param("id")
-	// 非阻塞切换，立即返回，降低前端等待
-	r.service.SwitchXrayNodeAsync(id)
-	c.Status(http.StatusAccepted)
-}
-
-func (r *Router) bulkPingNodes(c *gin.Context) {
+func (r *Router) bulkPingFRouters(c *gin.Context) {
 	ids := struct {
 		IDs []string `json:"ids"`
 	}{}
@@ -336,8 +586,13 @@ func (r *Router) bulkPingNodes(c *gin.Context) {
 	}
 	var targetIDs []string
 	if len(ids.IDs) == 0 {
-		for _, node := range r.service.ListNodes() {
-			targetIDs = append(targetIDs, node.ID)
+		frouters, err := r.service.ListFRouters()
+		if err != nil {
+			r.handleError(c, err)
+			return
+		}
+		for _, frouter := range frouters {
+			targetIDs = append(targetIDs, frouter.ID)
 		}
 	} else {
 		targetIDs = ids.IDs
@@ -346,12 +601,12 @@ func (r *Router) bulkPingNodes(c *gin.Context) {
 		if id == "" {
 			continue
 		}
-		r.service.PingAsync(id)
+		r.service.MeasureFRouterLatencyAsync(id)
 	}
 	c.Status(http.StatusAccepted)
 }
 
-func (r *Router) resetNodeSpeed(c *gin.Context) {
+func (r *Router) resetFRouterSpeed(c *gin.Context) {
 	ids := struct {
 		IDs []string `json:"ids"`
 	}{}
@@ -359,7 +614,35 @@ func (r *Router) resetNodeSpeed(c *gin.Context) {
 		badRequest(c, err)
 		return
 	}
-	r.service.ResetNodeSpeeds(ids.IDs)
+	targetIDs := make(map[string]struct{})
+	frouters, err := r.service.ListFRouters()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	if len(ids.IDs) == 0 {
+		for _, frouter := range frouters {
+			targetIDs[frouter.ID] = struct{}{}
+		}
+	} else {
+		for _, id := range ids.IDs {
+			targetIDs[id] = struct{}{}
+		}
+	}
+	for _, frouter := range frouters {
+		if _, ok := targetIDs[frouter.ID]; !ok {
+			continue
+		}
+		if _, err := r.service.UpdateFRouter(frouter.ID, func(rp domain.FRouter) (domain.FRouter, error) {
+			rp.LastSpeedMbps = 0
+			rp.LastSpeedAt = time.Time{}
+			rp.LastSpeedError = ""
+			return rp, nil
+		}); err != nil {
+			r.handleError(c, err)
+			return
+		}
+	}
 	c.Status(http.StatusNoContent)
 }
 
@@ -373,7 +656,12 @@ type configRequest struct {
 }
 
 func (r *Router) listConfigs(c *gin.Context) {
-	c.JSON(http.StatusOK, r.service.ListConfigs())
+	configs, err := r.service.ListConfigs()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, configs)
 }
 
 func (r *Router) importConfig(c *gin.Context) {
@@ -457,22 +745,7 @@ func (r *Router) pullConfigNodes(c *gin.Context) {
 		r.handleError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, nodes)
-}
-
-func (r *Router) incrementConfigTraffic(c *gin.Context) {
-	var req nodeTrafficRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		badRequest(c, err)
-		return
-	}
-	id := c.Param("id")
-	cfg, err := r.service.IncrementConfigTraffic(id, req.UploadBytes, req.DownloadBytes)
-	if err != nil {
-		r.handleError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, cfg)
+	c.JSON(http.StatusOK, gin.H{"nodes": nodes})
 }
 
 type geoRequest struct {
@@ -484,7 +757,12 @@ type geoRequest struct {
 }
 
 func (r *Router) listGeo(c *gin.Context) {
-	c.JSON(http.StatusOK, r.service.ListGeo())
+	resources, err := r.service.ListGeo()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resources)
 }
 
 func (r *Router) upsertGeo(c *gin.Context) {
@@ -502,7 +780,11 @@ func (r *Router) upsertGeo(c *gin.Context) {
 		Checksum:  req.Checksum,
 		Version:   req.Version,
 	}
-	updated := r.service.UpsertGeo(res)
+	updated, err := r.service.UpsertGeo(res)
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
 	status := http.StatusOK
 	if id == "" {
 		status = http.StatusCreated
@@ -530,15 +812,19 @@ func (r *Router) refreshGeo(c *gin.Context) {
 }
 
 type componentRequest struct {
-	Name                  string                   `json:"name"`
-	Kind                  domain.CoreComponentKind `json:"kind"`
-	SourceURL             string                   `json:"sourceUrl"`
-	ArchiveType           string                   `json:"archiveType"`
-	AutoUpdateIntervalMin int64                    `json:"autoUpdateIntervalMinutes"`
+	Name        string                   `json:"name"`
+	Kind        domain.CoreComponentKind `json:"kind"`
+	SourceURL   string                   `json:"sourceUrl"`
+	ArchiveType string                   `json:"archiveType"`
 }
 
 func (r *Router) listComponents(c *gin.Context) {
-	c.JSON(http.StatusOK, r.service.ListComponents())
+	components, err := r.service.ListComponents()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, components)
 }
 
 func (r *Router) createComponent(c *gin.Context) {
@@ -547,16 +833,11 @@ func (r *Router) createComponent(c *gin.Context) {
 		badRequest(c, err)
 		return
 	}
-	interval := time.Duration(0)
-	if req.AutoUpdateIntervalMin > 0 {
-		interval = time.Duration(req.AutoUpdateIntervalMin) * time.Minute
-	}
 	component := domain.CoreComponent{
-		Name:               req.Name,
-		Kind:               req.Kind,
-		SourceURL:          req.SourceURL,
-		ArchiveType:        req.ArchiveType,
-		AutoUpdateInterval: interval,
+		Name:        req.Name,
+		Kind:        req.Kind,
+		SourceURL:   req.SourceURL,
+		ArchiveType: req.ArchiveType,
 	}
 	created, err := r.service.CreateComponent(component)
 	if err != nil {
@@ -572,10 +853,6 @@ func (r *Router) updateComponent(c *gin.Context) {
 		badRequest(c, err)
 		return
 	}
-	interval := time.Duration(0)
-	if req.AutoUpdateIntervalMin > 0 {
-		interval = time.Duration(req.AutoUpdateIntervalMin) * time.Minute
-	}
 	id := c.Param("id")
 	updated, err := r.service.UpdateComponent(id, func(component domain.CoreComponent) (domain.CoreComponent, error) {
 		component.Name = req.Name
@@ -586,7 +863,6 @@ func (r *Router) updateComponent(c *gin.Context) {
 		if req.ArchiveType != "" {
 			component.ArchiveType = req.ArchiveType
 		}
-		component.AutoUpdateInterval = interval
 		return component, nil
 	})
 	if err != nil {
@@ -616,8 +892,13 @@ func (r *Router) installComponent(c *gin.Context) {
 }
 
 func (r *Router) getSystemProxySettings(c *gin.Context) {
+	settings, err := r.service.SystemProxySettings()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
-		"settings": r.service.SystemProxySettings(),
+		"settings": settings,
 		"message":  "",
 	})
 }
@@ -633,149 +914,26 @@ func (r *Router) updateSystemProxySettings(c *gin.Context) {
 		badRequest(c, err)
 		return
 	}
-	updated, err := r.service.UpdateSystemProxySettings(domain.SystemProxySettings{
+	updated, message, err := r.service.UpdateSystemProxySettings(domain.SystemProxySettings{
 		Enabled:     req.Enabled,
 		IgnoreHosts: req.IgnoreHosts,
 	})
 	if err != nil {
-		if errors.Is(err, service.ErrProxyUnsupported) || errors.Is(err, service.ErrProxyXrayNotRunning) {
-			c.JSON(http.StatusOK, gin.H{
-				"settings": updated,
-				"message":  err.Error(),
-			})
-			return
-		}
 		r.handleError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"settings": updated,
-		"message":  "",
+		"message":  message,
 	})
-}
-
-type trafficProfileRequest struct {
-	DefaultNodeID string     `json:"defaultNodeId"`
-	DNS           dnsRequest `json:"dns"`
-}
-
-type dnsRequest struct {
-	Strategy string   `json:"strategy"`
-	Servers  []string `json:"servers"`
-}
-
-func (r *Router) getTrafficProfile(c *gin.Context) {
-	c.JSON(http.StatusOK, r.service.GetTrafficProfile())
-}
-
-func (r *Router) updateTrafficProfile(c *gin.Context) {
-	var req trafficProfileRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		badRequest(c, err)
-		return
-	}
-	profile, err := r.service.UpdateTrafficProfile(func(profile domain.TrafficProfile) (domain.TrafficProfile, error) {
-		profile.DefaultNodeID = req.DefaultNodeID
-		profile.DNS = domain.DNSSetting{Strategy: req.DNS.Strategy, Servers: req.DNS.Servers}
-		return profile, nil
-	})
-	if err != nil {
-		r.handleError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, profile)
-}
-
-type trafficRuleRequest struct {
-	Name     string   `json:"name" binding:"required"`
-	Targets  []string `json:"targets" binding:"required"`
-	NodeID   string   `json:"nodeId" binding:"required"`
-	Priority int      `json:"priority"`
-}
-
-func (r *Router) listTrafficRules(c *gin.Context) {
-	c.JSON(http.StatusOK, r.service.ListTrafficRules())
-}
-
-func (r *Router) createTrafficRule(c *gin.Context) {
-	var req trafficRuleRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		badRequest(c, err)
-		return
-	}
-	rule := domain.TrafficRule{
-		Name:     req.Name,
-		Targets:  req.Targets,
-		NodeID:   req.NodeID,
-		Priority: req.Priority,
-	}
-	created := r.service.CreateTrafficRule(rule)
-	c.JSON(http.StatusCreated, created)
-}
-
-func (r *Router) updateTrafficRule(c *gin.Context) {
-	var req trafficRuleRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		badRequest(c, err)
-		return
-	}
-	id := c.Param("id")
-	updated, err := r.service.UpdateTrafficRule(id, func(rule domain.TrafficRule) (domain.TrafficRule, error) {
-		rule.Name = req.Name
-		rule.Targets = req.Targets
-		rule.NodeID = req.NodeID
-		rule.Priority = req.Priority
-		return rule, nil
-	})
-	if err != nil {
-		r.handleError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, updated)
-}
-
-func (r *Router) deleteTrafficRule(c *gin.Context) {
-	id := c.Param("id")
-	if err := r.service.DeleteTrafficRule(id); err != nil {
-		r.handleError(c, err)
-		return
-	}
-	c.Status(http.StatusNoContent)
-}
-
-func (r *Router) getTUNSettings(c *gin.Context) {
-	settings := r.service.GetTUNSettings()
-	log.Printf("[API] GET /settings/tun: enabled=%v", settings.Enabled)
-	c.JSON(http.StatusOK, settings)
-}
-
-type tunSettingsRequest struct {
-	Enabled bool `json:"enabled"`
-}
-
-func (r *Router) updateTUNSettings(c *gin.Context) {
-	var req tunSettingsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Printf("[API] PUT /settings/tun: 解析请求失败: %v", err)
-		badRequest(c, err)
-		return
-	}
-	log.Printf("[API] PUT /settings/tun: enabled=%v", req.Enabled)
-	updated, err := r.service.UpdateTUNSettings(func(settings domain.TUNSettings) (domain.TUNSettings, error) {
-		settings.Enabled = req.Enabled
-		return settings, nil
-	})
-	if err != nil {
-		log.Printf("[API] PUT /settings/tun: 失败: %v", err)
-		r.handleError(c, err)
-		return
-	}
-	log.Printf("[API] PUT /settings/tun: 成功, enabled=%v", updated.Enabled)
-	c.JSON(http.StatusOK, updated)
 }
 
 func (r *Router) getFrontendSettings(c *gin.Context) {
-	settings := r.service.GetFrontendSettings()
+	settings, err := r.service.GetFrontendSettings()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
 	c.JSON(http.StatusOK, settings)
 }
 
@@ -812,14 +970,282 @@ func badRequest(c *gin.Context, err error) {
 }
 
 func (r *Router) handleError(c *gin.Context, err error) {
-	switch err {
-	case r.nodeNotFoundErr, r.configNotFoundErr, r.geoNotFoundErr, r.ruleNotFoundErr, r.componentNotFoundErr:
+	var ce *nodegroup.CompileError
+	if errors.As(err, &ce) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":    "invalid frouter",
+			"problems": ce.Problems,
+		})
+		return
+	}
+
+	if errors.Is(err, repository.ErrInvalidID) || errors.Is(err, repository.ErrInvalidData) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if errors.Is(err, r.frouterNotFoundErr) ||
+		errors.Is(err, r.nodeNotFoundErr) ||
+		errors.Is(err, r.configNotFoundErr) ||
+		errors.Is(err, r.geoNotFoundErr) ||
+		errors.Is(err, r.componentNotFoundErr) {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-	default:
-		if errors.Is(err, service.ErrXrayNotInstalled) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("[API] %s %s: %v", c.Request.Method, c.Request.URL.Path, err)
+	c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+}
+
+// ==================== FRouter Graph API ====================
+
+// frouterGraphRequest 图保存请求
+type frouterGraphRequest struct {
+	Edges     []domain.ProxyEdge              `json:"edges"`
+	Positions map[string]domain.GraphPosition `json:"positions"`
+	Slots     []domain.SlotNode               `json:"slots"`
+}
+
+// frouterGraphResponse 图读取响应
+type frouterGraphResponse struct {
+	Edges     []domain.ProxyEdge              `json:"edges"`
+	Positions map[string]domain.GraphPosition `json:"positions"`
+	Slots     []domain.SlotNode               `json:"slots"`
+	UpdatedAt time.Time                       `json:"updatedAt"`
+}
+
+// validateGraphResponse 图验证响应
+type validateGraphResponse struct {
+	Valid    bool     `json:"valid"`
+	Errors   []string `json:"errors"`
+	Warnings []string `json:"warnings"`
+}
+
+func (r *Router) resolveFRouterForGraph(c *gin.Context) (domain.FRouter, bool) {
+	frouterID := strings.TrimSpace(c.Param("id"))
+	if frouterID == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "frouter not found"})
+		return domain.FRouter{}, false
+	}
+	frouter, err := r.service.GetFRouter(frouterID)
+	if err != nil {
+		r.handleError(c, err)
+		return domain.FRouter{}, false
+	}
+	return frouter, true
+}
+
+// getFRouterGraph 获取完整图数据
+func (r *Router) getFRouterGraph(c *gin.Context) {
+	frouter, ok := r.resolveFRouterForGraph(c)
+	if !ok {
+		return
+	}
+	settings := frouter.ChainProxy
+
+	c.JSON(http.StatusOK, frouterGraphResponse{
+		Edges:     settings.Edges,
+		Positions: settings.Positions,
+		Slots:     settings.Slots,
+		UpdatedAt: settings.UpdatedAt,
+	})
+}
+
+// saveFRouterGraph 保存完整图数据
+func (r *Router) saveFRouterGraph(c *gin.Context) {
+	var req frouterGraphRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+
+	frouter, ok := r.resolveFRouterForGraph(c)
+	if !ok {
+		return
+	}
+
+	// 保存前先做语义校验 + 归一化（失败即失败）
+	draft := frouter
+	if req.Edges != nil {
+		draft.ChainProxy.Edges = normalizeChainEdges(req.Edges)
+	} else {
+		draft.ChainProxy.Edges = []domain.ProxyEdge{}
+	}
+	if req.Positions != nil {
+		draft.ChainProxy.Positions = req.Positions
+	} else {
+		draft.ChainProxy.Positions = make(map[string]domain.GraphPosition)
+	}
+	if req.Slots != nil {
+		draft.ChainProxy.Slots = req.Slots
+	} else {
+		draft.ChainProxy.Slots = []domain.SlotNode{}
+	}
+
+	nodes, err := r.service.ListNodes()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	if _, err := nodegroup.CompileFRouter(draft, nodes); err != nil {
+		var ce *nodegroup.CompileError
+		if errors.As(err, &ce) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":    "invalid frouter graph",
+				"problems": ce.Problems,
+			})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		badRequest(c, err)
+		return
 	}
+
+	updated, err := r.service.UpdateFRouter(frouter.ID, func(frouter domain.FRouter) (domain.FRouter, error) {
+		frouter.ChainProxy.Edges = draft.ChainProxy.Edges
+		frouter.ChainProxy.Positions = draft.ChainProxy.Positions
+		frouter.ChainProxy.Slots = draft.ChainProxy.Slots
+		frouter.ChainProxy.UpdatedAt = time.Now()
+		return frouter, nil
+	})
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+
+	// 如果代理正在运行，自动重启以应用新配置
+	status := r.service.GetProxyStatus()
+	if running, ok := status["running"].(bool); ok && running {
+		cfg, err := r.service.GetProxyConfig()
+		if err != nil {
+			log.Printf("[FRouterGraph] 获取代理配置失败，跳过自动重启: %v", err)
+		} else {
+			if cfg.FRouterID == "" {
+				if id, ok := status["frouterId"].(string); ok && id != "" {
+					cfg.FRouterID = id
+				}
+			}
+			if cfg.FRouterID != "" {
+				c.Header("X-Vea-Effects", "proxy_restart_scheduled")
+				r.service.MarkProxyRestartScheduled()
+				log.Printf("[FRouterGraph] 图配置已更新，重启代理以应用更改")
+				go func(cfg domain.ProxyConfig) {
+					if err := r.service.StartProxy(cfg); err != nil {
+						r.service.MarkProxyRestartFailed(err)
+						log.Printf("[FRouterGraph] 重启代理失败: %v", err)
+
+						// 如果重启失败且代理未运行，系统代理继续指向本地端口会让用户“直接断网”。
+						// 这里兜底强制关闭系统代理并持久化，避免黑洞。
+						if status := r.service.GetProxyStatus(); status != nil {
+							if busy, ok := status["busy"].(bool); ok && busy {
+								return
+							}
+							if running, ok := status["running"].(bool); !ok || !running {
+								if err2 := r.service.StopProxy(); err2 != nil {
+									log.Printf("[FRouterGraph] 重启失败后关闭系统代理也失败: %v", err2)
+								}
+							}
+						}
+						return
+					}
+				}(cfg)
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, updated)
+}
+
+func normalizeChainEdges(edges []domain.ProxyEdge) []domain.ProxyEdge {
+	if len(edges) == 0 {
+		return []domain.ProxyEdge{}
+	}
+	out := make([]domain.ProxyEdge, len(edges))
+	copy(out, edges)
+	for i := range out {
+		if !out[i].Enabled {
+			continue
+		}
+		isDefault, err := nodegroup.IsDefaultSelectionEdge(out[i])
+		if err != nil {
+			continue
+		}
+		if isDefault {
+			out[i].Priority = 0
+		}
+	}
+	return out
+}
+
+// validateFRouterGraph 验证图配置
+func (r *Router) validateFRouterGraph(c *gin.Context) {
+	var req frouterGraphRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+
+	frouter, ok := r.resolveFRouterForGraph(c)
+	if !ok {
+		return
+	}
+
+	// 仅验证语义，不持久化
+	draft := frouter
+	if req.Edges != nil {
+		draft.ChainProxy.Edges = req.Edges
+	} else {
+		draft.ChainProxy.Edges = []domain.ProxyEdge{}
+	}
+	if req.Slots != nil {
+		draft.ChainProxy.Slots = req.Slots
+	} else {
+		draft.ChainProxy.Slots = []domain.SlotNode{}
+	}
+	if req.Positions != nil {
+		draft.ChainProxy.Positions = req.Positions
+	}
+
+	nodes, err := r.service.ListNodes()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	compiled, err := nodegroup.CompileFRouter(draft, nodes)
+	if err != nil {
+		var ce *nodegroup.CompileError
+		if errors.As(err, &ce) {
+			c.JSON(http.StatusOK, validateGraphResponse{
+				Valid:    false,
+				Errors:   ce.Problems,
+				Warnings: []string{},
+			})
+			return
+		}
+		c.JSON(http.StatusOK, validateGraphResponse{
+			Valid:    false,
+			Errors:   []string{err.Error()},
+			Warnings: []string{},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, validateGraphResponse{
+		Valid:    true,
+		Errors:   []string{},
+		Warnings: compiled.Warnings,
+	})
+}
+
+// ========== Engine 推荐 API ==========
+
+// getEngineRecommendation 获取引擎推荐
+func (r *Router) getEngineRecommendation(c *gin.Context) {
+	recommendation := r.service.RecommendEngine()
+	c.JSON(http.StatusOK, recommendation)
+}
+
+// getEngineStatus 获取引擎状态
+func (r *Router) getEngineStatus(c *gin.Context) {
+	status := r.service.GetEngineStatus()
+	c.JSON(http.StatusOK, status)
 }

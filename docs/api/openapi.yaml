@@ -1,22 +1,22 @@
 openapi: 3.0.3
 info:
   title: Vea Backend API
-  version: 1.0.0
+  version: 2.1.0
   description: |
-    Vea 是一个 Xray 管理服务的 HTTP API，提供节点、配置、Geo 资源、核心组件和流量策略的统一管理。
+    Vea 是一个代理管理服务的 HTTP API，提供 FRouter、配置、Geo 资源、核心组件与代理运行配置（ProxyConfig）的统一管理。
 
     ## 特性
-    - 节点管理：导入、测速、延迟测试、流量统计
+    - FRouter 管理：导入、测速、延迟测试、链路封装
     - 配置管理：导入 Xray JSON 或订阅链接，自动刷新
     - Geo 资源：GeoIP/GeoSite 管理
-    - 核心组件：Xray 核心下载与安装
-    - 流量策略：DNS、分流规则、默认出口配置
-    - 系统代理：系统代理设置管理
+    - 核心组件：Xray/sing-box/Geo 核心下载与安装
+    - 代理运行配置：ProxyConfig（入站模式、引擎选择、绑定 FRouter）
+    - 系统设置：系统代理、前端设置
+    - TUN 能力检查与配置：/tun/check、/tun/setup
 
     ## 版本兼容性
-    - v1.x.y: 向后兼容，只增不删
-    - 新增端点和可选字段不影响现有客户端
-    - 破坏性变更将发布为 v2.0.0
+    - 本仓库不承诺向后兼容；API/状态 schema 可能发生破坏性变更
+    - 如需稳定集成，请固定到具体版本/提交
   contact:
     name: Vea Project
     url: https://github.com/FlowerRealm/Vea
@@ -25,9 +25,9 @@ info:
     url: https://github.com/FlowerRealm/Vea/blob/main/LICENSE
 
 servers:
-  - url: http://localhost:8080
+  - url: http://localhost:19080
     description: 本地开发服务器
-  - url: http://127.0.0.1:8080
+  - url: http://127.0.0.1:19080
     description: 本地环回地址
 
 tags:
@@ -36,7 +36,9 @@ tags:
   - name: snapshot
     description: 全量状态快照
   - name: nodes
-    description: 节点管理
+    description: 节点列表与测量
+  - name: frouters
+    description: FRouter 管理（封装节点链路）
   - name: configs
     description: 配置管理
   - name: geo
@@ -45,8 +47,14 @@ tags:
     description: 核心组件管理
   - name: xray
     description: Xray 控制
-  - name: traffic
-    description: 流量策略与分流规则
+  - name: proxy
+    description: 代理运行控制
+  - name: tun
+    description: TUN 能力检查与配置
+  - name: engine
+    description: 引擎推荐与状态
+  - name: ip
+    description: IP 地理信息查询
   - name: settings
     description: 系统设置
 
@@ -76,7 +84,7 @@ paths:
     get:
       tags: [snapshot]
       summary: 获取全量状态快照
-      description: 返回所有节点、配置、Geo 资源、组件和流量策略的完整状态
+      description: 返回所有 FRouter、配置、Geo 资源、组件和代理运行配置（ProxyConfig）的完整状态
       operationId: getSnapshot
       responses:
         '200':
@@ -90,7 +98,7 @@ paths:
     get:
       tags: [nodes]
       summary: 列出所有节点
-      description: 获取节点列表及当前激活的节点 ID
+      description: 获取全局节点列表（节点独立于 FRouter；通常由配置/订阅同步生成）
       operationId: listNodes
       responses:
         '200':
@@ -104,26 +112,17 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Node'
-                  activeNodeId:
-                    type: string
-                    description: 当前 Xray 使用的节点 ID
-                  lastSelectedNodeId:
-                    type: string
-                    description: 上次用户选择的节点 ID
-
     post:
       tags: [nodes]
       summary: 创建节点
-      description: 通过分享链接或手动输入创建节点
+      description: 手动创建全局节点（不归属订阅）
       operationId: createNode
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              oneOf:
-                - $ref: '#/components/schemas/NodeShareLinkRequest'
-                - $ref: '#/components/schemas/NodeManualRequest'
+              $ref: '#/components/schemas/NodeUpsertRequest'
       responses:
         '201':
           description: 节点创建成功
@@ -134,11 +133,38 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
 
+  /nodes/from-link:
+    post:
+      tags: [nodes]
+      summary: 从分享链接导入节点
+      description: 解析分享链接（支持单条链接/多条链接/base64 订阅内容），并创建为手动节点
+      operationId: importNodesFromLink
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodeFromLinkRequest'
+      responses:
+        '201':
+          description: 导入成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nodes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Node'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
   /nodes/{id}:
     put:
       tags: [nodes]
       summary: 更新节点
-      description: 更新节点信息
+      description: 更新节点配置（订阅节点核心字段不可编辑；名称/标签请使用 /nodes/{id}/meta）
       operationId: updateNode
       parameters:
         - $ref: '#/components/parameters/NodeId'
@@ -147,7 +173,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/NodeUpdateRequest'
+              $ref: '#/components/schemas/NodeUpsertRequest'
       responses:
         '200':
           description: 更新成功
@@ -160,43 +186,12 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
 
-    delete:
+  /nodes/{id}/meta:
+    put:
       tags: [nodes]
-      summary: 删除节点
-      description: 删除指定节点
-      operationId: deleteNode
-      parameters:
-        - $ref: '#/components/parameters/NodeId'
-      responses:
-        '204':
-          description: 删除成功
-        '404':
-          $ref: '#/components/responses/NotFound'
-
-  /nodes/{id}/reset-traffic:
-    post:
-      tags: [nodes]
-      summary: 重置节点流量
-      description: 将节点的上传和下载流量清零
-      operationId: resetNodeTraffic
-      parameters:
-        - $ref: '#/components/parameters/NodeId'
-      responses:
-        '200':
-          description: 重置成功
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Node'
-        '404':
-          $ref: '#/components/responses/NotFound'
-
-  /nodes/{id}/traffic:
-    post:
-      tags: [nodes]
-      summary: 增加节点流量
-      description: 增量更新节点的流量统计
-      operationId: incrementNodeTraffic
+      summary: 更新节点名称/标签
+      description: 更新节点的 name/tags（订阅节点仅允许修改这些字段）
+      operationId: updateNodeMeta
       parameters:
         - $ref: '#/components/parameters/NodeId'
       requestBody:
@@ -204,7 +199,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TrafficRequest'
+              $ref: '#/components/schemas/NodeMetaRequest'
       responses:
         '200':
           description: 更新成功
@@ -245,24 +240,10 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /nodes/{id}/select:
-    post:
-      tags: [nodes]
-      summary: 选择节点
-      description: 切换 Xray 使用的节点（如果 Xray 正在运行）
-      operationId: selectNode
-      parameters:
-        - $ref: '#/components/parameters/NodeId'
-      responses:
-        '202':
-          description: 节点切换任务已提交
-        '404':
-          $ref: '#/components/responses/NotFound'
-
   /nodes/bulk/ping:
     post:
       tags: [nodes]
-      summary: 批量测试延迟
+      summary: 批量测试节点延迟
       description: 批量执行延迟测试，如果 ids 为空则测试所有节点
       operationId: bulkPingNodes
       requestBody:
@@ -276,19 +257,174 @@ paths:
                   type: array
                   items:
                     type: string
-                  description: 节点 ID 列表，为空则测试所有节点
+                  description: Node ID 列表，为空则测试所有节点
       responses:
         '202':
           description: 批量测试任务已提交
         '400':
           $ref: '#/components/responses/BadRequest'
 
-  /nodes/reset-speed:
+  /nodes/bulk/speedtest:
     post:
       tags: [nodes]
-      summary: 重置节点速度
-      description: 重置指定节点的速度测试结果
-      operationId: resetNodeSpeed
+      summary: 批量测试节点速度
+      description: 批量执行速度测试，如果 ids 为空则测试所有节点
+      operationId: bulkSpeedtestNodes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                  description: Node ID 列表，为空则测试所有节点
+      responses:
+        '202':
+          description: 批量测试任务已提交
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /frouters:
+    get:
+      tags: [frouters]
+      summary: 列出所有 FRouter
+      description: 获取 FRouter 列表
+      operationId: listFRouters
+      responses:
+        '200':
+          description: 成功返回 FRouter 列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  frouters:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FRouter'
+
+    post:
+      tags: [frouters]
+      summary: 创建 FRouter
+      description: 创建 FRouter
+      operationId: createFRouter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FRouterCreateRequest'
+      responses:
+        '201':
+          description: FRouter 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FRouter'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /frouters/{id}:
+    put:
+      tags: [frouters]
+      summary: 更新 FRouter
+      description: 更新 FRouter 信息
+      operationId: updateFRouter
+      parameters:
+        - $ref: '#/components/parameters/FRouterId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FRouterUpdateRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FRouter'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+    delete:
+      tags: [frouters]
+      summary: 删除 FRouter
+      description: 删除指定 FRouter
+      operationId: deleteFRouter
+      parameters:
+        - $ref: '#/components/parameters/FRouterId'
+      responses:
+        '204':
+          description: 删除成功
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /frouters/{id}/ping:
+    post:
+      tags: [frouters]
+      summary: 测试 FRouter 延迟
+      description: 异步执行延迟测试，结果更新到 FRouter 的 lastLatencyMs 字段
+      operationId: pingFRouter
+      parameters:
+        - $ref: '#/components/parameters/FRouterId'
+      responses:
+        '202':
+          description: 延迟测试任务已提交
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /frouters/{id}/speedtest:
+    post:
+      tags: [frouters]
+      summary: 测试 FRouter 速度
+      description: 异步执行速度测试，结果更新到 FRouter 的 lastSpeedMbps 字段
+      operationId: speedtestFRouter
+      parameters:
+        - $ref: '#/components/parameters/FRouterId'
+      responses:
+        '202':
+          description: 速度测试任务已提交
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /frouters/bulk/ping:
+    post:
+      tags: [frouters]
+      summary: 批量测试延迟
+      description: 批量执行延迟测试，如果 ids 为空则测试所有 FRouter
+      operationId: bulkPingFRouters
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                  description: FRouter ID 列表，为空则测试所有 FRouter
+      responses:
+        '202':
+          description: 批量测试任务已提交
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /frouters/reset-speed:
+    post:
+      tags: [frouters]
+      summary: 重置 FRouter 速度
+      description: 重置指定 FRouter 的速度测试结果
+      operationId: resetFRouterSpeed
       requestBody:
         content:
           application/json:
@@ -299,7 +435,7 @@ paths:
                   type: array
                   items:
                     type: string
-                  description: 节点 ID 列表
+                  description: FRouter ID 列表
       responses:
         '204':
           description: 重置成功
@@ -405,7 +541,7 @@ paths:
     post:
       tags: [configs]
       summary: 同步配置节点
-      description: 从配置中提取节点信息并创建节点
+      description: 从配置/订阅中提取节点并写入全局节点集合（按 sourceConfigId 归属）
       operationId: pullConfigNodes
       parameters:
         - $ref: '#/components/parameters/ConfigId'
@@ -415,37 +551,14 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Node'
+                type: object
+                properties:
+                  nodes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Node'
         '404':
           $ref: '#/components/responses/NotFound'
-
-  /configs/{id}/traffic:
-    post:
-      tags: [configs]
-      summary: 增加配置流量
-      description: 增量更新配置的流量统计
-      operationId: incrementConfigTraffic
-      parameters:
-        - $ref: '#/components/parameters/ConfigId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TrafficRequest'
-      responses:
-        '200':
-          description: 更新成功
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Config'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '400':
-          $ref: '#/components/responses/BadRequest'
 
   /geo:
     get:
@@ -633,161 +746,216 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /xray/status:
+  /proxy/config:
     get:
-      tags: [xray]
-      summary: 获取 Xray 状态
-      description: 获取 Xray 的运行状态和配置信息
-      operationId: getXrayStatus
+      tags: [proxy]
+      summary: 获取代理运行配置
+      description: 获取当前代理运行配置（单例）
+      operationId: getProxyConfig
       responses:
         '200':
-          description: 成功返回 Xray 状态
+          description: 成功返回代理运行配置
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/XrayStatus'
+                $ref: '#/components/schemas/ProxyConfig'
 
-  /xray/start:
+    put:
+      tags: [proxy]
+      summary: 更新代理运行配置
+      description: 更新代理运行配置（单例）
+      operationId: updateProxyConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProxyConfig'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProxyConfig'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /proxy/start:
     post:
-      tags: [xray]
-      summary: 启动 Xray
-      description: 启动 Xray 服务
-      operationId: startXray
+      tags: [proxy]
+      summary: 启动代理（以 FRouter 为中心）
+      description: 使用当前配置启动代理；请求体可覆盖部分字段（常见只传 frouterId）
+      operationId: startProxy
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProxyConfig'
+      responses:
+        '200':
+          description: 启动成功
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /proxy/status:
+    get:
+      tags: [proxy]
+      summary: 获取代理状态
+      description: 获取当前代理运行状态（含 engine/inboundMode/frouterId 等）
+      operationId: getProxyStatus
+      responses:
+        '200':
+          description: 成功返回代理状态
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  running:
+                    type: boolean
+                  busy:
+                    type: boolean
+                    description: true 表示后端正在执行 start/stop（状态暂不可用）
+                  pid:
+                    type: integer
+                  engine:
+                    type: string
+                  inboundMode:
+                    type: string
+                  inboundPort:
+                    type: integer
+                  frouterId:
+                    type: string
+                  lastRestartAt:
+                    type: string
+                    format: date-time
+                    description: 最近一次“自动重启被触发”的时间
+                  lastRestartError:
+                    type: string
+                    description: 最近一次自动重启失败的错误信息（空/缺省表示无错误）
+                additionalProperties: true
+
+  /proxy/kernel/logs:
+    get:
+      tags: [proxy]
+      summary: 获取内核日志
+      description: 按字节偏移读取内核日志片段
+      operationId: getKernelLogs
+      parameters:
+        - name: since
+          in: query
+          description: 从该字节偏移开始读取（默认为 0）
+          required: false
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功返回日志片段
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KernelLogSnapshot'
+
+  /proxy/stop:
+    post:
+      tags: [proxy]
+      summary: 停止代理
+      description: 停止当前运行的代理
+      operationId: stopProxy
+      responses:
+        '200':
+          description: 已停止
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /tun/check:
+    get:
+      tags: [tun]
+      summary: 检查 TUN 能力
+      description: 检查当前系统是否具备 TUN 条件（需要权限、驱动、可用接口等）
+      operationId: checkTUNCapabilities
+      responses:
+        '200':
+          description: 成功返回检查结果
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /tun/setup:
+    post:
+      tags: [tun]
+      summary: 配置 TUN
+      description: 执行一次性 TUN 配置（不同平台实现不同）
+      operationId: setupTUN
       requestBody:
         content:
           application/json:
             schema:
               type: object
-              properties:
-                activeNodeId:
-                  type: string
-                  description: 启动时使用的节点 ID
+              additionalProperties: true
       responses:
-        '202':
-          description: Xray 启动任务已提交
+        '200':
+          description: 配置成功
         '400':
           $ref: '#/components/responses/BadRequest'
 
-  /xray/stop:
-    post:
-      tags: [xray]
-      summary: 停止 Xray
-      description: 停止 Xray 服务
-      operationId: stopXray
-      responses:
-        '204':
-          description: Xray 已停止
-
-  /traffic/profile:
+  /engine/recommend:
     get:
-      tags: [traffic]
-      summary: 获取流量策略
-      description: 获取默认出口、DNS 和分流规则配置
-      operationId: getTrafficProfile
+      tags: [engine]
+      summary: 推荐引擎
+      description: 根据当前 ProxyConfig/FRouter 约束推荐 Xray 或 sing-box
+      operationId: getEngineRecommendation
       responses:
         '200':
-          description: 成功返回流量策略
+          description: 成功返回推荐结果
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TrafficProfile'
+                type: object
+                additionalProperties: true
 
-    put:
-      tags: [traffic]
-      summary: 更新流量策略
-      description: 更新默认出口和 DNS 配置
-      operationId: updateTrafficProfile
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TrafficProfileRequest'
-      responses:
-        '200':
-          description: 更新成功
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TrafficProfile'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-
-  /traffic/rules:
+  /engine/status:
     get:
-      tags: [traffic]
-      summary: 列出所有分流规则
-      description: 获取分流规则列表
-      operationId: listTrafficRules
+      tags: [engine]
+      summary: 引擎状态
+      description: 返回已安装引擎与能力信息
+      operationId: getEngineStatus
       responses:
         '200':
-          description: 成功返回分流规则列表
+          description: 成功返回引擎状态
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/TrafficRule'
+                type: object
+                additionalProperties: true
 
-    post:
-      tags: [traffic]
-      summary: 创建分流规则
-      description: 创建新的分流规则
-      operationId: createTrafficRule
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TrafficRuleRequest'
-      responses:
-        '201':
-          description: 创建成功
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TrafficRule'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-
-  /traffic/rules/{id}:
-    put:
-      tags: [traffic]
-      summary: 更新分流规则
-      description: 更新分流规则信息
-      operationId: updateTrafficRule
-      parameters:
-        - $ref: '#/components/parameters/RuleId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TrafficRuleRequest'
+  /ip/geo:
+    get:
+      tags: [ip]
+      summary: IP Geo 查询
+      description: 返回当前出口 IP 及地理信息
+      operationId: getIPGeo
       responses:
         '200':
-          description: 更新成功
+          description: 成功返回查询结果
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TrafficRule'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-
-    delete:
-      tags: [traffic]
-      summary: 删除分流规则
-      description: 删除指定分流规则
-      operationId: deleteTrafficRule
-      parameters:
-        - $ref: '#/components/parameters/RuleId'
-      responses:
-        '204':
-          description: 删除成功
-        '404':
-          $ref: '#/components/responses/NotFound'
+                type: object
+                additionalProperties: true
 
   /settings/system-proxy:
     get:
@@ -835,8 +1003,126 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
 
+  /settings/frontend:
+    get:
+      tags: [settings]
+      summary: 获取前端设置
+      description: 获取前端存储的设置（主题等）
+      operationId: getFrontendSettings
+      responses:
+        '200':
+          description: 成功返回前端设置
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+    put:
+      tags: [settings]
+      summary: 保存前端设置
+      description: 保存前端设置（key-value）
+      operationId: saveFrontendSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: 保存成功
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /frouters/{id}/graph:
+    get:
+      tags: [frouters]
+      summary: 获取 FRouter 图
+      description: 获取指定 FRouter 的链式代理图（边/位置/插槽）
+      operationId: getFRouterGraph
+      parameters:
+        - $ref: '#/components/parameters/FRouterId'
+      responses:
+        '200':
+          description: 成功返回图结构
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FRouterGraphResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [frouters]
+      summary: 保存 FRouter 图
+      description: 保存链式代理图（保存前会进行 CompileFRouter 校验并归一化兜底 priority=0）；如果代理正在运行，会异步调度一次重启以应用新图配置
+      operationId: saveFRouterGraph
+      parameters:
+        - $ref: '#/components/parameters/FRouterId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FRouterGraphRequest'
+      responses:
+        '200':
+          description: 保存成功
+          headers:
+            X-Vea-Effects:
+              description: 可选。存在时表示该请求触发了副作用（当前唯一值：proxy_restart_scheduled）
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FRouter'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /frouters/{id}/graph/validate:
+    post:
+      tags: [frouters]
+      summary: 校验 FRouter 图
+      description: 仅校验，不保存；返回 errors/warnings
+      operationId: validateFRouterGraph
+      parameters:
+        - $ref: '#/components/parameters/FRouterId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FRouterGraphRequest'
+      responses:
+        '200':
+          description: 校验结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateGraphResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
 components:
   parameters:
+    FRouterId:
+      name: id
+      in: path
+      required: true
+      description: FRouter ID
+      schema:
+        type: string
+
     NodeId:
       name: id
       in: path
@@ -869,17 +1155,10 @@ components:
       schema:
         type: string
 
-    RuleId:
-      name: id
-      in: path
-      required: true
-      description: 分流规则 ID
-      schema:
-        type: string
-
   schemas:
     Node:
       type: object
+      description: 代理节点定义（独立于 FRouter；通常由配置/订阅同步生成）
       required: [id, name, address, port, protocol]
       properties:
         id:
@@ -898,7 +1177,7 @@ components:
           description: 服务器端口
         protocol:
           type: string
-          enum: [vless, trojan, shadowsocks, vmess]
+          enum: [vless, trojan, shadowsocks, vmess, hysteria2, tuic]
           description: 协议类型
         tags:
           type: array
@@ -914,14 +1193,6 @@ components:
         sourceConfigId:
           type: string
           description: 来源配置 ID
-        uploadBytes:
-          type: integer
-          format: int64
-          description: 上传流量（字节）
-        downloadBytes:
-          type: integer
-          format: int64
-          description: 下载流量（字节）
         lastLatencyMs:
           type: integer
           format: int64
@@ -930,10 +1201,13 @@ components:
           type: string
           format: date-time
           description: 最后一次延迟测试时间
+        lastLatencyError:
+          type: string
+          description: 延迟测试错误信息
         lastSpeedMbps:
           type: number
           format: double
-          description: 最后一次速度测试结果（MB/s）
+          description: 最后一次速度测试结果（Mbps）
         lastSpeedAt:
           type: string
           format: date-time
@@ -941,16 +1215,71 @@ components:
         lastSpeedError:
           type: string
           description: 速度测试错误信息
-        lastSelectedAt:
-          type: string
-          format: date-time
-          description: 最后选择时间
         createdAt:
           type: string
           format: date-time
         updatedAt:
           type: string
           format: date-time
+
+    NodeUpsertRequest:
+      type: object
+      description: 手动创建/更新节点请求体
+      required: [name, address, port, protocol]
+      properties:
+        name:
+          type: string
+          description: 节点名称
+        address:
+          type: string
+          description: 服务器地址
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+          description: 服务器端口
+        protocol:
+          type: string
+          enum: [vless, trojan, shadowsocks, vmess, hysteria2, tuic]
+          description: 协议类型
+        tags:
+          type: array
+          items:
+            type: string
+          description: 节点标签
+        security:
+          $ref: '#/components/schemas/NodeSecurity'
+        transport:
+          $ref: '#/components/schemas/NodeTransport'
+        tls:
+          $ref: '#/components/schemas/NodeTLS'
+
+    NodeFromLinkRequest:
+      type: object
+      description: 从分享链接导入节点请求体
+      required: [shareLink]
+      properties:
+        shareLink:
+          type: string
+          description: 分享链接文本（可为单条链接、多行链接或 base64 订阅内容）
+        tags:
+          type: array
+          items:
+            type: string
+          description: （可选）为导入的节点统一设置的标签
+
+    NodeMetaRequest:
+      type: object
+      description: 更新节点名称/标签请求体（至少提供 name 或 tags 之一）
+      properties:
+        name:
+          type: string
+          description: 节点名称
+        tags:
+          type: array
+          items:
+            type: string
+          description: 节点标签
 
     NodeSecurity:
       type: object
@@ -1014,64 +1343,196 @@ components:
           items:
             type: string
 
-    NodeShareLinkRequest:
+    FRouter:
       type: object
-      required: [shareLink]
+      description: FRouter 定义；对外一等操作单元（通过 ChainProxy 图引用 NodeID）
+      required: [id, name, chainProxy]
       properties:
-        shareLink:
+        id:
           type: string
-          description: vmess/vless/trojan/ss 分享链接
-          example: "vmess://eyJhZGQiOiIxLjIuMy40IiwicG9ydCI6NDQzLC4uLn0="
+        name:
+          type: string
+        chainProxy:
+          $ref: '#/components/schemas/ChainProxySettings'
+        tags:
+          type: array
+          items:
+            type: string
+        sourceConfigId:
+          type: string
+        lastLatencyMs:
+          type: integer
+          format: int64
+        lastLatencyAt:
+          type: string
+          format: date-time
+        lastLatencyError:
+          type: string
+        lastSpeedMbps:
+          type: number
+          format: double
+        lastSpeedAt:
+          type: string
+          format: date-time
+        lastSpeedError:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
 
-    NodeManualRequest:
+    FRouterCreateRequest:
       type: object
-      required: [name, address, port, protocol]
+      required: [name]
       properties:
         name:
           type: string
-        address:
-          type: string
-        port:
-          type: integer
-          minimum: 1
-          maximum: 65535
-        protocol:
-          type: string
-          enum: [vless, trojan, shadowsocks, vmess]
+        chainProxy:
+          $ref: '#/components/schemas/ChainProxySettings'
         tags:
           type: array
           items:
             type: string
 
-    NodeUpdateRequest:
+    FRouterUpdateRequest:
       type: object
-      required: [name, address, port, protocol]
+      required: [name]
       properties:
         name:
           type: string
-        address:
-          type: string
-        port:
-          type: integer
-          minimum: 1
-          maximum: 65535
-        protocol:
-          type: string
-          enum: [vless, trojan, shadowsocks, vmess]
+        chainProxy:
+          $ref: '#/components/schemas/ChainProxySettings'
         tags:
           type: array
           items:
             type: string
 
-    TrafficRequest:
+    ChainProxySettings:
       type: object
       properties:
-        uploadBytes:
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProxyEdge'
+        positions:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/GraphPosition'
+        slots:
+          type: array
+          items:
+            $ref: '#/components/schemas/SlotNode'
+        updatedAt:
+          type: string
+          format: date-time
+
+    FRouterGraphRequest:
+      type: object
+      properties:
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProxyEdge'
+        positions:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/GraphPosition'
+        slots:
+          type: array
+          items:
+            $ref: '#/components/schemas/SlotNode'
+
+    FRouterGraphResponse:
+      type: object
+      properties:
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProxyEdge'
+        positions:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/GraphPosition'
+        slots:
+          type: array
+          items:
+            $ref: '#/components/schemas/SlotNode'
+        updatedAt:
+          type: string
+          format: date-time
+
+    ValidateGraphResponse:
+      type: object
+      required: [valid, errors, warnings]
+      properties:
+        valid:
+          type: boolean
+        errors:
+          type: array
+          items:
+            type: string
+        warnings:
+          type: array
+          items:
+            type: string
+
+    ProxyEdge:
+      type: object
+      properties:
+        id:
+          type: string
+        from:
+          type: string
+        to:
+          type: string
+        via:
+          type: array
+          items:
+            type: string
+        tag:
+          type: string
+        priority:
           type: integer
-          format: int64
-        downloadBytes:
-          type: integer
-          format: int64
+        enabled:
+          type: boolean
+        ruleType:
+          type: string
+        routeRule:
+          $ref: '#/components/schemas/RouteMatchRule'
+        description:
+          type: string
+
+    RouteMatchRule:
+      type: object
+      properties:
+        domains:
+          type: array
+          items:
+            type: string
+        ips:
+          type: array
+          items:
+            type: string
+
+    GraphPosition:
+      type: object
+      properties:
+        x:
+          type: number
+        y:
+          type: number
+
+    SlotNode:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        boundNodeId:
+          type: string
 
     Config:
       type: object
@@ -1105,12 +1566,6 @@ components:
           type: string
           format: date-time
           nullable: true
-        uploadBytes:
-          type: integer
-          format: int64
-        downloadBytes:
-          type: integer
-          format: int64
         createdAt:
           type: string
           format: date-time
@@ -1224,15 +1679,11 @@ components:
           type: string
         kind:
           type: string
-          enum: [xray, geo, generic]
+          enum: [xray, singbox, geo, generic]
         sourceUrl:
           type: string
         archiveType:
           type: string
-        autoUpdateInterval:
-          type: integer
-          format: int64
-          description: 自动更新间隔（纳秒）
         lastInstalledAt:
           type: string
           format: date-time
@@ -1248,6 +1699,20 @@ components:
           type: object
           additionalProperties:
             type: string
+        accessories:
+          type: array
+          items:
+            type: string
+          description: 配套组件（如 sing-box 的 v2ray-plugin）
+        installStatus:
+          type: string
+          description: 安装状态
+        installProgress:
+          type: integer
+          description: 安装进度（0-100）
+        installMessage:
+          type: string
+          description: 安装提示信息
         createdAt:
           type: string
           format: date-time
@@ -1262,117 +1727,101 @@ components:
           type: string
         kind:
           type: string
-          enum: [xray, geo, generic]
+          enum: [xray, singbox, geo, generic]
         sourceUrl:
           type: string
         archiveType:
           type: string
-        autoUpdateIntervalMinutes:
+
+    CoreEngineInfo:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum: [xray, singbox, auto]
+        binaryPath:
+          type: string
+        version:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        installed:
+          type: boolean
+
+    ProxyConfig:
+      type: object
+      description: 代理运行配置（单例）
+      properties:
+        inboundMode:
+          type: string
+          enum: [socks, http, mixed, tun]
+        inboundPort:
+          type: integer
+        inboundConfig:
+          type: object
+          additionalProperties: true
+        tunSettings:
+          type: object
+          additionalProperties: true
+        resolvedService:
+          type: object
+          additionalProperties: true
+        dnsConfig:
+          type: object
+          additionalProperties: true
+        logConfig:
+          type: object
+          additionalProperties: true
+        performanceConfig:
+          type: object
+          additionalProperties: true
+        xrayConfig:
+          type: object
+          additionalProperties: true
+        preferredEngine:
+          type: string
+          enum: [xray, singbox, auto]
+        frouterId:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+
+    KernelLogSnapshot:
+      type: object
+      description: 内核日志片段
+      properties:
+        session:
           type: integer
           format: int64
-
-    XrayStatus:
-      type: object
-      properties:
-        enabled:
-          type: boolean
-          description: Xray 是否启用
+        engine:
+          type: string
         running:
           type: boolean
-          description: Xray 是否正在运行
-        activeNodeId:
-          type: string
-          description: 当前使用的节点 ID
-        binary:
-          type: string
-          description: Xray 可执行文件路径
-        config:
-          type: string
-          description: 当前使用的配置内容
-
-    TrafficProfile:
-      type: object
-      properties:
-        defaultNodeId:
-          type: string
-          description: 默认出口节点 ID
-        dns:
-          $ref: '#/components/schemas/DNSSetting'
-        rules:
-          type: array
-          items:
-            $ref: '#/components/schemas/TrafficRule'
-        updatedAt:
-          type: string
-          format: date-time
-
-    DNSSetting:
-      type: object
-      properties:
-        strategy:
-          type: string
-          description: DNS 策略（如 ipv4-only）
-        servers:
-          type: array
-          items:
-            type: string
-          description: DNS 服务器列表
-
-    TrafficProfileRequest:
-      type: object
-      properties:
-        defaultNodeId:
-          type: string
-        dns:
-          type: object
-          properties:
-            strategy:
-              type: string
-            servers:
-              type: array
-              items:
-                type: string
-
-    TrafficRule:
-      type: object
-      required: [id, name, targets, nodeId]
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-        targets:
-          type: array
-          items:
-            type: string
-          description: 目标域名或 IP 列表
-        nodeId:
-          type: string
-          description: 使用的节点 ID
-        priority:
+        pid:
           type: integer
-          description: 优先级（数字越大越优先）
-        createdAt:
+        startedAt:
           type: string
           format: date-time
-        updatedAt:
+        path:
           type: string
-          format: date-time
-
-    TrafficRuleRequest:
-      type: object
-      required: [name, targets, nodeId]
-      properties:
-        name:
-          type: string
-        targets:
-          type: array
-          items:
-            type: string
-        nodeId:
-          type: string
-        priority:
+        from:
           type: integer
+          format: int64
+        to:
+          type: integer
+          format: int64
+        end:
+          type: integer
+          format: int64
+        lost:
+          type: boolean
+        text:
+          type: string
+        error:
+          type: string
 
     SystemProxySettings:
       type: object
@@ -1403,10 +1852,16 @@ components:
       type: object
       description: 服务的完整状态快照
       properties:
+        schemaVersion:
+          type: string
         nodes:
           type: array
           items:
             $ref: '#/components/schemas/Node'
+        frouters:
+          type: array
+          items:
+            $ref: '#/components/schemas/FRouter'
         configs:
           type: array
           items:
@@ -1419,10 +1874,13 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CoreComponent'
-        trafficProfile:
-          $ref: '#/components/schemas/TrafficProfile'
         systemProxy:
           $ref: '#/components/schemas/SystemProxySettings'
+        proxyConfig:
+          $ref: '#/components/schemas/ProxyConfig'
+        frontendSettings:
+          type: object
+          additionalProperties: true
         generatedAt:
           type: string
           format: date-time

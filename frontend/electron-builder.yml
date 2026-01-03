@@ -17,16 +17,6 @@ files:
   - sdk/dist/**/*
   - "!**/*.map"
 
-extraResources:
-  - from: ../vea
-    to: vea
-    filter:
-      - "**/*"
-  - from: ../scripts
-    to: scripts
-    filter:
-      - "**/*"
-
 mac:
   target: dmg
   # arch 由命令行参数控制 (--x64 或 --arm64)
@@ -34,6 +24,13 @@ mac:
   icon: assets/icon.icns
   entitlements: entitlements.mac.plist
   entitlementsInherit: entitlements.mac.plist
+  extraResources:
+    - from: ../vea
+      to: vea
+    - from: ../scripts
+      to: scripts
+      filter:
+        - "**/*"
 
 linux:
   target: deb
@@ -41,6 +38,13 @@ linux:
   category: Network
   icon: assets/icons
   maintainer: FlowerRealm <flower_realm@outlook.com>
+  extraResources:
+    - from: ../vea
+      to: vea
+    - from: ../scripts
+      to: scripts
+      filter:
+        - "**/*"
 
 win:
   target:
@@ -49,6 +53,13 @@ win:
         - x64
   icon: assets/icon.ico
   requestedExecutionLevel: requireAdministrator
+  extraResources:
+    - from: ../vea.exe
+      to: vea.exe
+    - from: ../scripts
+      to: scripts
+      filter:
+        - "**/*"
 
 nsis:
   oneClick: false

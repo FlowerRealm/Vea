@@ -22,10 +22,15 @@ Vea 现已支持 **sing-box 内核**，实现了以下核心功能：
 - ✅ **Hysteria2**：基于 QUIC 的高速代理协议
 - ✅ **TUIC**：基于 QUIC 的代理协议
 
-### 4. **ProxyProfile 管理**
-- ✅ **配置分离**：入站模式、引擎选择、TUN 配置独立管理
-- ✅ **一键切换**：SOCKS/HTTP/Mixed/TUN 模式快速切换
+### 4. **ProxyConfig（单例运行配置）**
+- ✅ **以 FRouter 为一等单元**：启动/切换只需要指定 `frouterId`
+- ✅ **配置收敛**：入站模式、引擎选择、TUN 配置统一归入 `ProxyConfig`
 - ✅ **持久化**：配置自动保存到 `data/state.json`
+
+### 5. **Node 独立实体（食材）**
+- ✅ **节点全局列表**：Node 独立于 FRouter（工具），提供 `/nodes` 列表与测速/延迟测量 API
+- ✅ **订阅同步节点**：`POST /configs/:id/pull-nodes` 从配置/订阅提取节点并写入全局节点集合
+- ✅ **FRouter 图引用 NodeID**：图编辑入口收敛为 `/frouters/:id/graph`
 
 ---
 
@@ -54,17 +59,13 @@ const (
     EngineAuto    CoreEngineKind = "auto"
 )
 
-// 代理配置文件
-type ProxyProfile struct {
-    ID              string
-    Name            string
+// 代理运行配置（单例）
+type ProxyConfig struct {
     InboundMode     InboundMode
     InboundPort     int
     TUNSettings     *TUNConfiguration
     PreferredEngine CoreEngineKind
-    ActualEngine    CoreEngineKind
-    DefaultNode     string
-    CreatedAt       time.Time
+    FRouterID       string
     UpdatedAt       time.Time
 }
 
@@ -77,7 +78,6 @@ type TUNConfiguration struct {
     StrictRoute   bool
     Stack         string
     DNSHijack     bool
-    Platform      *PlatformTUNConfig
 }
 ```
 
@@ -92,8 +92,8 @@ type CoreAdapter interface {
     BinaryNames() []string
     SupportedProtocols() []NodeProtocol
     SupportsInbound(mode InboundMode) bool
-    BuildConfig(profile ProxyProfile, nodes []Node, geo GeoFiles) ([]byte, error)
-    RequiresPrivileges(profile ProxyProfile) bool
+    BuildConfig(plan nodegroup.RuntimePlan, geo GeoFiles) ([]byte, error)
+    RequiresPrivileges(config ProxyConfig) bool
 }
 ```
 
@@ -109,16 +109,16 @@ type CoreAdapter interface {
 sudo ./vea setup-tun
 
 # 实现细节
-backend/service/privilege_linux.go:
+backend/service/shared/tun_linux.go:
   - 创建 vea-tun 用户（禁止登录）
-  - setcap cap_net_admin+ep <sing-box-binary>
-  - chown vea-tun:vea-tun <sing-box-binary>
+  - chown vea-tun:vea-tun <sing-box-binary>（注意：chown 会清除 capabilities）
+  - setcap cap_net_admin,cap_net_bind_service,cap_net_raw+ep <sing-box-binary>
 ```
 
 #### Windows
 ```powershell
 # 以管理员身份运行
-backend/service/privilege_windows.go:
+backend/service/shared/tun_windows.go:
   - 检查 IsUserAnAdmin()
 ```
 
@@ -134,14 +134,11 @@ sudo ./vea
 
 ### 新增端点
 
-#### ProxyProfile CRUD
+#### ProxyConfig（单例运行配置）
 ```
-GET    /proxy-profiles          # 列出所有 Profile
-POST   /proxy-profiles          # 创建 Profile
-GET    /proxy-profiles/:id      # 获取 Profile
-PUT    /proxy-profiles/:id      # 更新 Profile
-DELETE /proxy-profiles/:id      # 删除 Profile
-POST   /proxy-profiles/:id/start # 启动 Profile
+GET  /proxy/config  # 获取代理运行配置（单例）
+PUT  /proxy/config  # 更新代理运行配置（单例）
+POST /proxy/start   # 启动代理（以 FRouter 为中心）
 ```
 
 #### 代理控制
@@ -157,114 +154,43 @@ GET  /tun/check     # 检查 TUN 权限配置
 
 ### 兼容性
 
-**旧的 Xray API 保持不变**：
-```
-GET  /xray/status
-POST /xray/start
-POST /xray/stop
-```
+无。该项目不承诺 API 向后兼容；API/状态 schema 可能发生破坏性变更。
 
 ---
 
-## 文件结构
-
-### 新增文件
+## 文件结构（相关）
 
 ```
 backend/
+├── api/
+│   ├── router.go
+│   └── proxy.go
 ├── domain/
-│   └── entities.go                    # 新增 ProxyProfile, TUNConfiguration
+│   └── entities.go
+├── repository/
+│   ├── interfaces.go
+│   ├── errors.go
+│   ├── events/
+│   └── memory/
+│       └── node_repo.go
 ├── service/
 │   ├── adapters/
-│   │   ├── adapter.go                 # CoreAdapter 接口
-│   │   ├── xray.go                    # Xray 适配器
-│   │   └── singbox.go                 # SingBox 适配器
-│   ├── engine_selector.go             # 自动引擎选择
-│   ├── proxy_profile.go               # ProxyProfile Service 方法
-│   ├── privilege_linux.go             # Linux 权限管理
-│   ├── privilege_windows.go           # Windows 权限管理
-│   └── privilege_darwin.go            # macOS 权限管理
-├── store/
-│   └── memory.go                      # 新增 ProxyProfile CRUD
-└── api/
-    └── proxy_profile.go               # ProxyProfile API 处理器
-
-main.go                                # 新增 setup-tun 子命令
+│   ├── component/
+│   ├── config/
+│   ├── facade.go
+│   ├── frouter/
+│   ├── nodes/
+│   ├── geo/
+│   ├── node/
+│   ├── nodegroup/
+│   ├── proxy/
+│   └── shared/
+└── persist/
+    ├── snapshot_v2.go
+    └── migrator.go
 
 docs/
-└── SING_BOX_INTEGRATION.md            # 使用文档
-```
-
----
-
-## 迁移指南
-
-### 从旧版本升级
-
-**无需手动迁移**！
-
-1. 编译新版本：
-   ```bash
-   make build
-   ```
-
-2. 启动应用：
-   ```bash
-   ./vea
-   ```
-
-3. 旧的 Xray 配置会自动保留
-
-4. 新增 sing-box 组件：
-   ```bash
-   curl -X POST http://localhost:8080/components \
-     -H "Content-Type: application/json" \
-     -d '{
-       "name": "sing-box",
-       "kind": "singbox",
-       "sourceUrl": "https://github.com/SagerNet/sing-box/releases/latest"
-     }'
-   ```
-
-5. 配置 TUN 权限（可选）：
-   ```bash
-   sudo ./vea setup-tun
-   ```
-
-### 数据持久化
-
-新增字段会自动添加到 `data/state.json`：
-
-```json
-{
-  "nodes": [...],
-  "configs": [...],
-  "geoResources": [...],
-  "components": [
-    {
-      "kind": "xray",    // 保留
-      ...
-    },
-    {
-      "kind": "singbox", // 新增
-      ...
-    }
-  ],
-  "proxyProfiles": [     // 新增
-    {
-      "id": "...",
-      "name": "默认 SOCKS",
-      "inboundMode": "socks",
-      "inboundPort": 38087,
-      "preferredEngine": "xray",
-      "actualEngine": "xray",
-      "defaultNode": "..."
-    }
-  ],
-  "activeProfile": "...", // 新增
-  "trafficProfile": {...},
-  "systemProxy": {...}
-}
+└── SING_BOX_INTEGRATION.md
 ```
 
 ---
@@ -278,7 +204,6 @@ docs/
 - [ ] TUN 模式 + sing-box
 - [ ] Hysteria2 节点自动选择 sing-box
 - [ ] 权限检查 API
-- [ ] Profile 切换
 - [ ] 代理启动/停止
 
 ### 平台测试
@@ -301,11 +226,10 @@ docs/
 ## 后续计划
 
 ### Phase 2（未实施）
-- [ ] 前端 UI 界面（Profile 管理）
+- [ ] 前端 UI 界面（ProxyConfig 配置）
 - [ ] 节点测速（TUN 模式下）
-- [ ] 流量统计（按 Profile）
+- [ ] 流量统计（按 FRouter）
 - [ ] Clash 内核支持
-- [ ] 自动更新内核二进制
 
 ---
 
@@ -318,5 +242,5 @@ docs/
 
 ---
 
-**更新时间**: 2025-01-20
-**版本**: v2.0.0 (sing-box integration)
+**更新时间**: 2025-12-25
+**版本**: v2.1.0 (arch v2 + sing-box integration)

@@ -1,12 +1,15 @@
 .PHONY: all dev build clean help deps build-backend
 
+FRONTEND_DIR := frontend
+FRONTEND_DEPS_STAMP := $(FRONTEND_DIR)/node_modules/.vea_deps_stamp
+
 # 默认版本号
 VERSION ?= dev
 # 默认输出目录
 OUTPUT_DIR ?= dist
 # 默认架构
-GOARCH ?= amd64
-GOOS ?= linux
+GOARCH ?= $(shell go env GOARCH)
+GOOS ?= $(shell go env GOOS)
 
 # 编译参数
 LDFLAGS := -s -w
@@ -33,10 +36,12 @@ help: ## 显示帮助信息
 
 all: dev ## 默认：启动开发模式
 
-deps: ## 安装 Electron 依赖
-	@echo "==> 安装 Electron 依赖..."
-	@cd frontend && npm install
-	@echo "==> 依赖安装完成"
+$(FRONTEND_DEPS_STAMP): $(FRONTEND_DIR)/package.json $(FRONTEND_DIR)/package-lock.json
+	@echo "==> 安装 Electron 依赖(仅在 package-lock/package.json 变更时)..."
+	@cd $(FRONTEND_DIR) && npm install --no-audit --no-fund
+	@touch $(FRONTEND_DEPS_STAMP)
+
+deps: $(FRONTEND_DEPS_STAMP) ## 安装 Electron 依赖
 
 build-backend: ## 编译 Go 后端
 	@echo "==> 编译 Go 后端 $(VERSION) for $(GOOS)/$(GOARCH)..."
@@ -49,15 +54,13 @@ dev: ## 启动 Electron 开发模式
 	@echo "==> 停止正在运行的 vea 和 electron 进程..."
 	@-pkill -9 -f "vea.*--addr" 2>/dev/null || true
 	@-pkill -9 electron 2>/dev/null || true
-	@echo "==> 等待端口释放..."
-	@sleep 2
-	@-fuser -k 8080/tcp 2>/dev/null || true
-	@sleep 1
+	@-fuser -k 19080/tcp 2>/dev/null || true
 	@echo "==> 删除旧的二进制文件..."
 	@rm -f vea vea.exe
-	@$(MAKE) build-backend deps
+	@$(MAKE) -j2 build-backend deps
 	@echo "==> 启动 Electron 开发模式..."
 	@cp $(OUTPUT_DIR)/$(BINARY_NAME) vea
+	@if [ "$(BINARY_NAME)" != "vea" ]; then cp $(OUTPUT_DIR)/$(BINARY_NAME) $(BINARY_NAME); fi
 	@cd frontend && npm run dev
 
 build: ## 打包 Electron 应用
@@ -66,9 +69,9 @@ build: ## 打包 Electron 应用
 	@sleep 1
 	@echo "==> 删除旧的二进制文件..."
 	@rm -f vea vea.exe
-	@$(MAKE) build-backend deps
+	@$(MAKE) -j2 build-backend deps
 	@echo "==> 打包 Electron 应用..."
-	@cp $(OUTPUT_DIR)/$(BINARY_NAME) vea
+	@cp $(OUTPUT_DIR)/$(BINARY_NAME) $(BINARY_NAME)
 	@cd frontend && npm run build
 	@echo "==> 应用打包完成"
 	@ls -lh release/

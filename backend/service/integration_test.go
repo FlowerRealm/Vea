@@ -1,3 +1,6 @@
+//go:build e2e
+// +build e2e
+
 package service
 
 import (
@@ -16,8 +19,14 @@ import (
 	"time"
 
 	"vea/backend/domain"
-	"vea/backend/store"
+	"vea/backend/repository/events"
+	"vea/backend/repository/memory"
+	"vea/backend/service/component"
+	"vea/backend/service/frouter"
+	proxysvc "vea/backend/service/proxy"
+	"vea/backend/service/shared"
 
+	"github.com/google/uuid"
 	"golang.org/x/net/proxy"
 )
 
@@ -38,7 +47,7 @@ func TestE2E_ProxyToCloudflare(t *testing.T) {
 	// 创建临时目录
 	tmpDir := t.TempDir()
 	serverConfigPath := filepath.Join(tmpDir, "server-config.json")
-	componentInstallDir := filepath.Join(tmpDir, "xray-install")
+	componentInstallDir := filepath.Join(tmpDir, "core", "xray")
 
 	if err := os.MkdirAll(componentInstallDir, 0o755); err != nil {
 		t.Fatalf("创建组件目录失败: %v", err)
@@ -58,19 +67,6 @@ func TestE2E_ProxyToCloudflare(t *testing.T) {
 			t.Fatalf("设置 xray 权限失败: %v", err)
 		}
 	}
-
-	// 下载真实的 Geo 文件
-	geoIPPath := filepath.Join(componentInstallDir, "geoip.dat")
-	geoSitePath := filepath.Join(componentInstallDir, "geosite.dat")
-
-	t.Log("下载 Geo 文件...")
-	if err := downloadFileForTest("https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat", geoIPPath); err != nil {
-		t.Fatalf("下载 GeoIP 文件失败: %v", err)
-	}
-	if err := downloadFileForTest("https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat", geoSitePath); err != nil {
-		t.Fatalf("下载 GeoSite 文件失败: %v", err)
-	}
-	t.Log("Geo 文件下载完成")
 
 	// 使用高端口避免权限问题
 	serverPort := 20086
@@ -130,34 +126,57 @@ func TestE2E_ProxyToCloudflare(t *testing.T) {
 	// 等待服务端启动
 	time.Sleep(500 * time.Millisecond)
 
-	// 创建测试用的 Service
-	st := store.NewMemoryStore()
-	svc := NewService(st)
+	// 使用临时 artifacts 目录，避免污染本地
+	oldArtifactsRoot := shared.ArtifactsRoot
+	t.Cleanup(func() { shared.ArtifactsRoot = oldArtifactsRoot })
+	shared.ArtifactsRoot = tmpDir
+
+	// 创建 Geo 目录
+	geoDir := filepath.Join(shared.ArtifactsRoot, shared.GeoDir)
+	if err := os.MkdirAll(geoDir, 0o755); err != nil {
+		t.Fatalf("创建 Geo 目录失败: %v", err)
+	}
+
+	// 下载真实的 Geo 文件
+	geoIPPath := filepath.Join(geoDir, "geoip.dat")
+	geoSitePath := filepath.Join(geoDir, "geosite.dat")
+
+	t.Log("下载 Geo 文件...")
+	if err := downloadFileForTest("https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat", geoIPPath); err != nil {
+		t.Fatalf("下载 GeoIP 文件失败: %v", err)
+	}
+	if err := downloadFileForTest("https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat", geoSitePath); err != nil {
+		t.Fatalf("下载 GeoSite 文件失败: %v", err)
+	}
+	t.Log("Geo 文件下载完成")
+
+	// 创建测试用的存储与服务
+	eventBus := events.NewBus()
+	memStore := memory.NewStore(eventBus)
+	nodeRepo := memory.NewNodeRepo(memStore)
+	frouterRepo := memory.NewFRouterRepo(memStore)
+	componentRepo := memory.NewComponentRepo(memStore)
+	settingsRepo := memory.NewSettingsRepo(memStore)
+
+	componentSvc := component.NewService(componentRepo)
+	if err := componentSvc.EnsureDefaultComponents(context.Background()); err != nil {
+		t.Fatalf("创建默认组件失败: %v", err)
+	}
 
 	// 更新 xray 组件的 InstallDir
-	components := svc.ListComponents()
-	var xrayCompID string
-	for _, comp := range components {
-		if comp.Kind == domain.ComponentXray {
-			xrayCompID = comp.ID
-			break
-		}
-	}
-	if xrayCompID == "" {
-		t.Fatal("未找到 xray 组件")
-	}
-
-	_, err = st.UpdateComponent(xrayCompID, func(comp domain.CoreComponent) (domain.CoreComponent, error) {
-		comp.InstallDir = componentInstallDir
-		comp.LastInstalledAt = time.Now()
-		return comp, nil
-	})
+	xrayComp, err := componentRepo.GetByKind(context.Background(), domain.ComponentXray)
 	if err != nil {
+		t.Fatalf("未找到 xray 组件: %v", err)
+	}
+	if err := componentRepo.SetInstalled(context.Background(), xrayComp.ID, componentInstallDir, "test", ""); err != nil {
 		t.Fatalf("更新组件失败: %v", err)
 	}
 
+	frouterSvc := frouter.NewService(frouterRepo, nodeRepo)
+	proxySvc := proxysvc.NewService(frouterRepo, nodeRepo, componentRepo, settingsRepo)
+
 	// 添加指向本地服务端的节点
-	node := domain.Node{
+	node, err := nodeRepo.Create(context.Background(), domain.Node{
 		Name:     "本地测试节点",
 		Address:  "127.0.0.1",
 		Port:     serverPort,
@@ -166,34 +185,58 @@ func TestE2E_ProxyToCloudflare(t *testing.T) {
 			UUID:       testUUID,
 			Encryption: "none",
 		},
+	})
+	if err != nil {
+		t.Fatalf("创建节点失败: %v", err)
 	}
 
-	createdNode := svc.CreateNode(node)
-	t.Logf("创建节点: ID=%s, Address=%s:%d", createdNode.ID, createdNode.Address, createdNode.Port)
+	frouter := domain.FRouter{
+		Name: "本地测试 FRouter",
+		ChainProxy: domain.ChainProxySettings{
+			Slots: []domain.SlotNode{
+				{ID: "slot-1", Name: "配置槽"},
+			},
+			Edges: []domain.ProxyEdge{
+				{
+					ID:      uuid.NewString(),
+					From:    domain.EdgeNodeLocal,
+					To:      node.ID,
+					Enabled: true,
+				},
+			},
+		},
+	}
+	createdFRouter, err := frouterSvc.Create(context.Background(), frouter)
+	if err != nil {
+		t.Fatalf("创建 FRouter 失败: %v", err)
+	}
+	t.Logf("创建 FRouter: ID=%s", createdFRouter.ID)
 
-	// 启动 Vea 管理的 xray 客户端
-	if err := svc.EnableXray(createdNode.ID); err != nil {
-		t.Fatalf("启动 xray 客户端失败: %v", err)
+	proxyCfg := domain.ProxyConfig{
+		InboundMode:     domain.InboundSOCKS,
+		InboundPort:     1080,
+		PreferredEngine: domain.EngineXray,
+		FRouterID:       createdFRouter.ID,
+	}
+
+	if err := proxySvc.Start(context.Background(), proxyCfg); err != nil {
+		t.Fatalf("启动代理失败: %v", err)
 	}
 	defer func() {
-		svc.xrayMu.Lock()
-		if svc.xrayCmd != nil {
-			_ = svc.xrayCmd.Process.Kill()
-			svc.xrayCmd = nil
-		}
-		svc.xrayMu.Unlock()
+		_ = proxySvc.Stop(context.Background())
 	}()
 
 	// 等待客户端启动
 	time.Sleep(2 * time.Second)
 
-	// 获取 xray 客户端的 SOCKS5 端口
-	status := svc.XrayStatus()
-	if !status.Running {
-		t.Fatal("xray 客户端未运行")
+	// 获取代理状态
+	status := proxySvc.Status(context.Background())
+	running, ok := status["running"].(bool)
+	if !ok || !running {
+		t.Fatal("代理未运行")
 	}
-	socksPort := status.InboundPort
-	t.Logf("xray 客户端 SOCKS5 端口: %d", socksPort)
+	socksPort := proxyCfg.InboundPort
+	t.Logf("代理 SOCKS5 端口: %d", socksPort)
 
 	// 测试 1: 通过 SOCKS5 代理测试延迟（Cloudflare）
 	t.Run("Latency", func(t *testing.T) {
@@ -337,48 +380,51 @@ func findXrayBinaryForTest(t *testing.T) string {
 func installXrayForTest(t *testing.T) error {
 	t.Helper()
 
-	st := store.NewMemoryStore()
-	svc := NewService(st)
+	ctx := context.Background()
 
-	components := svc.ListComponents()
-	var xrayID string
-	for _, comp := range components {
-		if comp.Kind == domain.ComponentXray {
-			xrayID = comp.ID
-			break
-		}
+	// 强制安装到当前工作目录下的 artifacts
+	oldArtifactsRoot := shared.ArtifactsRoot
+	if cwd, err := os.Getwd(); err == nil {
+		shared.ArtifactsRoot = filepath.Join(cwd, "artifacts")
+	}
+	defer func() { shared.ArtifactsRoot = oldArtifactsRoot }()
+
+	eventBus := events.NewBus()
+	memStore := memory.NewStore(eventBus)
+	componentRepo := memory.NewComponentRepo(memStore)
+	componentSvc := component.NewService(componentRepo)
+
+	if err := componentSvc.EnsureDefaultComponents(ctx); err != nil {
+		return fmt.Errorf("ensure default components failed: %w", err)
 	}
 
-	if xrayID == "" {
-		return fmt.Errorf("xray component not found")
-	}
-
-	installDir := "artifacts/core/xray"
-	absInstallDir, err := filepath.Abs(installDir)
+	xrayComp, err := componentRepo.GetByKind(ctx, domain.ComponentXray)
 	if err != nil {
-		return fmt.Errorf("failed to get absolute path: %w", err)
-	}
-
-	if err := os.MkdirAll(absInstallDir, 0o755); err != nil {
-		return fmt.Errorf("failed to create install dir: %w", err)
-	}
-
-	_, err = st.UpdateComponent(xrayID, func(comp domain.CoreComponent) (domain.CoreComponent, error) {
-		comp.InstallDir = absInstallDir
-		return comp, nil
-	})
-	if err != nil {
-		return fmt.Errorf("failed to update component install dir: %w", err)
+		return fmt.Errorf("xray component not found: %w", err)
 	}
 
 	t.Log("开始下载 xray...")
-	installed, err := svc.InstallComponent(xrayID)
-	if err != nil {
+	if _, err := componentSvc.Install(ctx, xrayComp.ID); err != nil {
 		return fmt.Errorf("failed to install xray: %w", err)
 	}
 
-	t.Logf("✓ xray 安装成功: %s", installed.LastVersion)
-	return nil
+	deadline := time.Now().Add(5 * time.Minute)
+	for time.Now().Before(deadline) {
+		comp, err := componentRepo.Get(ctx, xrayComp.ID)
+		if err != nil {
+			return fmt.Errorf("failed to get xray component: %w", err)
+		}
+		if comp.InstallStatus == domain.InstallStatusError {
+			return fmt.Errorf("failed to install xray: %s", comp.InstallMessage)
+		}
+		if !comp.LastInstalledAt.IsZero() && comp.InstallDir != "" {
+			t.Logf("✓ xray 安装成功: %s", comp.LastVersion)
+			return nil
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	return fmt.Errorf("install xray timeout")
 }
 
 // copyFileForTest 复制文件（测试辅助函数）

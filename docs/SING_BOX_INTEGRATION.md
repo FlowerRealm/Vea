@@ -20,7 +20,7 @@
 创建 sing-box 组件：
 
 ```bash
-curl -X POST http://localhost:8080/components \
+curl -X POST http://localhost:19080/components \
   -H "Content-Type: application/json" \
   -d '{
     "name": "sing-box",
@@ -32,7 +32,7 @@ curl -X POST http://localhost:8080/components \
 安装组件：
 
 ```bash
-curl -X POST http://localhost:8080/components/{component-id}/install
+curl -X POST http://localhost:19080/components/{component-id}/install
 ```
 
 ### 2. 配置 TUN 模式权限（Linux 专用）
@@ -49,37 +49,43 @@ sudo ./vea setup-tun
 
 **验证**：
 ```bash
-getcap artifacts/core/singbox/sing-box
-# 输出：artifacts/core/singbox/sing-box = cap_net_admin,cap_net_bind_service+ep
+# sing-box 可能位于版本子目录（例如 artifacts/core/sing-box/sing-box-*/sing-box）
+# 推荐优先从应用日志中查看实际路径：`[TUN-Check] sing-box 路径: ...`
+find artifacts/core/sing-box -maxdepth 2 -type f -name 'sing-box' -print
+
+# 对实际路径执行 getcap（将 <path> 替换为上面 find 的输出之一）
+getcap <path>
+# 输出示例：<path> = cap_net_admin,cap_net_bind_service,cap_net_raw+ep
 ```
 
 ---
 
 ## API 使用
 
-### ProxyProfile API
+### ProxyConfig API（单例运行配置）
 
-#### 创建 SOCKS Profile（Xray）
+#### 配置 SOCKS 模式（Xray）并启动
 
 ```bash
-curl -X POST http://localhost:8080/proxy-profiles \
+curl -X PUT http://localhost:19080/proxy/config \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "默认 SOCKS 代理",
     "inboundMode": "socks",
     "inboundPort": 38087,
-    "preferredEngine": "xray",
-    "defaultNode": "<node-id>"
+    "preferredEngine": "xray"
   }'
+
+curl -X POST http://localhost:19080/proxy/start \
+  -H "Content-Type: application/json" \
+  -d '{ "frouterId": "<frouter-id>" }'
 ```
 
-#### 创建 TUN Profile（sing-box 强制）
+#### 配置 TUN 模式（sing-box 强制）并启动
 
 ```bash
-curl -X POST http://localhost:8080/proxy-profiles \
+curl -X PUT http://localhost:19080/proxy/config \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "系统级透明代理",
     "inboundMode": "tun",
     "preferredEngine": "singbox",
     "tunSettings": {
@@ -90,30 +96,27 @@ curl -X POST http://localhost:8080/proxy-profiles \
       "strictRoute": true,
       "stack": "mixed",
       "dnsHijack": true
-    },
-    "defaultNode": "<node-id>"
+    }
   }'
+
+curl -X POST http://localhost:19080/proxy/start \
+  -H "Content-Type: application/json" \
+  -d '{ "frouterId": "<frouter-id>" }'
 ```
 
-**注意**：`inboundMode: "tun"` 会自动设置 `actualEngine: "singbox"`
-
-#### 启动代理
-
-```bash
-curl -X POST http://localhost:8080/proxy-profiles/{profile-id}/start
-```
+**注意**：`inboundMode: "tun"` 会强制选择 `engine: "singbox"`。
 
 #### 查看代理状态
 
 ```bash
-curl http://localhost:8080/proxy/status
+curl http://localhost:19080/proxy/status
 ```
 
 响应示例：
 ```json
 {
   "running": true,
-  "activeProfile": "profile-uuid",
+  "frouterId": "frouter-uuid",
   "inboundMode": "tun",
   "engine": "singbox",
   "pid": 12345
@@ -123,7 +126,7 @@ curl http://localhost:8080/proxy/status
 #### 停止代理
 
 ```bash
-curl -X POST http://localhost:8080/proxy/stop
+curl -X POST http://localhost:19080/proxy/stop
 ```
 
 ---
@@ -133,19 +136,22 @@ curl -X POST http://localhost:8080/proxy/stop
 ### 规则优先级
 
 1. **TUN 模式** → 强制 sing-box
-2. **Hysteria2/TUIC 节点** → 强制 sing-box
-3. **用户偏好** → 如果兼容则使用
-4. **默认** → Xray（通用协议）
-5. **回退** → sing-box
+2. **节点要求 sing-box**（Hysteria2/TUIC 或 Shadowsocks 插件）→ 优先 sing-box
+3. **用户偏好**（`preferredEngine`）→ 已安装且支持全部节点时优先
+4. **前端默认引擎**（`engine.defaultEngine`）→ 作为候选
+5. **协议推荐结果** → 作为候选
+6. **兜底候选** → sing-box → xray
+
+最终会在候选列表里选择第一个“已安装且支持全部节点”的引擎，否则报错。
 
 ### 示例场景
 
 | 节点协议 | 入站模式 | 用户偏好 | 实际使用 | 原因 |
 |---------|---------|---------|---------|------|
-| VLESS | SOCKS | xray | Xray | 用户偏好 + 兼容 |
+| VLESS | SOCKS | xray | Xray | 用户偏好 + 协议支持 |
 | Hysteria2 | SOCKS | xray | sing-box | 协议强制 |
 | VMess | TUN | auto | sing-box | TUN 强制 |
-| Trojan | Mixed | singbox | sing-box | 用户偏好 + 兼容 |
+| Trojan | Mixed | singbox | sing-box | 用户偏好 + 协议支持 |
 
 ---
 
@@ -195,7 +201,7 @@ sudo ./vea
 ### 检查 TUN 权限
 
 ```bash
-curl http://localhost:8080/tun/check
+curl http://localhost:19080/tun/check
 ```
 
 **Linux 响应**（已配置）：
@@ -203,8 +209,8 @@ curl http://localhost:8080/tun/check
 {
   "configured": true,
   "platform": "linux",
-  "setupCommand": "sudo vea setup-tun",
-  "description": "Creates vea-tun user with CAP_NET_ADMIN capability"
+  "setupCommand": "sudo ./vea setup-tun",
+  "description": "Creates vea-tun user and sets capabilities for sing-box (cap_net_admin,cap_net_bind_service,cap_net_raw)"
 }
 ```
 
@@ -257,10 +263,11 @@ sudo ./vea
 
 **检查**：
 1. 确认 sing-box 组件已安装
-2. 查看 Profile 的 `actualEngine` 是否为 `singbox`
+2. 查看代理状态 `engine` 是否为 `singbox`
 
 ```bash
-curl http://localhost:8080/proxy-profiles/{profile-id}
+curl http://localhost:19080/proxy/status
+curl http://localhost:19080/proxy/config
 ```
 
 ### 权限被拒绝
@@ -270,27 +277,25 @@ curl http://localhost:8080/proxy-profiles/{profile-id}
 **检查**：
 ```bash
 # 验证 capabilities
-getcap artifacts/core/singbox/sing-box
+find artifacts/core/sing-box -maxdepth 2 -type f -name 'sing-box' -print
+getcap <path>
 
 # 验证用户
 id vea-tun
 
 # 验证二进制文件所有者
-ls -l artifacts/core/singbox/sing-box
+ls -l <path>
 ```
 
 ---
 
 ## 配置文件示例
 
-### 完整的 TUN Profile
+### 完整的 ProxyConfig（TUN）
 
 ```json
 {
-  "id": "profile-uuid",
-  "name": "全局 TUN 代理",
   "inboundMode": "tun",
-  "inboundPort": 0,
   "tunSettings": {
     "interfaceName": "tun0",
     "mtu": 9000,
@@ -298,14 +303,11 @@ ls -l artifacts/core/singbox/sing-box
     "autoRoute": true,
     "strictRoute": true,
     "stack": "mixed",
-    "dnsHijack": true,
-    "platform": null
+    "dnsHijack": true
   },
   "preferredEngine": "singbox",
-  "actualEngine": "singbox",
-  "defaultNode": "hysteria2-node-id",
-  "createdAt": "2025-01-20T10:00:00Z",
-  "updatedAt": "2025-01-20T10:00:00Z"
+  "frouterId": "frouter-id",
+  "updatedAt": "2025-12-25T00:00:00Z"
 }
 ```
 
@@ -316,14 +318,17 @@ ls -l artifacts/core/singbox/sing-box
 ### 混合模式（HTTP + SOCKS）
 
 ```bash
-curl -X POST http://localhost:8080/proxy-profiles \
+curl -X PUT http://localhost:19080/proxy/config \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "混合代理",
     "inboundMode": "mixed",
     "inboundPort": 38087,
     "preferredEngine": "singbox"
   }'
+
+curl -X POST http://localhost:19080/proxy/start \
+  -H "Content-Type: application/json" \
+  -d '{ "frouterId": "<frouter-id>" }'
 ```
 
 **sing-box 优势**：原生 `mixed` 类型，无需两个端口。

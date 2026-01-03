@@ -1,19 +1,19 @@
-# Vea - Xray 代理管理器
+# Vea - 代理管理器（Xray / sing-box）
 
-Vea 是一个基于 Electron 的桌面应用，用于管理 Xray 代理节点、配置、Geo 资源和流量策略。
+Vea 是一个基于 Electron 的桌面应用，用于管理 Xray/sing-box 代理的 FRouter（路由/链路）、ProxyConfig（运行配置，单例）、订阅配置、Geo 资源与核心组件。
 
 **技术栈**:
 - **前端**: Electron + HTML/CSS/JavaScript
 - **后端**: Go + Gin (内置 HTTP 服务)
-- **通信**: REST API (localhost:8080)
+- **通信**: REST API (localhost:19080)
 
 ## 功能亮点
 
-- 节点中心：新增/编辑/删除节点，粘贴 vmess/vless/trojan/ss 分享链接即可导入，支持测速、延迟测试、流量清零。
-- 配置管理：导入 Xray JSON 或订阅链接，跟踪自动刷新周期、流量统计与到期时间。
-- Geo 与核心组件：定时刷新 GeoIP/GeoSite，按需下载/安装 Xray 核心并记录校验值。
-- 流量策略：配置默认出口、DNS、分流规则；选择当前使用节点，支持手动切换 Xray。
-- 前端控制台：`/` 提供极简 UI，可快速操作节点、配置、Geo、分流策略。
+- FRouter 中心：管理 FRouter（链式代理图/路由定义）；节点为独立资源，通过订阅/导入生成；支持测速、延迟测试与链路配置。
+- 配置管理：导入 Xray JSON 或订阅链接，跟踪自动刷新周期与到期时间。
+- Geo 与核心组件：后台定时刷新 GeoIP/GeoSite，按需下载/安装 Xray/sing-box 核心并记录校验值。
+- ProxyConfig：选择入站模式（SOCKS/HTTP/Mixed/TUN）、绑定 FRouter、引擎偏好与 TUN 配置，并启动/停止代理。
+- 前端控制台：`/` 提供极简 UI，可快速操作 FRouter、ProxyConfig、配置、Geo 与组件。
 
 ## 环境要求
 
@@ -38,7 +38,7 @@ make dev
 1. 编译 Go 后端服务 (`dist/vea`)
 2. 安装 Electron 依赖（如果需要）
 3. 启动 Electron 桌面应用
-4. Electron 自动启动 Go 服务进程（监听 `localhost:8080`）
+4. Electron 自动启动 Go 服务进程（监听 `localhost:19080`）
 
 > 💡 **前后端一体化启动**：Electron 的主进程会自动 spawn Go 后端进程，无需手动启动两个服务。
 
@@ -51,7 +51,7 @@ make dev
 make build
 
 # 打包后的文件在
-ls electron/dist/release/
+ls release/
 ```
 
 ### 可用命令
@@ -78,30 +78,41 @@ Vea/
 │   ├── api/         # HTTP 路由和处理器
 │   ├── domain/      # 领域模型
 │   ├── service/     # 业务服务层
-│   └── store/       # 数据存储
+│   ├── repository/  # 仓储接口与内存实现
+│   ├── persist/     # 持久化与迁移
+│   └── tasks/       # 后台任务（组件/Geo/订阅同步）
 ├── frontend/sdk/     # JavaScript SDK
 ├── docs/             # 所有文档
 │   ├── api/         # API 文档（OpenAPI 规范）
 │   └── *.md
 ├── data/             # 运行时数据
 │   └── state.json   # 状态持久化
-└── artifacts/        # Xray 核心、Geo 资源
+└── artifacts/        # （可选）开发模式本地 artifacts；生产默认使用 userData/artifacts（可用 VEA_ARTIFACTS_ROOT 覆盖）
 ```
 
 ## 开发文档
 
-- [Electron 客户端说明](./electron/README.md)
-- [SDK 文档](./sdk/README.md)
-- [API 文档](./docs/api/README.md)
-- [构建系统](./docs/SDK_AND_BUILD_SYSTEM.md)
+- [Electron 客户端说明](./frontend/README.md)
+- [SDK 文档](./frontend/sdk/README.md)
+- [API 文档（OpenAPI）](./docs/api/openapi.yaml)
+- [架构说明](./docs/ARCHITECTURE_V2.md)
 
 ## 常见问题
 
 **Q: 启动失败显示 sandbox 错误？**
-A: 项目已配置 `--no-sandbox` 标志，正常情况不会出现。如遇到问题请查看 [electron/README.md](./electron/README.md)。
+A: 项目已配置 `--no-sandbox` 标志，正常情况不会出现。如遇到问题请查看 [frontend/README.md](./frontend/README.md)。
 
-**Q: 端口 8080 被占用？**
-A: Go 服务默认使用 8080 端口，请确保该端口未被占用。
+**Q: 启动时报 `permission denied`（例如 `/tmp/vea-debug.log` / `data/state.json` / `artifacts/`）？**
+A: 常见原因是以前用 `sudo`/管理员模式跑过，导致目录变成 root-owned。现在后端默认把运行期 artifacts 放在用户目录（`userData/artifacts`，或用 `VEA_ARTIFACTS_ROOT` 指定）；如果你还在用仓库内 `artifacts/` 且被 root 占用，Linux 下在项目根目录运行 `./scripts/fix-perms.sh` 会通过 `pkexec` 一次性修复所有权。
+
+**Q: FRouter 测速失败提示 `no installed engine supports protocol shadowsocks`？**
+A: 这通常表示测速模块没有识别到已安装的内核组件。请在「组件」面板确认已安装并完成安装 `Xray` 或 `sing-box`，然后重启 Vea 再试；如果 FRouter 内节点 `port=0` 或缺失端口，也会导致测速/探测失败，建议重新导入订阅或手动修正端口。
+
+**Q: 日志里出现 `dial tcp <host>:0` / LatencyProbe 目标端口是 0？**
+A: 端口 0 是无效节点数据（常见于订阅数据异常）。请在 FRouter 编辑里补全正确端口，或重新导入该 FRouter/订阅后再进行延迟/测速。
+
+**Q: 端口 19080 被占用？**
+A: Go 服务固定使用 19080 端口，请确保该端口未被占用。
 
 **Q: 如何调试？**
 A: 运行 `make dev` 后，在 Electron 窗口中按 F12 打开开发者工具。Go 后端日志会输出到终端。

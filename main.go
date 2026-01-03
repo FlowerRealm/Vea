@@ -2,33 +2,59 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
-	"io"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
+	"runtime"
 	"syscall"
 	"time"
 
 	"vea/backend/api"
 	"vea/backend/persist"
+	"vea/backend/repository"
+	"vea/backend/repository/events"
+	"vea/backend/repository/memory"
 	"vea/backend/service"
-	"vea/backend/store"
+	"vea/backend/service/component"
+	configsvc "vea/backend/service/config"
+	"vea/backend/service/frouter"
+	"vea/backend/service/geo"
+	"vea/backend/service/nodes"
+	"vea/backend/service/proxy"
+	"vea/backend/service/shared"
 	"vea/backend/tasks"
 
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
 	// 检查是否是子命令
-	if len(os.Args) > 1 && os.Args[1] == "setup-tun" {
-		setupTUNMode()
-		return
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "setup-tun":
+			if err := setupTUNMode(os.Args[2:]); err != nil {
+				log.Print(err)
+				return 1
+			}
+			return 0
+		case "resolvectl-helper":
+			runResolvectlHelper()
+			return 0
+		case "resolvectl-shim":
+			runResolvectlShim()
+			return 0
+		}
 	}
 
-	addr := flag.String("addr", ":18080", "HTTP listen address")
+	addr := flag.String("addr", ":19080", "HTTP listen address")
 	statePath := flag.String("state", "data/state.json", "path to state snapshot")
 	dev := flag.Bool("dev", false, "enable development mode with verbose logging")
 	flag.Parse()
@@ -37,69 +63,113 @@ func main() {
 	if *dev {
 		gin.SetMode(gin.DebugMode)
 		log.SetFlags(log.LstdFlags | log.Lshortfile)
-
-		// 开发模式：同时输出到终端和日志文件
-		// 使用固定路径，避免 Electron 工作目录问题
-		logPath := "/tmp/vea-debug.log"
-		logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-		if err != nil {
-			log.Printf("无法创建日志文件: %v", err)
-		} else {
-			// 使用 MultiWriter 同时输出到 stdout 和文件
-			multiWriter := io.MultiWriter(os.Stdout, logFile)
-			log.SetOutput(multiWriter)
-			log.Printf("日志同时输出到终端和 %s", logPath)
-		}
 		log.Println("运行在开发模式 - 显示所有日志")
 	} else {
 		gin.SetMode(gin.ReleaseMode)
 		log.SetFlags(log.LstdFlags)
-		// 创建一个只输出错误和致命日志的 writer
-		log.SetOutput(&errorOnlyWriter{output: os.Stderr})
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	memory := store.NewMemoryStore()
+	// ========== 新架构初始化 ==========
 
-	if state, err := persist.Load(*statePath); err != nil {
-		log.Printf("load snapshot failed: %v", err)
-	} else if len(state.Nodes) > 0 || len(state.Configs) > 0 || len(state.GeoResources) > 0 || len(state.Components) > 0 {
-		memory.LoadState(state)
-		log.Printf("state loaded from %s", *statePath)
+	// 1. 创建事件总线
+	eventBus := events.NewBus()
+
+	// 2. 创建内存存储
+	memStore := memory.NewStore(eventBus)
+
+	// 3. 加载状态（严格版本校验）
+	hasStateFile := true
+	if _, err := os.Stat(*statePath); err != nil {
+		if os.IsNotExist(err) {
+			hasStateFile = false
+		}
 	}
 
-	serviceInstance := service.NewService(memory)
+	state, err := persist.LoadV2(*statePath)
+	if err != nil {
+		log.Printf("load snapshot failed: %v", err)
+		log.Printf("拒绝启动以避免覆盖 state 文件: %s", *statePath)
+		log.Printf("请移动/删除该文件或修正 schemaVersion 后重试")
+		return 1
+	}
 
-	snapshotter := persist.NewSnapshotter(*statePath, serviceInstance)
-	memory.SetAfterWrite(snapshotter.Schedule)
-	snapshotter.Schedule()
+	memStore.LoadState(state)
+	if hasStateFile {
+		log.Printf("state loaded from %s", *statePath)
+	} else {
+		log.Printf("未找到状态文件 %s，将以空状态启动", *statePath)
+	}
 
-taskRunner := []service.Task{
-	&tasks.ConfigSync{Service: serviceInstance, Interval: time.Minute},
-	&tasks.GeoSync{Service: serviceInstance, Interval: 12 * time.Hour},
-	&tasks.ComponentUpdate{Service: serviceInstance, Interval: 6 * time.Hour},
-}
-	serviceInstance.AttachTasks(taskRunner...)
-	serviceInstance.Start(ctx)
+	// 4. 创建仓储层
+	nodeRepo := memory.NewNodeRepo(memStore)
+	frouterRepo := memory.NewFRouterRepo(memStore)
+	configRepo := memory.NewConfigRepo(memStore)
+	geoRepo := memory.NewGeoRepo(memStore)
+	componentRepo := memory.NewComponentRepo(memStore)
+	settingsRepo := memory.NewSettingsRepo(memStore)
 
-	router := api.NewRouter(serviceInstance)
+	repos := repository.NewRepositories(memStore, nodeRepo, frouterRepo, configRepo, geoRepo, componentRepo, settingsRepo)
+
+	// 5. 创建服务层
+	nodeSvc := nodes.NewService(nodeRepo)
+	frouterSvc := frouter.NewService(frouterRepo, nodeRepo)
+
+	// 创建速度测量器并注入到测量相关服务
+	speedMeasurer := proxy.NewSpeedMeasurer(componentRepo, geoRepo, settingsRepo)
+	nodeSvc.SetMeasurer(speedMeasurer)
+	frouterSvc.SetMeasurer(speedMeasurer)
+
+	configSvc := configsvc.NewService(configRepo, nodeSvc)
+	proxySvc := proxy.NewService(frouterRepo, nodeRepo, componentRepo, settingsRepo)
+	componentSvc := component.NewService(componentRepo)
+	geoSvc := geo.NewService(geoRepo)
+
+	// 6. 创建 Facade（门面服务）
+	facade := service.NewFacade(nodeSvc, frouterSvc, configSvc, proxySvc, componentSvc, geoSvc, repos)
+
+	// 7. 设置持久化（事件驱动）
+	snapshotter := persist.NewSnapshotterV2(*statePath, memStore)
+	snapshotter.SubscribeEvents(eventBus)
+
+	// 7.1 确保核心组件存在（清空数据后也应显示 xray/sing-box）
+	if err := componentSvc.EnsureDefaultComponents(context.Background()); err != nil {
+		log.Printf("ensure default components failed: %v", err)
+	}
+
+	// 7.2 确保默认 Geo 资源存在
+	if err := geoSvc.EnsureDefaultResources(context.Background()); err != nil {
+		log.Printf("ensure default geo resources failed: %v", err)
+	}
+
+	// 7.3 启动后台任务（订阅/Geo）
+	tasks.NewScheduler(configSvc, geoSvc).Start(ctx)
+
+	// 8. 创建路由
+	router := api.NewRouter(facade)
 
 	srv := &http.Server{
 		Addr:    *addr,
 		Handler: router,
 	}
 
+	cleanupDone := make(chan struct{})
 	go func() {
 		<-ctx.Done()
 		log.Println("收到退出信号，正在清理...")
 
-		// 先停止代理进程
-		if err := serviceInstance.StopProxy(); err != nil {
+		// 停止代理进程
+		if err := facade.StopProxy(); err != nil {
 			log.Printf("停止代理失败: %v", err)
 		} else {
 			log.Println("代理进程已停止")
+		}
+
+		// 保存最终状态
+		if err := snapshotter.SaveNow(); err != nil {
+			log.Printf("保存状态失败: %v", err)
 		}
 
 		// 然后关闭 HTTP 服务器
@@ -108,69 +178,52 @@ taskRunner := []service.Task{
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			log.Printf("graceful shutdown failed: %v", err)
 		}
+		close(cleanupDone)
 	}()
 
 	log.Printf("server listening on %s", srv.Addr)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("listen: %v", err)
+		log.Printf("listen: %v", err)
+		cancel()
+		<-cleanupDone
+		return 1
 	}
-}
-
-// errorOnlyWriter 只输出包含错误关键字的日志
-type errorOnlyWriter struct {
-	output io.Writer
-}
-
-func (w *errorOnlyWriter) Write(p []byte) (n int, err error) {
-	s := string(p)
-	// 只输出包含这些关键字的日志
-	keywords := []string{"error", "failed", "fatal", "panic"}
-	for _, keyword := range keywords {
-		if strings.Contains(strings.ToLower(s), keyword) {
-			return w.output.Write(p)
-		}
-	}
-	// 其他日志不输出
-	return len(p), nil
+	<-cleanupDone
+	return 0
 }
 
 // setupTUNMode 设置 TUN 模式权限
-func setupTUNMode() {
+func setupTUNMode(args []string) error {
 	log.Println("Setting up TUN mode privileges...")
 
-	// 检查平台
-	if os.Getenv("GOOS") == "windows" {
-		log.Fatal("TUN setup is not needed on Windows. Just run Vea as Administrator.")
-	}
-	if os.Getenv("GOOS") == "darwin" {
-		log.Fatal("TUN setup is not needed on macOS. Just run Vea with sudo.")
+	fs := flag.NewFlagSet("setup-tun", flag.ContinueOnError)
+	singBoxBinary := fs.String("singbox-binary", "", "path to sing-box binary (optional)")
+	if err := fs.Parse(args); err != nil {
+		return err
 	}
 
-	// Linux 平台检查 root 权限
-	if os.Geteuid() != 0 {
-		log.Fatal("TUN setup requires root privileges. Run: sudo vea setup-tun")
+	switch runtime.GOOS {
+	case "windows":
+		return errors.New("TUN setup is not needed on Windows. Just run Vea as Administrator.")
+	case "darwin":
+		return errors.New("TUN setup is not needed on macOS. Just run Vea with sudo.")
+	case "linux":
+		// Linux 平台需要 root 权限（该子命令一般通过 sudo 调用）
+		if os.Geteuid() != 0 {
+			return errors.New("TUN setup requires root privileges. Run: sudo vea setup-tun")
+		}
+		var err error
+		if *singBoxBinary != "" {
+			err = shared.SetupTUNForSingBoxBinary(*singBoxBinary)
+		} else {
+			err = shared.SetupTUN()
+		}
+		if err != nil {
+			return fmt.Errorf("TUN setup failed: %w", err)
+		}
+		log.Println("TUN setup complete.")
+		return nil
+	default:
+		return fmt.Errorf("TUN setup is not supported on %s", runtime.GOOS)
 	}
-
-	// 创建临时 service 实例
-	memory := store.NewMemoryStore()
-
-	// 加载状态以获取已安装的组件信息
-	if state, err := persist.Load("data/state.json"); err == nil {
-		memory.LoadState(state)
-	}
-
-	serviceInstance := service.NewService(memory)
-
-	// 执行 TUN 设置
-	log.Println("1. Creating TUN user and group...")
-	log.Println("2. Setting capabilities on sing-box binary...")
-
-	if err := serviceInstance.SetupTUNPrivileges(); err != nil {
-		log.Fatalf("Setup failed: %v", err)
-	}
-
-	log.Println("✓ TUN mode configured successfully!")
-	log.Println("")
-	log.Println("You can now use TUN mode without root privileges.")
-	log.Println("The sing-box binary will run as the 'vea-tun' user with CAP_NET_ADMIN capability.")
 }

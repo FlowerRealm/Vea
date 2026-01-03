@@ -17,7 +17,7 @@ make dev
 # 或者手动执行
 make build-backend     # 编译 Go 后端
 cp dist/vea vea       # 复制二进制到根目录
-cd electron
+cd frontend
 npm install           # 安装依赖
 npm run dev           # 启动 Electron
 ```
@@ -29,20 +29,22 @@ npm run dev           # 启动 Electron
 make build            # 打包当前平台
 ```
 
-打包后的应用位于 `electron/dist/release/` 目录。
+打包后的应用位于项目根目录的 `release/`。
 
 ## 项目结构
 
 ```
 frontend/
 ├── main.js                 # Electron 主进程
+├── preload.js              # preload 脚本
+├── settings-schema.js       # 前端设置 schema + 渲染器
 ├── theme/                  # 主题文件（UI）
 │   ├── dark.html          # 深色主题
 │   └── light.html         # 浅色主题
+├── assets/                 # 图标/托盘资源
 ├── package.json           # NPM 配置
 ├── electron-builder.yml   # 打包配置
-└── dist/                  # 构建输出
-    └── release/           # 打包后的应用
+└── sdk/                    # JS SDK（dist 会被打包进应用）
 ```
 
 ## 技术架构
@@ -55,11 +57,11 @@ frontend/
 - **主题文件 (theme/)**：
   - 自包含的HTML主题文件（HTML/CSS/JS）
   - 通过 ES Module 导入 SDK
-  - 直接调用 HTTP API (localhost:8080)
+  - 直接调用 HTTP API (localhost:19080)
 
 - **后端服务**：
   - Go 编译的 Vea 服务
-  - 监听在 :8080
+  - 监听在 :19080
   - 打包时内嵌到 app 的 resources 目录
 
 ## 工作原理
@@ -82,28 +84,19 @@ frontend/
 
 ## 无头环境测试
 
-如果你在**无 GUI 的服务器**（SSH 命令行）中，无法直接运行 Electron，但可以验证核心逻辑：
+如果你在**无 GUI 的服务器**（SSH 命令行）中，无法直接运行 Electron，但可以验证后端与 SDK：
 
 ```bash
-# 1. 测试主进程逻辑（无需 Electron GUI）
-cd /home/flowerrealm/Vea
-node electron/test-main-logic.js
+# 1) 后端单测
+go test ./...
 
-# 预期输出：
-# ✓ Vea 服务进程已启动
-# ✓ 服务就绪（尝试 2 次）
-# ✓ HTTP 访问正常
-# ✓ 服务已停止
-# 测试结果: 通过 4 / 失败 0
+# 2) SDK 构建
+cd frontend/sdk && npm run build
 
-# 2. 验证 Go 后端
-make build
-./vea --addr :8080 &
-curl http://localhost:8080/
-pkill vea
-
-# 3. 验证 SDK 路径
-ls -lh frontend/sdk/dist/vea-sdk.esm.js
+# 3) 后端冒烟（仅后端，不启动 Electron）
+go run . --dev --addr :19080 --state data/state.json
+# 另开终端：
+curl http://localhost:19080/health
 ```
 
 **在本地开发环境**（有图形界面）才能真正运行 Electron GUI。
@@ -131,7 +124,7 @@ ls -lh frontend/sdk/dist/vea-sdk.esm.js
 
 2. **首次启动可能较慢**：Go 服务需要初始化，窗口会在服务就绪后才显示。
 
-3. **端口占用**：如果 8080 端口已被占用，需要手动停止其他服务。
+3. **端口占用**：如果 19080 端口已被占用，需要手动停止其他服务。
 
 4. **打包体积**：Electron 本身约 ~150MB，Go 二进制约 10MB。
 
@@ -139,7 +132,6 @@ ls -lh frontend/sdk/dist/vea-sdk.esm.js
 
 - Electron: ^28.0.0
 - electron-builder: ^24.9.1
-- Vite: ^5.0.0
 
 ## License
 

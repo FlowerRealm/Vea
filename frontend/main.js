@@ -10,14 +10,13 @@ const fs = require('fs')
 
 /**
  * 后端服务端口
- * 使用非常用端口避免与其他服务冲突（如 8080 常被开发服务器占用）
- * 可通过环境变量 VEA_PORT 覆盖
+ * 固定端口：避免端口漂移导致前后端对不齐。
  */
-const VEA_PORT = parseInt(process.env.VEA_PORT, 10) || 18080
+const VEA_PORT = 19080
 
 /**
  * 服务启动超时配置
- * pkexec 需要用户输入密码，等待时间需要足够长
+ * 服务启动等待时间上限
  */
 const SERVICE_STARTUP_MAX_ATTEMPTS = 60
 const SERVICE_STARTUP_INTERVAL = 500  // ms
@@ -27,7 +26,9 @@ const SERVICE_STARTUP_INTERVAL = 500  // ms
  */
 const TRAY_UPDATE_INTERVAL = 5000
 
-// 禁用沙箱以支持 root 权限运行（TUN 模式需要）
+// 内核随应用启动：只启动内核，不自动启用系统代理，避免无意影响全局设置。
+
+// 注：Electron sandbox 在部分发行方式下容易触发兼容性问题，这里保持禁用以减少启动失败。
 app.commandLine.appendSwitch('no-sandbox')
 app.commandLine.appendSwitch('disable-gpu-sandbox')
 
@@ -35,6 +36,7 @@ let veaProcess = null
 let mainWindow = null
 let tray = null
 let isQuitting = false  // 防止退出时的无限循环
+let cleanupInProgress = false
 
 // ============================================================================
 // 通用 HTTP 请求工具函数
@@ -122,6 +124,23 @@ function checkService(callback) {
 // 服务管理
 // ============================================================================
 
+function resolveVeaBinaryPath(isDev) {
+  const baseDir = isDev ? path.join(__dirname, '..') : process.resourcesPath
+  const candidates = process.platform === 'win32'
+    ? ['vea.exe', 'vea']
+    : ['vea']
+
+  for (const name of candidates) {
+    const candidate = path.join(baseDir, name)
+    if (fs.existsSync(candidate)) {
+      return candidate
+    }
+  }
+
+  // Keep a deterministic path for error messages even when missing.
+  return path.join(baseDir, candidates[0])
+}
+
 /**
  * 等待服务启动
  */
@@ -152,11 +171,12 @@ function startVeaService() {
   // 开发模式：使用项目根目录的二进制
   // 生产模式：使用打包后的 resources 目录
   const isDev = !app.isPackaged
-  const veaBinary = isDev
-    ? path.join(__dirname, '../vea')
-    : path.join(process.resourcesPath, 'vea')
+  const veaBinary = resolveVeaBinaryPath(isDev)
 
   console.log(`Starting Vea service from: ${veaBinary}`)
+  if (!fs.existsSync(veaBinary)) {
+    console.error(`Vea binary not found: ${veaBinary}`)
+  }
 
   // 确保 vea 有执行权限（AppImage 打包后可能丢失）
   try {
@@ -165,51 +185,46 @@ function startVeaService() {
     console.log(`chmod failed (may be read-only): ${e.message}`)
   }
 
-  const args = ['--addr', `:${VEA_PORT}`]
+  // 确定数据目录（使用绝对路径，避免工作目录变化导致读写失败）
+  const dataDir = isDev
+    ? path.join(__dirname, '../data')  // 开发模式：项目根目录/data
+    : path.join(app.getPath('userData'), 'data')  // 生产模式：用户数据目录/data
+  const statePath = path.join(dataDir, 'state.json')
+
+  // artifacts 必须是可写目录：用于组件/Geo/rule-set/运行期配置（不要写进安装目录或 resources 目录）。
+  // 统一放到 userData 下，避免 sudo/提权导致的所有者混乱。
+  const artifactsDir = path.join(app.getPath('userData'), 'artifacts')
+
+  // 确保数据目录存在
+  try {
+    fs.mkdirSync(dataDir, { recursive: true })
+  } catch (e) {
+    console.log(`mkdir dataDir failed: ${e.message}`)
+  }
+
+  // 确保 artifacts 目录存在
+  try {
+    fs.mkdirSync(artifactsDir, { recursive: true })
+  } catch (e) {
+    console.log(`mkdir artifactsDir failed: ${e.message}`)
+  }
+
+  const args = ['--addr', `:${VEA_PORT}`, '--state', statePath]
   if (isDev) {
     args.push('--dev')
   }
+  console.log(`Vea state file: ${statePath}`)
+  console.log(`Vea artifacts dir: ${artifactsDir}`)
 
-  // TUN 模式需要管理员/root 权限，启动时就使用 pkexec 提权
-  const platform = process.platform
-  let command, spawnArgs, spawnOptions
-
-  if (platform === 'linux') {
-    // Linux: 使用 pkexec 启动（需要密码）
-    console.log('Linux: Starting Vea service with pkexec')
-    command = 'pkexec'
-    spawnArgs = ['env', 'DISPLAY=' + (process.env.DISPLAY || ':0'), veaBinary, ...args]
-    spawnOptions = {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: process.env
-    }
-  } else if (platform === 'darwin') {
-    // macOS: 检查是否已经是 root，否则提示用户使用 sudo 启动
-    const isRoot = process.getuid && process.getuid() === 0
-    if (isRoot) {
-      console.log('macOS: Running as root')
-    } else {
-      console.log('macOS: Starting Vea service (may require sudo)')
-    }
-    command = veaBinary
-    spawnArgs = args
-    spawnOptions = {
-      stdio: ['ignore', 'pipe', 'pipe']
-    }
-  } else if (platform === 'win32') {
-    // Windows: 直接运行（应该已经以管理员身份启动）
-    console.log('Windows: Starting Vea service (expecting administrator privileges)')
-    command = veaBinary
-    spawnArgs = args
-    spawnOptions = {
-      stdio: ['ignore', 'pipe', 'pipe']
-    }
-  } else {
-    console.error(`Unsupported platform: ${platform}`)
-    return
-  }
-
-  veaProcess = spawn(command, spawnArgs, spawnOptions)
+  // 仅在“配置 TUN / Setup TUN”时触发提权（由后端 /tun/setup 内部处理）。
+  // 启动服务本身必须保持为普通用户态，避免每次打开应用都弹出密码框。
+  veaProcess = spawn(veaBinary, args, {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: {
+      ...process.env,
+      VEA_ARTIFACTS_ROOT: artifactsDir,
+    },
+  })
 
   veaProcess.stdout.on('data', (data) => {
     console.log(`[Vea] ${data.toString().trim()}`)
@@ -304,46 +319,50 @@ async function getProxyStatus() {
 }
 
 /**
- * 启动代理服务（通过 API）
- * 与主页启动代理按钮逻辑一致：启动 Xray 核心 + 启用系统代理
+ * 启动内核（通过 API）
+ * 仅确保内核运行，不修改系统代理开关
  */
-async function startProxyViaAPI() {
-  // 第一步：启动 Xray 核心
+async function startKernelViaAPI() {
+  const status = await getProxyStatus()
+  if (status && (status.running || status.busy)) {
+    console.log('Kernel already running')
+    return true
+  }
+
+  let frouterId = ''
+
+  const configResult = await apiRequest({ path: '/proxy/config', timeout: 2000 })
+  if (configResult.success && configResult.data && configResult.data.frouterId) {
+    frouterId = configResult.data.frouterId
+  }
+
+  if (!frouterId) {
+    const froutersResult = await apiRequest({ path: '/frouters', timeout: 5000 })
+    const frouters = froutersResult.success && froutersResult.data && Array.isArray(froutersResult.data.frouters)
+      ? froutersResult.data.frouters
+      : []
+    frouterId = frouters.length > 0 && frouters[0] && frouters[0].id ? frouters[0].id : ''
+  }
+
+  if (!frouterId) {
+    console.warn('Failed to start kernel: no frouter available')
+    return false
+  }
+
   const startResult = await apiRequest({
-    path: '/xray/start',
+    path: '/proxy/start',
     method: 'POST',
-    body: {},
-    timeout: 5000
+    body: { frouterId },
+    timeout: 8000
   })
 
   if (!startResult.success) {
-    console.error('Failed to start Xray:', startResult.error || startResult.data)
+    console.error('Failed to start kernel:', startResult.error || startResult.data)
     return false
   }
 
-  console.log('Xray core started')
-
-  // 等待 500ms 后启用系统代理
-  await new Promise(resolve => setTimeout(resolve, 500))
-
-  // 第二步：启用系统代理
-  const proxyResult = await apiRequest({
-    path: '/settings/system-proxy',
-    method: 'PUT',
-    body: {
-      enabled: true,
-      ignoreHosts: ['localhost', '127.0.0.1', '::1', '*.local']
-    },
-    timeout: 3000
-  })
-
-  if (proxyResult.success) {
-    console.log('System proxy enabled')
-    return true
-  } else {
-    console.error('Failed to enable system proxy:', proxyResult.error || proxyResult.data)
-    return false
-  }
+  console.log('Kernel started')
+  return true
 }
 
 /**
@@ -433,7 +452,7 @@ async function updateTrayMenu() {
 
   const status = await getProxyStatus()
   const isRunning = Boolean(status.running)
-  const statusText = isRunning ? '代理运行中' : '代理已停止'
+  const statusText = isRunning ? '内核运行中' : '内核未运行'
   const statusIcon = isRunning ? '🟢' : '⚪'
 
   // 更新托盘图标
@@ -442,7 +461,7 @@ async function updateTrayMenu() {
   tray.setImage(icon)
 
   // 更新提示文字
-  tray.setToolTip(isRunning ? 'Vea - 代理运行中' : 'Vea - 代理已停止')
+  tray.setToolTip(isRunning ? 'Vea - 内核运行中' : 'Vea - 内核未运行')
 
   const contextMenu = Menu.buildFromTemplate([
     {
@@ -453,19 +472,6 @@ async function updateTrayMenu() {
     {
       label: '显示主窗口',
       click: () => showMainWindow()
-    },
-    {
-      label: isRunning ? '停止代理' : '启动代理',
-      click: async () => {
-        if (isRunning) {
-          await stopProxyViaAPI()
-        } else {
-          // 启动代理：启动 Xray 核心 + 启用系统代理（与主页按钮逻辑一致）
-          await startProxyViaAPI()
-        }
-        // 延迟更新菜单状态
-        setTimeout(updateTrayMenu, 500)
-      }
     },
     { type: 'separator' },
     {
@@ -517,7 +523,7 @@ app.whenReady().then(async () => {
   // 如果服务已在运行，startVeaService 会检测到端口占用并跳过
   startVeaService()
 
-  // 等待服务启动（最长 30 秒，给用户足够时间输入密码）
+  // 等待服务启动
   try {
     await waitForService()
   } catch (err) {
@@ -535,6 +541,9 @@ app.whenReady().then(async () => {
     app.quit()
     return
   }
+
+  // 内核随应用启动（不自动启用系统代理）
+  await startKernelViaAPI()
 
   createWindow()
   createTray()
@@ -566,8 +575,8 @@ app.on('window-all-closed', () => {
  * 应用退出前清理
  */
 app.on('before-quit', async (event) => {
-  // 防止无限循环
-  if (isQuitting) return
+  if (cleanupInProgress) return
+  cleanupInProgress = true
   isQuitting = true
 
   // 阻止立即退出，先清理

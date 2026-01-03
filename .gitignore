@@ -39,9 +39,11 @@ yarn-error.log*
 .DS_Store
 .idea/
 .vscode/
+.serena/
 *.db
 *.sqlite3
 
 # Runtime data
 data/
 artifacts/
+.ace-tool/
