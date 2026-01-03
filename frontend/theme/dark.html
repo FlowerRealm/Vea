@@ -506,6 +506,11 @@
       margin-bottom: 24px;
     }
 
+    #panel-logs .log-tabs {
+      flex: 0 0 auto;
+      margin-bottom: 16px;
+    }
+
     #panel-logs .log-card {
       flex: 1;
       min-height: 0;
@@ -2230,19 +2235,24 @@
     </section>
 
     <!-- Logs -->
-    <section id="panel-logs" class="panel">
-      <div class="panel-header">
-        <div class="panel-title">
-          <h2>日志</h2>
-          <p>内核（Xray / sing-box）与应用（后端）运行日志（独立于终端输出）。</p>
-        </div>
-      </div>
+	    <section id="panel-logs" class="panel">
+	      <div class="panel-header">
+	        <div class="panel-title">
+	          <h2>日志</h2>
+	          <p>内核（Xray / sing-box）与应用（后端）运行日志（独立于终端输出）。</p>
+	        </div>
+	      </div>
 
-      <div class="card log-card">
-        <div class="log-toolbar">
-          <div class="log-meta" id="kernel-log-meta">-</div>
-          <div class="log-actions">
-            <button class="mini-btn" id="kernel-log-refresh">刷新</button>
+	      <div class="node-tabs log-tabs" id="log-tabs">
+	        <div class="node-tab active" data-log-tab="kernel">系统日志</div>
+	        <div class="node-tab" data-log-tab="app">应用日志</div>
+	      </div>
+
+	      <div class="card log-card" id="kernel-log-card">
+	        <div class="log-toolbar">
+	          <div class="log-meta" id="kernel-log-meta">-</div>
+	          <div class="log-actions">
+	            <button class="mini-btn" id="kernel-log-refresh">刷新</button>
             <button class="mini-btn" id="kernel-log-copy">复制</button>
             <div class="log-autoscroll">
               <span class="log-label">自动滚动</span>
@@ -2253,16 +2263,16 @@
             </div>
           </div>
         </div>
-        <div class="log-container" id="kernel-log-container">
-          <pre id="kernel-log-content"></pre>
-        </div>
-      </div>
+	        <div class="log-container" id="kernel-log-container">
+	          <pre id="kernel-log-content"></pre>
+	        </div>
+	      </div>
 
-      <div class="card log-card">
-        <div class="log-toolbar">
-          <div class="log-meta" id="app-log-meta">-</div>
-          <div class="log-actions">
-            <button class="mini-btn" id="app-log-refresh">刷新</button>
+	      <div class="card log-card" id="app-log-card" style="display:none;">
+	        <div class="log-toolbar">
+	          <div class="log-meta" id="app-log-meta">-</div>
+	          <div class="log-actions">
+	            <button class="mini-btn" id="app-log-refresh">刷新</button>
             <button class="mini-btn" id="app-log-copy">复制</button>
             <div class="log-autoscroll">
               <span class="log-label">自动滚动</span>
@@ -2276,8 +2286,8 @@
         <div class="log-container" id="app-log-container">
           <pre id="app-log-content"></pre>
         </div>
-      </div>
-    </section>
+	      </div>
+	    </section>
 
     <!-- Settings -->
     <section id="panel-settings" class="panel">
@@ -2785,14 +2795,16 @@
 	      let kernelLogAnsiCarry = "";
 	      let appLogAnsiState = createAnsiState();
 	      let appLogAnsiCarry = "";
+	      let currentLogsTab = "kernel";
 	      let kernelLogAutoScroll = true;
 	      let kernelLogsPanelInitialized = false;
 	      let appLogAutoScroll = true;
 	      let appLogsPanelInitialized = false;
+	      let logsTabsInitialized = false;
 	      let nodesLoadInFlight = false;
-		      let homeAutoTestInFlight = false;
-		      let applyFRouterInFlight = false;
-		      let applyFRouterPendingId = "";
+	      let homeAutoTestInFlight = false;
+	      let applyFRouterInFlight = false;
+	      let applyFRouterPendingId = "";
 		      const FROUTERS_POLL_INTERVAL = 1000;
 		      const NODES_POLL_INTERVAL = 100; // 0.1s
 		      const KERNEL_LOGS_POLL_INTERVAL = 800;
@@ -3194,12 +3206,66 @@
 	        }
 	      }
 
+	      function syncLogsTabUI() {
+	        const tabs = document.getElementById("log-tabs");
+	        const kernelCard = document.getElementById("kernel-log-card");
+	        const appCard = document.getElementById("app-log-card");
+
+	        if (kernelCard) {
+	          kernelCard.style.display = currentLogsTab === "kernel" ? "" : "none";
+	        }
+	        if (appCard) {
+	          appCard.style.display = currentLogsTab === "app" ? "" : "none";
+	        }
+
+	        if (tabs) {
+	          tabs.querySelectorAll(".node-tab[data-log-tab]").forEach((tab) => {
+	            tab.classList.toggle("active", tab.dataset.logTab === currentLogsTab);
+	          });
+	        }
+	      }
+
+	      function setLogsTab(tab) {
+	        const next = tab === "app" ? "app" : "kernel";
+	        if (next === currentLogsTab) {
+	          return;
+	        }
+	        currentLogsTab = next;
+	        syncLogsTabUI();
+	        if (currentPanel === "panel-logs") {
+	          if (currentLogsTab === "app") {
+	            loadAppLogs();
+	          } else {
+	            loadKernelLogs();
+	          }
+	        }
+	      }
+
+	      function ensureLogsTabs() {
+	        if (logsTabsInitialized) {
+	          return;
+	        }
+	        logsTabsInitialized = true;
+	        const tabs = document.getElementById("log-tabs");
+	        if (!tabs) {
+	          return;
+	        }
+	        tabs.addEventListener("click", (event) => {
+	          const button = event.target.closest(".node-tab[data-log-tab]");
+	          if (!button) {
+	            return;
+	          }
+	          setLogsTab(button.dataset.logTab);
+	        });
+	        syncLogsTabUI();
+	      }
+
 	      function startKernelLogsPolling() {
 	        if (kernelLogsPollHandle) {
 	          return;
 	        }
 	        kernelLogsPollHandle = setInterval(() => {
-	          if (currentPanel === "panel-logs") {
+	          if (currentPanel === "panel-logs" && currentLogsTab === "kernel") {
 	            loadKernelLogs();
 	          }
 	        }, KERNEL_LOGS_POLL_INTERVAL);
@@ -3210,7 +3276,7 @@
 	          return;
 	        }
 	        appLogsPollHandle = setInterval(() => {
-	          if (currentPanel === "panel-logs") {
+	          if (currentPanel === "panel-logs" && currentLogsTab === "app") {
 	            loadAppLogs();
 	          }
 	        }, KERNEL_LOGS_POLL_INTERVAL);
@@ -5404,11 +5470,13 @@
 		        },
 		        panel3: () => loadComponents(),
 		        "panel-logs": () => {
+		          ensureLogsTabs();
 		          ensureKernelLogsPanel();
 		          ensureAppLogsPanel();
 		          startKernelLogsPolling();
 		          startAppLogsPolling();
-		          return Promise.all([loadKernelLogs(), loadAppLogs()]);
+		          syncLogsTabUI();
+		          return currentLogsTab === "app" ? loadAppLogs() : loadKernelLogs();
 		        },
 		        "panel-chain": initChainEditor,
 	        "panel-settings": async () => {
