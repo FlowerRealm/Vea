@@ -5118,6 +5118,42 @@
         const container = document.getElementById('panel-chain');
         if (!container) return;
 
+        async function waitForProxyRestartError(prevRestartAt) {
+          const timeoutMs = 20000;
+          const scheduleWaitMs = 2000;
+          const intervalMs = 500;
+
+          const deadline = Date.now() + timeoutMs;
+          const scheduleDeadline = Date.now() + scheduleWaitMs;
+
+          let scheduled = false;
+          while (Date.now() < deadline) {
+            const status = await api.proxy.status();
+            if (status && status.busy) {
+              await sleep(intervalMs);
+              continue;
+            }
+
+            const currentRestartAt = status && typeof status.lastRestartAt === 'string' ? status.lastRestartAt : '';
+            if (!scheduled) {
+              if (currentRestartAt && currentRestartAt !== prevRestartAt) {
+                scheduled = true;
+              } else if (Date.now() > scheduleDeadline) {
+                return null;
+              }
+            }
+
+            if (scheduled) {
+              const restartError = status && typeof status.lastRestartError === 'string' ? status.lastRestartError : '';
+              if (restartError) return restartError;
+            }
+
+            await sleep(intervalMs);
+          }
+
+          return null;
+        }
+
         const chainApi = {
           get: async (path) => api.get(path),
           put: async (path, data) => api.put(path, data),
@@ -5132,9 +5168,28 @@
 
         // 工具栏事件
         document.getElementById('chain-save')?.addEventListener('click', async () => {
+          let prevRestartAt = '';
+          try {
+            const status = await api.proxy.status();
+            prevRestartAt = status && typeof status.lastRestartAt === 'string' ? status.lastRestartAt : '';
+          } catch {
+            prevRestartAt = '';
+          }
+
           const result = await chainListEditor.saveGraph();
           if (result.success) {
             showStatus('配置已保存', 'success');
+
+            (async () => {
+              try {
+                const restartError = await waitForProxyRestartError(prevRestartAt);
+                if (restartError) {
+                  showStatus(`代理重启失败：${restartError}`, 'error', 6000);
+                }
+              } catch (err) {
+                console.warn('Failed to check proxy restart error:', err);
+              }
+            })();
           } else {
             showStatus('保存失败: ' + result.error, 'error', 5000);
           }

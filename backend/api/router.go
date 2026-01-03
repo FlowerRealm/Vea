@@ -1126,6 +1126,7 @@ func (r *Router) saveFRouterGraph(c *gin.Context) {
 			}
 			if cfg.FRouterID != "" {
 				c.Header("X-Vea-Effects", "proxy_restart_scheduled")
+				r.service.MarkProxyRestartScheduled()
 				log.Printf("[FRouterGraph] 图配置已更新，重启代理以应用更改")
 				go func(cfg domain.ProxyConfig) {
 					// StopProxy 会强制关闭系统代理并持久化（防止“内核停了但系统代理还指向黑洞”）。
@@ -1137,10 +1138,12 @@ func (r *Router) saveFRouterGraph(c *gin.Context) {
 					}
 
 					if err := r.service.StopProxy(); err != nil {
+						r.service.MarkProxyRestartFailed(err)
 						log.Printf("[FRouterGraph] 停止代理失败: %v", err)
 						return
 					}
 					if err := r.service.StartProxy(cfg); err != nil {
+						r.service.MarkProxyRestartFailed(err)
 						log.Printf("[FRouterGraph] 重启代理失败: %v", err)
 						return
 					}

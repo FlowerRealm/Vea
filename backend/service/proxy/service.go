@@ -65,6 +65,9 @@ type Service struct {
 	mainEngine domain.CoreEngineKind
 	activeCfg  domain.ProxyConfig
 
+	lastRestartAt    time.Time
+	lastRestartError string
+
 	kernelLogPath      string
 	kernelLogSession   uint64
 	kernelLogEngine    domain.CoreEngineKind
@@ -204,6 +207,7 @@ func (s *Service) Start(ctx context.Context, cfg domain.ProxyConfig) error {
 	}
 
 	s.activeCfg = cfg
+	s.lastRestartError = ""
 	return nil
 }
 
@@ -214,6 +218,29 @@ func (s *Service) Stop(ctx context.Context) error {
 
 	s.stopLocked()
 	return nil
+}
+
+// MarkRestartScheduled 记录一次“重启已触发/计划中”（用于前端轮询提示）。
+func (s *Service) MarkRestartScheduled() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.lastRestartAt = time.Now()
+	s.lastRestartError = ""
+}
+
+// MarkRestartFailed 记录一次“重启失败”。
+func (s *Service) MarkRestartFailed(err error) {
+	if err == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.lastRestartAt.IsZero() {
+		s.lastRestartAt = time.Now()
+	}
+	s.lastRestartError = err.Error()
 }
 
 // Status 获取代理状态
@@ -229,6 +256,12 @@ func (s *Service) Status(ctx context.Context) map[string]interface{} {
 	running := s.mainHandle != nil && s.mainHandle.Cmd != nil && s.mainHandle.Cmd.Process != nil
 	status := map[string]interface{}{
 		"running": running,
+	}
+	if !s.lastRestartAt.IsZero() {
+		status["lastRestartAt"] = s.lastRestartAt
+	}
+	if s.lastRestartError != "" {
+		status["lastRestartError"] = s.lastRestartError
 	}
 
 	if running {

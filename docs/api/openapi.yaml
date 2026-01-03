@@ -817,6 +817,29 @@ paths:
             application/json:
               schema:
                 type: object
+                properties:
+                  running:
+                    type: boolean
+                  busy:
+                    type: boolean
+                    description: true 表示后端正在执行 start/stop（状态暂不可用）
+                  pid:
+                    type: integer
+                  engine:
+                    type: string
+                  inboundMode:
+                    type: string
+                  inboundPort:
+                    type: integer
+                  frouterId:
+                    type: string
+                  lastRestartAt:
+                    type: string
+                    format: date-time
+                    description: 最近一次“自动重启被触发”的时间
+                  lastRestartError:
+                    type: string
+                    description: 最近一次自动重启失败的错误信息（空/缺省表示无错误）
                 additionalProperties: true
 
   /proxy/kernel/logs:

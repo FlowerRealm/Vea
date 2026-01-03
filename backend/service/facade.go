@@ -275,6 +275,16 @@ func (f *Facade) GetProxyStatus() map[string]interface{} {
 	return f.proxy.Status(context.Background())
 }
 
+// MarkProxyRestartScheduled 记录“代理重启已触发”（用于前端轮询提示）。
+func (f *Facade) MarkProxyRestartScheduled() {
+	f.proxy.MarkRestartScheduled()
+}
+
+// MarkProxyRestartFailed 记录“代理重启失败”（用于前端轮询提示）。
+func (f *Facade) MarkProxyRestartFailed(err error) {
+	f.proxy.MarkRestartFailed(err)
+}
+
 // StopProxy 停止代理
 func (f *Facade) StopProxy() error {
 	ctx := context.Background()
