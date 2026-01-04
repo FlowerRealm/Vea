@@ -58,18 +58,7 @@ body:
         - 后端：新增一个 /settings/... 的字段用于 ...
         - 规则：local->* 的选择边支持 ...
     validations:
-      required: false
-
-  - type: textarea
-    id: alternatives
-    attributes:
-      label: 替代方案 / 现有绕过方式
-      description: 你现在怎么解决？为什么不够？
-      placeholder: |
-        - 目前的 workaround 是 ...
-        - 不足之处是 ...
-    validations:
-      required: false
+      required: true
 
   - type: textarea
     id: extra
@@ -81,4 +70,3 @@ body:
         - 截图/录屏: ...
     validations:
       required: false
-
