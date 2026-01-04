@@ -52,3 +52,21 @@ func TestParseMultipleLinks_CollectsErrorsAndKeepsValidNodes(t *testing.T) {
 		t.Fatalf("expected parse errors to be collected")
 	}
 }
+
+func TestParseMultipleLinks_FiltersSubscriptionInfoNodes(t *testing.T) {
+	t.Parallel()
+
+	links := "" +
+		"vless://11111111-1111-1111-1111-111111111111@127.0.0.1:1080#version\n" +
+		"vless://11111111-1111-1111-1111-111111111111@example.com:443#ok\n"
+	nodes, errs := ParseMultipleLinks(links)
+	if len(errs) != 0 {
+		t.Fatalf("expected no errors, got %d", len(errs))
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 node after filtering, got %d", len(nodes))
+	}
+	if nodes[0].Address != "example.com" {
+		t.Fatalf("expected node address %q, got %q", "example.com", nodes[0].Address)
+	}
+}

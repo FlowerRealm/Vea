@@ -248,11 +248,23 @@ func (f *Facade) SyncConfigNodes(configID string) ([]domain.Node, error) {
 		}
 	}
 
+	payloadTrimmed := strings.TrimSpace(cfg.Payload)
 	nodesFromConfig, parseErrs := node.ParseMultipleLinks(cfg.Payload)
 	if len(parseErrs) > 0 {
 		log.Printf("[SyncConfigNodes] parse errors for %s: %d", configID, len(parseErrs))
 	}
 	if len(nodesFromConfig) == 0 {
+		// payload 非空但解析不到节点：这是订阅异常/格式不支持的强信号。
+		// 为避免把已有节点清空导致 FRouter 变“未知”，这里直接报错并保留现有节点。
+		if payloadTrimmed != "" {
+			parseErr := fmt.Errorf("%w: 订阅内容无法解析为节点（仅支持 vmess/vless/trojan/ss 分享链接）；已保留现有节点", repository.ErrInvalidData)
+			cfg.LastSyncError = parseErr.Error()
+			if _, updateErr := f.config.Update(ctx, configID, cfg); updateErr != nil {
+				log.Printf("[SyncConfigNodes] failed to update config %s with parse error: %v", configID, updateErr)
+			}
+			return nil, parseErr
+		}
+
 		existing, err := f.nodes.List(ctx)
 		if err != nil {
 			return nil, err
@@ -265,7 +277,17 @@ func (f *Facade) SyncConfigNodes(configID string) ([]domain.Node, error) {
 		}
 		return out, nil
 	}
-	return f.nodes.ReplaceNodesForConfig(ctx, configID, nodesFromConfig)
+	updated, err := f.nodes.ReplaceNodesForConfig(ctx, configID, nodesFromConfig)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.LastSyncError != "" {
+		cfg.LastSyncError = ""
+		if _, updateErr := f.config.Update(ctx, configID, cfg); updateErr != nil {
+			log.Printf("[SyncConfigNodes] failed to clear lastSyncError for config %s: %v", configID, updateErr)
+		}
+	}
+	return updated, nil
 }
 
 // ========== Proxy 操作 ==========
