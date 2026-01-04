@@ -53,57 +53,6 @@ func TestParseMultipleLinks_CollectsErrorsAndKeepsValidNodes(t *testing.T) {
 	}
 }
 
-func TestParseMultipleLinks_ClashYAML(t *testing.T) {
-	t.Parallel()
-
-	yamlPayload := `
-proxies:
-  - name: test-vless
-    type: vless
-    server: example.com
-    port: 443
-    uuid: 11111111-1111-1111-1111-111111111111
-    tls: true
-    servername: sni.example.com
-  - name: test-vmess
-    type: vmess
-    server: example.com
-    port: 443
-    uuid: 22222222-2222-2222-2222-222222222222
-    alterId: 0
-    cipher: auto
-    network: ws
-    ws-opts:
-      path: /ws
-      headers:
-        Host: ws.example.com
-  - name: test-trojan
-    type: trojan
-    server: example.com
-    port: 443
-    password: pass
-    tls: true
-    sni: trojan.example.com
-  - name: test-ss
-    type: ss
-    server: example.com
-    port: 8388
-    cipher: aes-128-gcm
-    password: ss-pass
-`
-
-	nodes, errs := ParseMultipleLinks(yamlPayload)
-	if len(errs) != 0 {
-		t.Fatalf("expected no errors, got %d", len(errs))
-	}
-	if len(nodes) != 4 {
-		t.Fatalf("expected 4 nodes, got %d", len(nodes))
-	}
-	if nodes[0].Protocol == "" || nodes[0].Address == "" || nodes[0].Port == 0 {
-		t.Fatalf("expected node fields to be set, got %+v", nodes[0])
-	}
-}
-
 func TestParseMultipleLinks_FiltersSubscriptionInfoNodes(t *testing.T) {
 	t.Parallel()
 

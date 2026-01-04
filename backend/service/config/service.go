@@ -14,7 +14,6 @@ import (
 	"vea/backend/domain"
 	"vea/backend/repository"
 	"vea/backend/service/node"
-	"vea/backend/service/nodegroup"
 	"vea/backend/service/nodes"
 	"vea/backend/service/shared"
 )
@@ -85,8 +84,7 @@ func (s *Service) Create(ctx context.Context, cfg domain.Config) (domain.Config,
 	}
 
 	// 解析并同步节点（解析失败/为空时清空旧节点）
-	nodes := s.syncNodesFromPayload(ctx, created.ID, created.Payload)
-	s.ensureFRouterFromPayload(ctx, created, nodes)
+	s.syncNodesFromPayload(ctx, created.ID, created.Payload)
 
 	return created, nil
 }
@@ -130,9 +128,7 @@ func (s *Service) Sync(ctx context.Context, id string) error {
 	s.repo.UpdateSyncStatus(ctx, id, payload, checksum, nil)
 
 	// 解析并更新节点（解析失败/为空时清空旧节点）
-	nodes := s.syncNodesFromPayload(ctx, id, payload)
-	cfg.Payload = payload
-	s.ensureFRouterFromPayload(ctx, cfg, nodes)
+	s.syncNodesFromPayload(ctx, id, payload)
 
 	return nil
 }
@@ -144,7 +140,6 @@ func (s *Service) PullNodes(ctx context.Context, id string) ([]domain.Node, erro
 		return nil, err
 	}
 	nodes := s.syncNodesFromPayload(ctx, id, cfg.Payload)
-	s.ensureFRouterFromPayload(ctx, cfg, nodes)
 	return nodes, nil
 }
 
@@ -192,43 +187,6 @@ func (s *Service) syncNodesFromPayload(ctx context.Context, configID, payload st
 		return nil
 	}
 	return updated
-}
-
-func (s *Service) ensureFRouterFromPayload(ctx context.Context, cfg domain.Config, nodes []domain.Node) {
-	if s.frouterSvc == nil || strings.TrimSpace(cfg.ID) == "" {
-		return
-	}
-	if strings.TrimSpace(cfg.Payload) == "" {
-		return
-	}
-
-	groups, rules, ok, errs := parseClashYAMLRulesAndGroups(cfg.Payload)
-	if len(errs) > 0 {
-		log.Printf("[ConfigSync] clash parse error for %s: %v", cfg.ID, errs[0])
-	}
-	if !ok {
-		return
-	}
-
-	existing, err := s.frouterSvc.List(ctx)
-	if err != nil {
-		log.Printf("[ConfigSync] list frouters failed for %s: %v", cfg.ID, err)
-		return
-	}
-	for _, fr := range existing {
-		if fr.SourceConfigID == cfg.ID {
-			return
-		}
-	}
-
-	frouter := buildFRouterFromClash(cfg, nodes, groups, rules)
-	if _, err := nodegroup.CompileFRouter(frouter, nodes); err != nil {
-		log.Printf("[ConfigSync] skip invalid frouter for %s: %v", cfg.ID, err)
-		return
-	}
-	if _, err := s.frouterSvc.Create(ctx, frouter); err != nil {
-		log.Printf("[ConfigSync] create frouter failed for %s: %v", cfg.ID, err)
-	}
 }
 
 func (s *Service) downloadConfig(sourceURL string) (payload, checksum string, err error) {

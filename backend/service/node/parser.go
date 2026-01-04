@@ -412,20 +412,6 @@ func ParseMultipleLinks(links string) ([]domain.Node, []error) {
 		}
 	}
 
-	// 兜底：Clash YAML 订阅
-	for _, candidate := range candidates {
-		if !looksLikeClashYAML(candidate) {
-			continue
-		}
-		yamlNodes, yamlErrs := parseClashYAMLNodes(candidate)
-		if len(yamlErrs) > 0 {
-			errs = append(errs, yamlErrs...)
-		}
-		if len(yamlNodes) > 0 {
-			return filterSubscriptionNodes(yamlNodes), errs
-		}
-	}
-
 	return nodes, errs
 }
 
