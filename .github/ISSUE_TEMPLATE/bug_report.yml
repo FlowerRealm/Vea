@@ -1,0 +1,216 @@
+name: Bug 报告
+description: 报告一个可以复现的问题（崩溃/启动失败/代理不可用等）
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请只提交「可复现」的问题。写不清楚=无法修。
+
+        注意脱敏：不要在公开 Issue 里粘贴订阅链接、Token、账号密码、私钥、真实 IP/域名、完整日志中的敏感段落。
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: 提交前检查（必选）
+      description: 信息不完整会被要求补充；先把基础功做完。
+      options:
+        - label: 我已搜索现有 Issues，确认不是重复问题
+          required: true
+        - label: 我已在最新版本/最新提交上验证问题仍存在（或说明为什么无法升级）
+          required: true
+        - label: 我提供的信息不包含敏感数据（订阅链接/Token/账号密码/私钥等）
+          required: true
+        - label: 我可以提供最小化复现步骤（或最小配置片段）
+          required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: 问题类型
+      options:
+        - 启动失败 / 崩溃
+        - 代理无法连接 / 无法上网
+        - TUN / 系统代理相关
+        - 节点 / 订阅导入与解析
+        - FRouter / 链路编排
+        - 测速 / 延迟探测
+        - 组件 / Geo 下载与更新
+        - UI / 交互
+        - 其他
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: 复现频率
+      options:
+        - 必现
+        - 偶现
+        - 不确定
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: 问题描述
+      description: 用一句话说清楚「哪里坏了」。
+      placeholder: 例如：启用 TUN 后系统无法解析域名；或选择某个 FRouter 后代理启动失败。
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro_steps
+    attributes:
+      label: 复现步骤
+      description: 维护者需要按你的步骤在本地复现。写“偶尔出现”没用。
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+      placeholder: 例如：代理应正常启动，浏览器可访问网站；或延迟探测应返回稳定结果。
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为 / 错误信息
+      description: 把报错原文贴出来（必要时脱敏），以及发生条件。
+      render: text
+      placeholder: |
+        例如：
+        - UI 提示：...
+        - 后端日志：...
+        - 其他现象：...
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ## 环境信息
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: 操作系统
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: os_version
+    attributes:
+      label: 系统版本
+      placeholder: 例如：Windows 11 23H2 / macOS 14.3 / Ubuntu 22.04 (uname -a)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: arch
+    attributes:
+      label: CPU 架构
+      options:
+        - x64
+        - arm64
+        - 其他
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install_mode
+    attributes:
+      label: 使用方式
+      options:
+        - Release 安装包
+        - 从源码运行（make dev）
+        - 从源码运行（go run .）
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: vea_version
+    attributes:
+      label: Vea 版本 / 提交信息
+      description: 如果是源码运行，请贴 commit hash；如果是 Release，请贴版本号。
+      placeholder: 例如：v0.3.1 / 1a2b3c4
+    validations:
+      required: true
+
+  - type: dropdown
+    id: engine
+    attributes:
+      label: 代理引擎（如果相关）
+      options:
+        - 自动选择
+        - Xray
+        - sing-box
+        - 不确定
+    validations:
+      required: false
+
+  - type: dropdown
+    id: inbound_mode
+    attributes:
+      label: 入站模式（如果相关）
+      options:
+        - SOCKS
+        - HTTP
+        - Mixed
+        - TUN
+        - 不确定
+    validations:
+      required: false
+
+  - type: input
+    id: frouter
+    attributes:
+      label: 相关的 FRouter（可选）
+      description: 填 FRouter 的名称或 ID（如果问题和某个链路相关）。
+      placeholder: 例如：我的日常 / 3f8d2c...
+    validations:
+      required: false
+
+  - type: textarea
+    id: config_snippet
+    attributes:
+      label: 相关配置片段（可选，务必脱敏）
+      description: 只贴和问题相关的最小片段。不要直接贴完整 state 文件/订阅内容。
+      render: yaml
+      placeholder: |
+        # 例如：ProxyConfig 入站模式、引擎偏好、TUN 关键参数；或某个 FRouter/节点的最小片段
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志（建议必填）
+      description: |
+        最少贴「能定位问题」的那一段。
+        - 源码运行：终端输出就是后端日志；UI 用 F12 打开 DevTools 看 Console。
+        - 复现步骤中如果涉及启动/停止代理，请包含启动阶段日志。
+      render: text
+      placeholder: |
+        ```
+        ...粘贴相关日志（脱敏）...
+        ```
+    validations:
+      required: false
+
