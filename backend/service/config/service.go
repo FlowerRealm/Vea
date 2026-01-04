@@ -98,7 +98,9 @@ func (s *Service) Create(ctx context.Context, cfg domain.Config) (domain.Config,
 	// 解析并同步节点（为避免破坏用户配置，解析失败时不清空旧节点）。
 	if err := s.syncNodesFromPayload(ctx, created.ID, created.Payload); err != nil {
 		// 创建配置时不应因为解析失败就直接失败：记录错误即可。
-		_ = s.repo.UpdateSyncStatus(ctx, created.ID, created.Payload, created.Checksum, err)
+		if updateErr := s.repo.UpdateSyncStatus(ctx, created.ID, created.Payload, created.Checksum, err); updateErr != nil {
+			log.Printf("[ConfigCreate] failed to update sync status for %s after parse error: %v", created.ID, updateErr)
+		}
 	}
 
 	return created, nil
@@ -129,28 +131,38 @@ func (s *Service) Sync(ctx context.Context, id string) error {
 
 	payload, checksum, err := s.downloadConfig(cfg.SourceURL)
 	if err != nil {
-		s.repo.UpdateSyncStatus(ctx, id, cfg.Payload, cfg.Checksum, err)
+		if updateErr := s.repo.UpdateSyncStatus(ctx, id, cfg.Payload, cfg.Checksum, err); updateErr != nil {
+			log.Printf("[ConfigSync] failed to update sync status for %s after download error: %v", id, updateErr)
+		}
 		return err
 	}
 
 	// 如果内容没变，只更新同步时间
 	if checksum == cfg.Checksum {
-		s.repo.UpdateSyncStatus(ctx, id, cfg.Payload, cfg.Checksum, nil)
+		if updateErr := s.repo.UpdateSyncStatus(ctx, id, cfg.Payload, cfg.Checksum, nil); updateErr != nil {
+			log.Printf("[ConfigSync] failed to update sync status for %s when checksum unchanged: %v", id, updateErr)
+		}
 		// 内容不变也要保证解析状态正确：否则会把 LastSyncError “误清空”。
 		if err := s.syncNodesFromPayload(ctx, id, cfg.Payload); err != nil {
-			_ = s.repo.UpdateSyncStatus(ctx, id, cfg.Payload, cfg.Checksum, err)
+			if updateErr := s.repo.UpdateSyncStatus(ctx, id, cfg.Payload, cfg.Checksum, err); updateErr != nil {
+				log.Printf("[ConfigSync] failed to update sync status for %s after parse error: %v", id, updateErr)
+			}
 			return err
 		}
 		return nil
 	}
 
 	// 更新内容
-	s.repo.UpdateSyncStatus(ctx, id, payload, checksum, nil)
+	if updateErr := s.repo.UpdateSyncStatus(ctx, id, payload, checksum, nil); updateErr != nil {
+		log.Printf("[ConfigSync] failed to update sync status for %s after download: %v", id, updateErr)
+	}
 
 	// 解析并更新节点（解析失败时不清空旧节点）。
 	if err := s.syncNodesFromPayload(ctx, id, payload); err != nil {
 		// 下载成功但解析失败：保留旧节点，同时把错误记录到配置上，便于前端展示。
-		_ = s.repo.UpdateSyncStatus(ctx, id, payload, checksum, err)
+		if updateErr := s.repo.UpdateSyncStatus(ctx, id, payload, checksum, err); updateErr != nil {
+			log.Printf("[ConfigSync] failed to update sync status for %s after parse error: %v", id, updateErr)
+		}
 		return err
 	}
 

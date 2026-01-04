@@ -259,7 +259,9 @@ func (f *Facade) SyncConfigNodes(configID string) ([]domain.Node, error) {
 		if payloadTrimmed != "" {
 			parseErr := fmt.Errorf("%w: 订阅内容无法解析为节点（仅支持 vmess/vless/trojan/ss 分享链接）；已保留现有节点", repository.ErrInvalidData)
 			cfg.LastSyncError = parseErr.Error()
-			_, _ = f.config.Update(ctx, configID, cfg)
+			if _, updateErr := f.config.Update(ctx, configID, cfg); updateErr != nil {
+				log.Printf("[SyncConfigNodes] failed to update config %s with parse error: %v", configID, updateErr)
+			}
 			return nil, parseErr
 		}
 
@@ -281,7 +283,9 @@ func (f *Facade) SyncConfigNodes(configID string) ([]domain.Node, error) {
 	}
 	if cfg.LastSyncError != "" {
 		cfg.LastSyncError = ""
-		_, _ = f.config.Update(ctx, configID, cfg)
+		if _, updateErr := f.config.Update(ctx, configID, cfg); updateErr != nil {
+			log.Printf("[SyncConfigNodes] failed to clear lastSyncError for config %s: %v", configID, updateErr)
+		}
 	}
 	return updated, nil
 }

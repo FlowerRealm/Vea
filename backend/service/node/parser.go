@@ -455,6 +455,12 @@ func isLikelyShareLinks(text string) bool {
 	return false
 }
 
+var subscriptionInfoKeywords = []string{
+	"剩余", "流量", "到期", "过期", "有效期",
+	"升级", "版本", "客户端", "官网", "教程",
+	"traffic", "expire", "expired", "upgrade", "version",
+}
+
 func filterSubscriptionNodes(nodes []domain.Node) []domain.Node {
 	if len(nodes) == 0 {
 		return nodes
@@ -485,12 +491,7 @@ func isLikelySubscriptionInfoNode(node domain.Node) bool {
 		return false
 	}
 
-	keywords := []string{
-		"剩余", "流量", "到期", "过期", "有效期",
-		"升级", "版本", "客户端", "官网", "教程",
-		"traffic", "expire", "expired", "upgrade", "version",
-	}
-	for _, kw := range keywords {
+	for _, kw := range subscriptionInfoKeywords {
 		if strings.Contains(name, kw) {
 			return true
 		}
