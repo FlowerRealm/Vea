@@ -133,6 +133,71 @@ func TestList_DetectsInstalledSingBoxInSubdir(t *testing.T) {
 	}
 }
 
+func TestUninstall_RemovesInstallDirAndClearsState(t *testing.T) {
+	old := shared.ArtifactsRoot
+	t.Cleanup(func() { shared.ArtifactsRoot = old })
+
+	shared.ArtifactsRoot = t.TempDir()
+	installDir := filepath.Join(shared.ArtifactsRoot, "core", "xray")
+	if err := os.MkdirAll(installDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(installDir, "xray"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("write binary: %v", err)
+	}
+
+	store := memory.NewStore(nil)
+	repo := memory.NewComponentRepo(store)
+	svc := NewService(repo)
+
+	components, err := svc.List(context.Background())
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+
+	var xrayID string
+	for _, comp := range components {
+		if comp.Kind == domain.ComponentXray {
+			xrayID = comp.ID
+			break
+		}
+	}
+	if xrayID == "" {
+		t.Fatalf("expected xray component to exist")
+	}
+
+	before, err := repo.GetByKind(context.Background(), domain.ComponentXray)
+	if err != nil {
+		t.Fatalf("GetByKind returned error: %v", err)
+	}
+	if before.InstallDir == "" || before.LastInstalledAt.IsZero() {
+		t.Fatalf("expected xray component to be detected as installed before uninstall")
+	}
+
+	updated, err := svc.Uninstall(context.Background(), xrayID)
+	if err != nil {
+		t.Fatalf("Uninstall returned error: %v", err)
+	}
+	if updated.InstallDir != "" {
+		t.Fatalf("expected InstallDir to be cleared after uninstall")
+	}
+	if !updated.LastInstalledAt.IsZero() {
+		t.Fatalf("expected LastInstalledAt to be cleared after uninstall")
+	}
+
+	if _, err := os.Stat(installDir); err == nil || !os.IsNotExist(err) {
+		t.Fatalf("expected install dir to be removed, got err=%v", err)
+	}
+
+	after, err := repo.GetByKind(context.Background(), domain.ComponentXray)
+	if err != nil {
+		t.Fatalf("GetByKind (after) returned error: %v", err)
+	}
+	if after.InstallDir != "" || !after.LastInstalledAt.IsZero() {
+		t.Fatalf("expected repo state to be cleared after uninstall, got dir=%q installedAt=%v", after.InstallDir, after.LastInstalledAt)
+	}
+}
+
 func countKind(components []domain.CoreComponent, kind domain.CoreComponentKind) int {
 	count := 0
 	for _, comp := range components {

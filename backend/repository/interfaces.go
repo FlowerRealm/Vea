@@ -85,6 +85,9 @@ type ComponentRepository interface {
 	// 安装完成
 	SetInstalled(ctx context.Context, id string, dir, version, checksum string) error
 
+	// ClearInstalled 清除安装信息（用于卸载）
+	ClearInstalled(ctx context.Context, id string) error
+
 	// 清除同步错误
 	ClearSyncError(ctx context.Context, id string) error
 

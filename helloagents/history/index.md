@@ -8,6 +8,7 @@
 |--------|----------|------|------|------------|
 | 202601050639 | fix-clash-tun-dns | 修复 | ✅已完成 | [2026-01/202601050639_fix-clash-tun-dns](2026-01/202601050639_fix-clash-tun-dns/) |
 | 202601051238 | fix-clash-tun-mtu | 修复 | ✅已完成 | [2026-01/202601051238_fix-clash-tun-mtu](2026-01/202601051238_fix-clash-tun-mtu/) |
+| 202601071130 | fix-gz-extract-clash-install | 修复 | ✅已完成 | [2026-01/202601071130_fix-gz-extract-clash-install](2026-01/202601071130_fix-gz-extract-clash-install/) |
 
 ## 按月归档
 
@@ -15,3 +16,4 @@
 
 - [202601050639_fix-clash-tun-dns](2026-01/202601050639_fix-clash-tun-dns/) - 修复 Linux 下 mihomo(Clash) TUN 默认配置导致的断网
 - [202601051238_fix-clash-tun-mtu](2026-01/202601051238_fix-clash-tun-mtu/) - 修复 Linux 下 mihomo(Clash) TUN 默认 MTU=9000 导致“看起来全网断开”
+- [202601071130_fix-gz-extract-clash-install](2026-01/202601071130_fix-gz-extract-clash-install/) - 组件管理：新增核心组件卸载接口；修复 .gz 安装文件命名并清理冗余逻辑

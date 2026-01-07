@@ -1588,8 +1588,8 @@
     }
 
     .chain-btn.primary:hover {
-      background: #2563eb;
-      border-color: #2563eb;
+      background: var(--accent-hover, #2563eb);
+      border-color: var(--accent-hover, #2563eb);
       color: white;
     }
 
@@ -4858,6 +4858,9 @@
             }
 
             const isCoreComponent = component.kind === "xray" || component.kind === "singbox" || component.kind === "clash";
+            const uninstallBtn = (isCoreComponent && component.installDir && installStatus !== 'downloading' && installStatus !== 'extracting')
+              ? '<button class="danger" data-action="uninstall-component">卸载</button>'
+              : '';
             const deleteBtn = isCoreComponent ? '' : '<button class="danger" data-action="delete-component">删除</button>';
 
             return `
@@ -4870,6 +4873,7 @@
             <td>${statusText}</td>
             <td>
               ${actionBtn}
+              ${uninstallBtn}
               ${deleteBtn}
             </td>
           </tr>
@@ -6951,6 +6955,12 @@
               if (!confirm("确认删除该组件？")) return;
               await api.delete(`/components/${id}`);
               showStatus("组件已删除", "success");
+              await loadComponents();
+              await refreshXrayStatus();
+            } else if (action === "uninstall-component") {
+              if (!confirm("确认卸载该组件？这将删除本地安装文件。")) return;
+              await api.post(`/components/${id}/uninstall`);
+              showStatus("组件已卸载", "success");
               await loadComponents();
               await refreshXrayStatus();
             } else if (action === "update-component") {

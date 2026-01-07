@@ -487,9 +487,9 @@ func (a *ClashAdapter) applyTransport(p map[string]interface{}, transport *domai
 
 	case "http":
 		p["network"] = "http"
-		http := map[string]interface{}{}
+		httpOpts := map[string]interface{}{}
 		if strings.TrimSpace(transport.Path) != "" {
-			http["path"] = []string{transport.Path}
+			httpOpts["path"] = []string{transport.Path}
 		}
 		headers := map[string][]string{}
 		if strings.TrimSpace(transport.Host) != "" {
@@ -503,10 +503,10 @@ func (a *ClashAdapter) applyTransport(p map[string]interface{}, transport *domai
 			headers[k] = []string{v}
 		}
 		if len(headers) > 0 {
-			http["headers"] = headers
+			httpOpts["headers"] = headers
 		}
-		if len(http) > 0 {
-			p["http-opts"] = http
+		if len(httpOpts) > 0 {
+			p["http-opts"] = httpOpts
 		}
 	}
 }

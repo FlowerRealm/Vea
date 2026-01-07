@@ -368,6 +368,7 @@ export interface ComponentsAPI {
   update(id: string, data: ComponentRequest): Promise<CoreComponent>
   delete(id: string): Promise<null>
   install(id: string): Promise<CoreComponent>
+  uninstall(id: string): Promise<CoreComponent>
 }
 
 export interface ProxyAPI {

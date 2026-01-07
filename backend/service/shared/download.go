@@ -282,7 +282,22 @@ func ExtractArchive(targetDir, archiveType string, data []byte) (string, error) 
 		}
 		defer gr.Close()
 
-		target := filepath.Join(tmpDir, ComponentFile)
+		outName := strings.TrimSpace(gr.Name)
+		if outName == "" {
+			installErr = errors.New("gzipped archive is missing an original filename in its header")
+			break
+		}
+		outName = filepath.Base(filepath.Clean(outName))
+		if outName == "." || outName == ".." {
+			installErr = fmt.Errorf("invalid gzip header name: %q", gr.Name)
+			break
+		}
+
+		target, err := safeJoin(tmpDir, outName)
+		if err != nil {
+			installErr = err
+			break
+		}
 		out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
 		if err != nil {
 			installErr = err

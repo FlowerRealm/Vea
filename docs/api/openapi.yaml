@@ -770,6 +770,26 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /components/{id}/uninstall:
+    post:
+      tags: [components]
+      summary: 卸载核心组件
+      description: 删除本地安装文件并清除安装信息（不删除组件记录）
+      operationId: uninstallComponent
+      parameters:
+        - $ref: '#/components/parameters/ComponentId'
+      responses:
+        '200':
+          description: 卸载成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoreComponent'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
   /proxy/config:
     get:
       tags: [proxy]

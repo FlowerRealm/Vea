@@ -3,7 +3,11 @@
 ## 职责
 - Electron 主进程与 UI 主题页面
 - 通过 SDK 调用后端 API
+- 提供组件面板：安装/更新/卸载核心组件
 
 ## 关键目录
 - `frontend/`：Electron 入口与 UI
 - `frontend/sdk/`：JS SDK（构建产物已提交）
+
+## 变更历史
+- [202601071130_fix-gz-extract-clash-install](../../history/2026-01/202601071130_fix-gz-extract-clash-install/) - 组件面板新增“卸载”按钮；主题按钮 hover 支持 `--accent-hover` 变量（提升一致性与可维护性）

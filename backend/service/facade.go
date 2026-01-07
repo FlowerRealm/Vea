@@ -493,6 +493,38 @@ func (f *Facade) DeleteComponent(id string) error {
 	return f.component.Delete(context.Background(), id)
 }
 
+// UninstallComponent 卸载组件：删除本地安装文件并清除安装信息。
+func (f *Facade) UninstallComponent(id string) (domain.CoreComponent, error) {
+	ctx := context.Background()
+
+	comp, err := f.component.Get(ctx, id)
+	if err != nil {
+		return domain.CoreComponent{}, err
+	}
+
+	// 卸载正在使用的引擎会直接把用户网络打断；这里强制要求先停代理。
+	status := f.proxy.Status(ctx)
+	running, _ := status["running"].(bool)
+	engine, _ := status["engine"].(string)
+	if running && engine != "" {
+		var target string
+		switch comp.Kind {
+		case domain.ComponentXray:
+			target = string(domain.EngineXray)
+		case domain.ComponentSingBox:
+			target = string(domain.EngineSingBox)
+		case domain.ComponentClash:
+			target = string(domain.EngineClash)
+		}
+
+		if target != "" && engine == target {
+			return domain.CoreComponent{}, fmt.Errorf("%w: proxy is running, stop it before uninstalling %s", repository.ErrInvalidData, target)
+		}
+	}
+
+	return f.component.Uninstall(ctx, id)
+}
+
 // InstallComponentAsync 异步安装组件
 func (f *Facade) InstallComponentAsync(id string) (domain.CoreComponent, error) {
 	return f.component.Install(context.Background(), id)

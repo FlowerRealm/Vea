@@ -317,6 +317,10 @@ class ComponentsAPI {
   async install(id) {
     return this.client.post(`/components/${id}/install`)
   }
+
+  async uninstall(id) {
+    return this.client.post(`/components/${id}/uninstall`)
+  }
 }
 
 class ProxyAPI {

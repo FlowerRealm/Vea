@@ -96,6 +96,68 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 	return s.repo.Delete(ctx, id)
 }
 
+// Uninstall 卸载组件：删除本地安装文件并清除安装信息。
+//
+// 注意：默认仅允许卸载位于 artifacts 目录下的安装路径，避免误删任意目录。
+func (s *Service) Uninstall(ctx context.Context, id string) (domain.CoreComponent, error) {
+	s.mu.Lock()
+	if _, ok := s.installing[id]; ok {
+		s.mu.Unlock()
+		return domain.CoreComponent{}, fmt.Errorf("%w: %w", repository.ErrInvalidData, ErrInstallInProgress)
+	}
+	s.mu.Unlock()
+
+	comp, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return domain.CoreComponent{}, err
+	}
+
+	installDir := strings.TrimSpace(comp.InstallDir)
+	if installDir == "" {
+		if info := s.detectInstalled(comp.Kind); info != nil {
+			installDir = strings.TrimSpace(info.dir)
+		}
+	}
+
+	if installDir != "" {
+		installDir = filepath.Clean(installDir)
+
+		var rootMatched string
+		for _, root := range shared.ArtifactsSearchRoots() {
+			root = filepath.Clean(strings.TrimSpace(root))
+			if root == "" {
+				continue
+			}
+			rel, relErr := filepath.Rel(root, installDir)
+			if relErr != nil {
+				continue
+			}
+			rel = filepath.Clean(rel)
+			if rel == "." || rel == "" {
+				continue
+			}
+			if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				continue
+			}
+			rootMatched = root
+			break
+		}
+
+		if rootMatched == "" {
+			return domain.CoreComponent{}, fmt.Errorf("%w: uninstall path is outside artifacts root", repository.ErrInvalidData)
+		}
+
+		if err := os.RemoveAll(installDir); err != nil {
+			return domain.CoreComponent{}, err
+		}
+	}
+
+	if err := s.repo.ClearInstalled(ctx, id); err != nil {
+		return domain.CoreComponent{}, err
+	}
+	return s.repo.Get(ctx, id)
+}
+
 // ========== 安装操作 ==========
 
 // Install 安装组件（异步）
@@ -253,7 +315,7 @@ func (s *Service) doInstall(id string) {
 		s.cleanupXrayInstall(installDir)
 	}
 
-	// mihomo 的发布包在 Linux/macOS 通常是单文件 gzip（无文件名信息）；这里把解压产物统一规整为可执行文件名。
+	// mihomo 的发布包在 Linux/macOS 通常是单文件 gzip，文件名可能带版本/平台后缀；这里把解压产物规整为固定可执行文件名。
 	if comp.Kind == domain.ComponentClash {
 		if err := normalizeClashInstall(installDir); err != nil {
 			s.repo.UpdateInstallStatus(ctx, id, domain.InstallStatusError, 0, "安装后处理失败: "+err.Error())
@@ -428,37 +490,6 @@ func normalizeClashInstall(dir string) error {
 	}
 	targetPath := filepath.Join(dir, targetName)
 	if _, err := os.Stat(targetPath); err == nil {
-		return nil
-	}
-
-	findOneLevel := func(name string) string {
-		rootPath := filepath.Join(dir, name)
-		if _, err := os.Stat(rootPath); err == nil {
-			return rootPath
-		}
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			return ""
-		}
-		for _, entry := range entries {
-			if !entry.IsDir() {
-				continue
-			}
-			p := filepath.Join(dir, entry.Name(), name)
-			if _, err := os.Stat(p); err == nil {
-				return p
-			}
-		}
-		return ""
-	}
-
-	if src := findOneLevel(shared.ComponentFile); src != "" {
-		if err := os.Rename(src, targetPath); err != nil {
-			return err
-		}
-		if runtime.GOOS != "windows" {
-			_ = os.Chmod(targetPath, 0o755)
-		}
 		return nil
 	}
 

@@ -126,6 +126,7 @@ func (r *Router) register(engine *gin.Engine) {
 		components.PUT(":id", r.updateComponent)
 		components.DELETE(":id", r.deleteComponent)
 		components.POST(":id/install", r.installComponent)
+		components.POST(":id/uninstall", r.uninstallComponent)
 	}
 
 	settings := engine.Group("/settings")
@@ -891,6 +892,16 @@ func (r *Router) installComponent(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusAccepted, component)
+}
+
+func (r *Router) uninstallComponent(c *gin.Context) {
+	id := c.Param("id")
+	component, err := r.service.UninstallComponent(id)
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, component)
 }
 
 func (r *Router) getSystemProxySettings(c *gin.Context) {
