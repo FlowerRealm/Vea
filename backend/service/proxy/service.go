@@ -22,6 +22,13 @@ import (
 	"vea/backend/service/shared"
 )
 
+const (
+	defaultTunInterfaceName = "tun0"
+	defaultTunMTU           = 9000
+	defaultTunAddress       = "172.19.0.1/30"
+	defaultTunStack         = "mixed"
+)
+
 // 错误定义
 var (
 	ErrEngineNotInstalled = errors.New("engine not installed")
@@ -122,7 +129,7 @@ func (s *Service) Start(ctx context.Context, cfg domain.ProxyConfig) error {
 	if previousCfg.InboundMode == domain.InboundTUN {
 		previousTunInterface = strings.TrimSpace(s.tunIface)
 		if previousTunInterface == "" {
-			previousTunInterface = "tun0"
+			previousTunInterface = defaultTunInterfaceName
 			if previousCfg.TUNSettings != nil && previousCfg.TUNSettings.InterfaceName != "" {
 				previousTunInterface = previousCfg.TUNSettings.InterfaceName
 			}
@@ -424,26 +431,26 @@ func (s *Service) applyConfigDefaults(cfg domain.ProxyConfig) domain.ProxyConfig
 		}
 		if cfg.TUNSettings == nil {
 			cfg.TUNSettings = &domain.TUNConfiguration{
-				InterfaceName: "tun0",
-				MTU:           9000,
-				Address:       []string{"172.19.0.1/30"},
+				InterfaceName: defaultTunInterfaceName,
+				MTU:           defaultTunMTU,
+				Address:       []string{defaultTunAddress},
 				AutoRoute:     true,
 				StrictRoute:   true,
-				Stack:         "mixed",
+				Stack:         defaultTunStack,
 				DNSHijack:     true,
 			}
 		}
 		if cfg.TUNSettings.InterfaceName == "" {
-			cfg.TUNSettings.InterfaceName = "tun0"
+			cfg.TUNSettings.InterfaceName = defaultTunInterfaceName
 		}
 		if cfg.TUNSettings.MTU <= 0 {
-			cfg.TUNSettings.MTU = 9000
+			cfg.TUNSettings.MTU = defaultTunMTU
 		}
 		if len(cfg.TUNSettings.Address) == 0 {
-			cfg.TUNSettings.Address = []string{"172.19.0.1/30"}
+			cfg.TUNSettings.Address = []string{defaultTunAddress}
 		}
 		if cfg.TUNSettings.Stack == "" {
-			cfg.TUNSettings.Stack = "mixed"
+			cfg.TUNSettings.Stack = defaultTunStack
 		}
 	}
 
@@ -480,19 +487,19 @@ func isLikelyDefaultTUNSettings(cfg *domain.TUNConfiguration) bool {
 	// 前端 schema 与后端 applyConfigDefaults 的默认值（偏 sing-box）：
 	// - MTU=9000, Address=172.19.0.1/30, AutoRoute=true, StrictRoute=true, Stack=mixed, DNSHijack=true
 	// 这里用“完整匹配默认组合”的方式判断是否可安全修正。
-	if cfg.MTU != 9000 {
+	if cfg.MTU != defaultTunMTU {
 		return false
 	}
-	if cfg.InterfaceName != "" && cfg.InterfaceName != "tun0" {
+	if cfg.InterfaceName != "" && cfg.InterfaceName != defaultTunInterfaceName {
 		return false
 	}
-	if len(cfg.Address) != 1 || strings.TrimSpace(cfg.Address[0]) != "172.19.0.1/30" {
+	if len(cfg.Address) != 1 || strings.TrimSpace(cfg.Address[0]) != defaultTunAddress {
 		return false
 	}
 	if !cfg.AutoRoute || !cfg.StrictRoute || !cfg.DNSHijack {
 		return false
 	}
-	if strings.TrimSpace(cfg.Stack) != "" && strings.TrimSpace(cfg.Stack) != "mixed" {
+	if strings.TrimSpace(cfg.Stack) != "" && strings.TrimSpace(cfg.Stack) != defaultTunStack {
 		return false
 	}
 	if cfg.AutoRedirect || cfg.EndpointIndependentNat || cfg.UDPTimeout != 0 {
@@ -715,7 +722,7 @@ func (s *Service) startProcess(adapter adapters.CoreAdapter, engine domain.CoreE
 
 	if cfg.InboundMode == domain.InboundTUN {
 		if engine == domain.EngineSingBox || engine == domain.EngineClash {
-			interfaceName := "tun0"
+			interfaceName := defaultTunInterfaceName
 			if cfg.TUNSettings != nil && cfg.TUNSettings.InterfaceName != "" {
 				interfaceName = cfg.TUNSettings.InterfaceName
 			}

@@ -3762,128 +3762,132 @@
           wasRunning = false;
         }
 
-	        const wasSystemProxyEnabled = Boolean(systemProxySettings && systemProxySettings.enabled);
-	        let systemProxyDisabled = false;
-	        let configSaved = false;
+        const wasSystemProxyEnabled = Boolean(systemProxySettings && systemProxySettings.enabled);
+        let systemProxyDisabled = false;
+        let configSaved = false;
 
-	        try {
-	          const updated = await api.put("/proxy/config", { preferredEngine: normalized });
-	          configSaved = true;
-	          engineSettingsCache = { preferredEngine: updated && updated.preferredEngine ? updated.preferredEngine : normalized };
-	          select.value = engineSettingsCache.preferredEngine || normalized;
+        async function refreshEngineSwitchUI({ alwaysLoadSystemProxy = false, restoreSystemProxy = null } = {}) {
+          await refreshXrayStatus();
 
-	          const selectedFRouter = getCurrentFRouter();
-	          const frouterId = selectedFRouter && selectedFRouter.id
-	            ? selectedFRouter.id
-	            : (updated && updated.frouterId ? updated.frouterId : (xrayStatus && xrayStatus.frouterId ? xrayStatus.frouterId : ""));
-	          if (!frouterId) {
-	            showStatus("内核偏好已保存，但未选择 FRouter，无法重启内核", "warn", 4000);
-	            return;
-	          }
+          if (typeof restoreSystemProxy === "function") {
+            await restoreSystemProxy();
+          }
 
-	          if (wasSystemProxyEnabled) {
-	            try {
-	              await api.put("/settings/system-proxy", { enabled: false, ignoreHosts });
-	              systemProxyDisabled = true;
-	              await loadSystemProxySettings();
-	            } catch (err) {
-	              showStatus(`关闭系统代理失败：${err.message}（将继续重启内核）`, "warn", 5000);
-	            }
-	          }
+          if (alwaysLoadSystemProxy || (wasSystemProxyEnabled && systemProxyDisabled)) {
+            await loadSystemProxySettings();
+          }
 
-	          showStatus(wasRunning ? "正在重启内核..." : "正在启动内核...", "info", 2000);
-	          await api.post("/proxy/start", { frouterId });
-	          await sleep(500);
-	          await refreshXrayStatus();
+          await loadIPGeo();
 
-	          if (wasSystemProxyEnabled && systemProxyDisabled) {
-	            try {
-	              await api.put("/settings/system-proxy", { enabled: true, ignoreHosts });
-	            } catch (err) {
-	              showStatus(`系统代理未能恢复：${err.message}`, "warn", 6000);
-            }
-	            await loadSystemProxySettings();
-	          }
+          if (currentPanel === "panel-logs") {
+            kernelLogOffset = 0;
+            kernelLogSession = 0;
+            kernelLogStartedAt = "";
+            const pre = document.getElementById("kernel-log-content");
+            resetKernelLogRender(pre);
+            await loadKernelLogs();
+          }
+        }
 
-	          await loadIPGeo();
+        try {
+          const updated = await api.put("/proxy/config", { preferredEngine: normalized });
+          configSaved = true;
+          engineSettingsCache = { preferredEngine: updated && updated.preferredEngine ? updated.preferredEngine : normalized };
+          select.value = engineSettingsCache.preferredEngine || normalized;
 
-	          if (currentPanel === "panel-logs") {
-	            kernelLogOffset = 0;
-	            kernelLogSession = 0;
-	            kernelLogStartedAt = "";
-	            const pre = document.getElementById("kernel-log-content");
-	            resetKernelLogRender(pre);
-	            await loadKernelLogs();
-	          }
+          const selectedFRouter = getCurrentFRouter();
+          const frouterId = selectedFRouter && selectedFRouter.id
+            ? selectedFRouter.id
+            : (updated && updated.frouterId ? updated.frouterId : (xrayStatus && xrayStatus.frouterId ? xrayStatus.frouterId : ""));
+          if (!frouterId) {
+            showStatus("内核偏好已保存，但未选择 FRouter，无法重启内核", "warn", 4000);
+            return;
+          }
 
-	          const actualEngine = xrayStatus && xrayStatus.engine ? String(xrayStatus.engine) : "";
-	          const action = wasRunning ? "重启" : "启动";
-	          if (normalized === "auto") {
-	            const label = actualEngine ? componentDisplayName(actualEngine) : "";
-	            showStatus(label ? `内核已${action}（自动：${label}）` : `内核已${action}`, "success", 2000);
-	          } else if (actualEngine && actualEngine !== normalized) {
-	            showStatus(`内核已${action}，但实际运行：${componentDisplayName(actualEngine)}`, "warn", 5000);
-	          } else {
-	            const label = actualEngine ? componentDisplayName(actualEngine) : componentDisplayName(normalized);
-	            showStatus(label ? `内核已${action}（${label}）` : `内核已${action}`, "success", 2000);
-	          }
-	        } catch (err) {
-	          showStatus(`切换内核失败：${err.message}`, "error", 6000);
-	          if (configSaved && wasRunning) {
-	            select.value = prevEngine || "auto";
-	            engineSettingsCache = { preferredEngine: prevEngine || "auto" };
-
-	            try {
-	              await api.put("/proxy/config", { preferredEngine: prevEngine || "auto" });
-	            } catch {
-	              // ignore
-	            }
-
-	            const selectedFRouter = getCurrentFRouter();
-	            const frouterId = selectedFRouter && selectedFRouter.id
-	              ? selectedFRouter.id
-	              : (xrayStatus && xrayStatus.frouterId ? xrayStatus.frouterId : "");
-	            if (frouterId) {
-	              try {
-	                await api.post("/proxy/start", { frouterId });
-	                await sleep(500);
-	              } catch {
-	                // ignore
-	              }
-	            }
-	          } else if (!configSaved) {
-	            select.value = prevEngine || "auto";
-	            engineSettingsCache = { preferredEngine: prevEngine || "auto" };
-	          } else {
-	            select.value = normalized;
-	            engineSettingsCache = { preferredEngine: normalized };
-	          }
-
-	          await refreshXrayStatus();
-
-	          if (wasSystemProxyEnabled && systemProxyDisabled && xrayStatus && xrayStatus.running) {
+          if (wasSystemProxyEnabled) {
             try {
-              await api.put("/settings/system-proxy", { enabled: true, ignoreHosts });
-            } catch {
-              // ignore
+              await api.put("/settings/system-proxy", { enabled: false, ignoreHosts });
+              systemProxyDisabled = true;
+              await loadSystemProxySettings();
+            } catch (err) {
+              showStatus(`关闭系统代理失败：${err.message}（将继续重启内核）`, "warn", 5000);
             }
           }
 
-	          await loadSystemProxySettings();
-	          await loadIPGeo();
+          showStatus(wasRunning ? "正在重启内核..." : "正在启动内核...", "info", 2000);
+          await api.post("/proxy/start", { frouterId });
+          await sleep(500);
 
-	          if (currentPanel === "panel-logs") {
-	            kernelLogOffset = 0;
-	            kernelLogSession = 0;
-	            kernelLogStartedAt = "";
-	            const pre = document.getElementById("kernel-log-content");
-	            resetKernelLogRender(pre);
-	            await loadKernelLogs();
-	          }
-	        } finally {
-	          select.disabled = false;
-	          updateEngineSelectOptions();
-	        }
+          await refreshEngineSwitchUI({
+            restoreSystemProxy: async () => {
+              if (!wasSystemProxyEnabled || !systemProxyDisabled) return;
+              try {
+                await api.put("/settings/system-proxy", { enabled: true, ignoreHosts });
+              } catch (err) {
+                showStatus(`系统代理未能恢复：${err.message}`, "warn", 6000);
+              }
+            },
+          });
+
+          const actualEngine = xrayStatus && xrayStatus.engine ? String(xrayStatus.engine) : "";
+          const action = wasRunning ? "重启" : "启动";
+          if (normalized === "auto") {
+            const label = actualEngine ? componentDisplayName(actualEngine) : "";
+            showStatus(label ? `内核已${action}（自动：${label}）` : `内核已${action}`, "success", 2000);
+          } else if (actualEngine && actualEngine !== normalized) {
+            showStatus(`内核已${action}，但实际运行：${componentDisplayName(actualEngine)}`, "warn", 5000);
+          } else {
+            const label = actualEngine ? componentDisplayName(actualEngine) : componentDisplayName(normalized);
+            showStatus(label ? `内核已${action}（${label}）` : `内核已${action}`, "success", 2000);
+          }
+        } catch (err) {
+          showStatus(`切换内核失败：${err.message}`, "error", 6000);
+          if (configSaved && wasRunning) {
+            select.value = prevEngine || "auto";
+            engineSettingsCache = { preferredEngine: prevEngine || "auto" };
+
+            try {
+              await api.put("/proxy/config", { preferredEngine: prevEngine || "auto" });
+            } catch {
+              // ignore
+            }
+
+            const selectedFRouter = getCurrentFRouter();
+            const frouterId = selectedFRouter && selectedFRouter.id
+              ? selectedFRouter.id
+              : (xrayStatus && xrayStatus.frouterId ? xrayStatus.frouterId : "");
+            if (frouterId) {
+              try {
+                await api.post("/proxy/start", { frouterId });
+                await sleep(500);
+              } catch {
+                // ignore
+              }
+            }
+          } else if (!configSaved) {
+            select.value = prevEngine || "auto";
+            engineSettingsCache = { preferredEngine: prevEngine || "auto" };
+          } else {
+            select.value = normalized;
+            engineSettingsCache = { preferredEngine: normalized };
+          }
+
+          await refreshEngineSwitchUI({
+            alwaysLoadSystemProxy: true,
+            restoreSystemProxy: async () => {
+              if (!wasSystemProxyEnabled || !systemProxyDisabled) return;
+              if (!(xrayStatus && xrayStatus.running)) return;
+              try {
+                await api.put("/settings/system-proxy", { enabled: true, ignoreHosts });
+              } catch {
+                // ignore
+              }
+            },
+          });
+        } finally {
+          select.disabled = false;
+          updateEngineSelectOptions();
+        }
       }
 
       // IP Geo info
