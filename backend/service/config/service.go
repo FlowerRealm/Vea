@@ -31,24 +31,36 @@ var (
 	ErrSyncFailed     = errors.New("sync failed")
 )
 
-type FRouterService interface {
-	List(ctx context.Context) ([]domain.FRouter, error)
-	Create(ctx context.Context, frouter domain.FRouter) (domain.FRouter, error)
-}
-
 // Service 配置服务
 type Service struct {
 	repo        repository.ConfigRepository
 	nodeService *nodes.Service
-	frouterSvc  FRouterService
+}
+
+type subscriptionParseError struct {
+	configID string
+	message  string
+}
+
+func (e *subscriptionParseError) Error() string {
+	if e == nil {
+		return "subscription parse failed"
+	}
+	if strings.TrimSpace(e.configID) == "" {
+		return e.message
+	}
+	return "config " + e.configID + ": " + e.message
+}
+
+func (e *subscriptionParseError) Unwrap() error {
+	return repository.ErrInvalidData
 }
 
 // NewService 创建配置服务
-func NewService(repo repository.ConfigRepository, nodeService *nodes.Service, frouterSvc FRouterService) *Service {
+func NewService(repo repository.ConfigRepository, nodeService *nodes.Service) *Service {
 	return &Service{
 		repo:        repo,
 		nodeService: nodeService,
-		frouterSvc:  frouterSvc,
 	}
 }
 
@@ -83,8 +95,13 @@ func (s *Service) Create(ctx context.Context, cfg domain.Config) (domain.Config,
 		return domain.Config{}, err
 	}
 
-	// 解析并同步节点（解析失败/为空时清空旧节点）
-	s.syncNodesFromPayload(ctx, created.ID, created.Payload)
+	// 解析并同步节点（为避免破坏用户配置，解析失败时不清空旧节点）。
+	if err := s.syncNodesFromPayload(ctx, created.ID, created.Payload); err != nil {
+		// 创建配置时不应因为解析失败就直接失败：记录错误即可。
+		if updateErr := s.repo.UpdateSyncStatus(ctx, created.ID, created.Payload, created.Checksum, err); updateErr != nil {
+			log.Printf("[ConfigCreate] failed to update sync status for %s after parse error: %v", created.ID, updateErr)
+		}
+	}
 
 	return created, nil
 }
@@ -114,33 +131,42 @@ func (s *Service) Sync(ctx context.Context, id string) error {
 
 	payload, checksum, err := s.downloadConfig(cfg.SourceURL)
 	if err != nil {
-		s.repo.UpdateSyncStatus(ctx, id, cfg.Payload, cfg.Checksum, err)
+		if updateErr := s.repo.UpdateSyncStatus(ctx, id, cfg.Payload, cfg.Checksum, err); updateErr != nil {
+			log.Printf("[ConfigSync] failed to update sync status for %s after download error: %v", id, updateErr)
+		}
 		return err
 	}
 
 	// 如果内容没变，只更新同步时间
 	if checksum == cfg.Checksum {
-		s.repo.UpdateSyncStatus(ctx, id, cfg.Payload, cfg.Checksum, nil)
+		if updateErr := s.repo.UpdateSyncStatus(ctx, id, cfg.Payload, cfg.Checksum, nil); updateErr != nil {
+			log.Printf("[ConfigSync] failed to update sync status for %s when checksum unchanged: %v", id, updateErr)
+		}
+		// 内容不变也要保证解析状态正确：否则会把 LastSyncError “误清空”。
+		if err := s.syncNodesFromPayload(ctx, id, cfg.Payload); err != nil {
+			if updateErr := s.repo.UpdateSyncStatus(ctx, id, cfg.Payload, cfg.Checksum, err); updateErr != nil {
+				log.Printf("[ConfigSync] failed to update sync status for %s after parse error: %v", id, updateErr)
+			}
+			return err
+		}
 		return nil
 	}
 
 	// 更新内容
-	s.repo.UpdateSyncStatus(ctx, id, payload, checksum, nil)
+	if updateErr := s.repo.UpdateSyncStatus(ctx, id, payload, checksum, nil); updateErr != nil {
+		log.Printf("[ConfigSync] failed to update sync status for %s after download: %v", id, updateErr)
+	}
 
-	// 解析并更新节点（解析失败/为空时清空旧节点）
-	s.syncNodesFromPayload(ctx, id, payload)
+	// 解析并更新节点（解析失败时不清空旧节点）。
+	if err := s.syncNodesFromPayload(ctx, id, payload); err != nil {
+		// 下载成功但解析失败：保留旧节点，同时把错误记录到配置上，便于前端展示。
+		if updateErr := s.repo.UpdateSyncStatus(ctx, id, payload, checksum, err); updateErr != nil {
+			log.Printf("[ConfigSync] failed to update sync status for %s after parse error: %v", id, updateErr)
+		}
+		return err
+	}
 
 	return nil
-}
-
-// PullNodes 重新解析当前 payload 并同步节点（用于“强制重解析/新解析器生效”）。
-func (s *Service) PullNodes(ctx context.Context, id string) ([]domain.Node, error) {
-	cfg, err := s.repo.Get(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	nodes := s.syncNodesFromPayload(ctx, id, cfg.Payload)
-	return nodes, nil
 }
 
 // SyncAll 同步所有配置
@@ -164,8 +190,17 @@ func (s *Service) SyncAll(ctx context.Context) {
 
 // ========== 内部方法 ==========
 
-func (s *Service) syncNodesFromPayload(ctx context.Context, configID, payload string) []domain.Node {
+func (s *Service) syncNodesFromPayload(ctx context.Context, configID, payload string) error {
 	if s.nodeService == nil || strings.TrimSpace(configID) == "" {
+		return nil
+	}
+
+	trimmed := strings.TrimSpace(payload)
+	if trimmed == "" {
+		if _, err := s.nodeService.ReplaceNodesForConfig(ctx, configID, nil); err != nil {
+			log.Printf("[ConfigSync] clear nodes failed for %s: %v", configID, err)
+			return err
+		}
 		return nil
 	}
 
@@ -175,18 +210,19 @@ func (s *Service) syncNodesFromPayload(ctx context.Context, configID, payload st
 	}
 
 	if len(nodes) == 0 {
-		if _, err := s.nodeService.ReplaceNodesForConfig(ctx, configID, nil); err != nil {
-			log.Printf("[ConfigSync] clear nodes failed for %s: %v", configID, err)
+		// payload 非空但解析不到节点：这通常是订阅格式不支持（如 Clash YAML/HTML 错误页/升级提示）。
+		// 为避免破坏已有配置，这里不清空旧节点。
+		return &subscriptionParseError{
+			configID: configID,
+			message:  "订阅内容无法解析为节点（仅支持 vmess/vless/trojan/ss 分享链接）；已保留现有节点",
 		}
-		return nil
 	}
 
-	updated, err := s.nodeService.ReplaceNodesForConfig(ctx, configID, nodes)
-	if err != nil {
+	if _, err := s.nodeService.ReplaceNodesForConfig(ctx, configID, nodes); err != nil {
 		log.Printf("[ConfigSync] update nodes failed for %s: %v", configID, err)
-		return nil
+		return err
 	}
-	return updated
+	return nil
 }
 
 func (s *Service) downloadConfig(sourceURL string) (payload, checksum string, err error) {

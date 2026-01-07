@@ -130,7 +130,7 @@ func run() int {
 	nodeSvc.SetMeasurer(speedMeasurer)
 	frouterSvc.SetMeasurer(speedMeasurer)
 
-	configSvc := configsvc.NewService(configRepo, nodeSvc, frouterSvc)
+	configSvc := configsvc.NewService(configRepo, nodeSvc)
 	proxySvc := proxy.NewService(frouterRepo, nodeRepo, componentRepo, settingsRepo)
 	componentSvc := component.NewService(componentRepo)
 	geoSvc := geo.NewService(geoRepo)

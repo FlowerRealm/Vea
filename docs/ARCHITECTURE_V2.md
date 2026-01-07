@@ -426,7 +426,7 @@ repos := repository.NewRepositories(memStore, nodeRepo, frouterRepo, configRepo,
 // 5. 创建服务层
 nodeSvc := nodes.NewService(nodeRepo)
 frouterSvc := frouter.NewService(frouterRepo, nodeRepo)
-configSvc := configsvc.NewService(configRepo, nodeSvc, frouterSvc)
+configSvc := configsvc.NewService(configRepo, nodeSvc)
 proxySvc := proxy.NewService(frouterRepo, nodeRepo, componentRepo, settingsRepo)
 // ...
 

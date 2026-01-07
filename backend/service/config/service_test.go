@@ -4,14 +4,17 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"vea/backend/domain"
 	"vea/backend/repository/events"
 	"vea/backend/repository/memory"
+	"vea/backend/service/nodes"
 )
 
 func TestService_Create_WithSourceURL_DownloadsPayloadAndChecksum(t *testing.T) {
@@ -26,7 +29,7 @@ func TestService_Create_WithSourceURL_DownloadsPayloadAndChecksum(t *testing.T) 
 	t.Cleanup(srv.Close)
 
 	repo := memory.NewConfigRepo(memory.NewStore(events.NewBus()))
-	svc := NewService(repo, nil, nil)
+	svc := NewService(repo, nil)
 
 	created, err := svc.Create(context.Background(), domain.Config{
 		Name:      "cfg-1",
@@ -65,7 +68,7 @@ func TestService_Sync_UnchangedChecksum_OnlyUpdatesLastSyncedAt(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	repo := memory.NewConfigRepo(memory.NewStore(events.NewBus()))
-	svc := NewService(repo, nil, nil)
+	svc := NewService(repo, nil)
 
 	sum := sha256.Sum256([]byte(payload))
 	checksum := hex.EncodeToString(sum[:])
@@ -100,5 +103,62 @@ func TestService_Sync_UnchangedChecksum_OnlyUpdatesLastSyncedAt(t *testing.T) {
 	}
 	if updated.LastSyncError != "" {
 		t.Fatalf("expected lastSyncError empty, got %q", updated.LastSyncError)
+	}
+}
+
+func TestService_Sync_ParseFailure_DoesNotClearExistingNodes(t *testing.T) {
+	t.Parallel()
+
+	var payload atomic.Value
+	payload.Store("")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, payload.Load().(string))
+	}))
+	t.Cleanup(srv.Close)
+
+	store := memory.NewStore(events.NewBus())
+	configRepo := memory.NewConfigRepo(store)
+	nodeRepo := memory.NewNodeRepo(store)
+	nodeSvc := nodes.NewService(nodeRepo)
+	svc := NewService(configRepo, nodeSvc)
+
+	payload.Store("vless://11111111-1111-1111-1111-111111111111@example.com:443?security=tls#n1")
+	created, err := svc.Create(context.Background(), domain.Config{
+		Name:      "cfg-1",
+		Format:    domain.ConfigFormatXray,
+		SourceURL: srv.URL,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	nodesBefore, err := nodeRepo.ListByConfigID(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("list nodes before: %v", err)
+	}
+	if len(nodesBefore) != 1 {
+		t.Fatalf("expected nodes=1 before sync, got %d", len(nodesBefore))
+	}
+
+	payload.Store("port: 7890\nsocks-port: 7891\nProxy:\n  - name: 您的客户端版本过旧\n    type: socks5\n    server: 127.0.0.1\n    port: 1080\n")
+	if err := svc.Sync(context.Background(), created.ID); err == nil {
+		t.Fatalf("expected sync to fail on unsupported subscription payload")
+	}
+
+	nodesAfter, err := nodeRepo.ListByConfigID(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("list nodes after: %v", err)
+	}
+	if len(nodesAfter) != 1 {
+		t.Fatalf("expected nodes preserved after parse failure, got %d", len(nodesAfter))
+	}
+
+	updatedCfg, err := configRepo.Get(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("get config: %v", err)
+	}
+	if updatedCfg.LastSyncError == "" {
+		t.Fatalf("expected lastSyncError to be set on parse failure")
 	}
 }

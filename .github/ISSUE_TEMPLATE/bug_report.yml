@@ -1,0 +1,94 @@
+name: Bug 报告
+description: 报告一个可以复现的问题（崩溃/启动失败/代理不可用等）
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        只收「可复现」的问题；信息不全=无法修。
+
+        脱敏要求：不要粘贴订阅链接、Token、账号密码、私钥、真实 IP/域名、内部 ID（例如 FRouter ID/NodeID）等。
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: 提交前检查（必选）
+      options:
+        - label: 我已搜索现有 Issues，确认不是重复问题
+          required: true
+        - label: 我已在最新版本/最新提交上验证问题仍存在（或说明无法升级原因）
+          required: true
+        - label: 我提交的内容已脱敏（订阅/Token/内部 ID 等不会出现在正文/日志里）
+          required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: 问题类型
+      options:
+        - 启动失败 / 崩溃
+        - 代理不可用（无法连接/无法上网）
+        - TUN / 系统代理
+        - 节点 / 订阅
+        - 测速 / 延迟
+        - 组件 / Geo
+        - UI / 交互
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: 发生了什么？
+      description: 实际行为与错误信息（可脱敏后贴原文）。
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro_steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境信息（必填）
+      description: 用最短信息把环境讲清楚即可。
+      render: text
+      placeholder: |
+        - OS: Windows/macOS/Linux + 版本
+        - 架构: x64/arm64
+        - Vea: 版本号或 commit hash
+        - 使用方式: Release / make dev / go run .
+        - 引擎/入站: Xray/sing-box + SOCKS/HTTP/Mixed/TUN（如果相关）
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 相关日志（强烈建议）
+      description: 只贴能定位问题的那一段（脱敏）。
+      render: text
+      placeholder: |
+        ```
+        ...logs...
+        ```
+    validations:
+      required: false

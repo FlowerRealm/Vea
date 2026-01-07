@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 	configsvc "vea/backend/service/config"
 	"vea/backend/service/frouter"
 	"vea/backend/service/geo"
+	"vea/backend/service/node"
 	"vea/backend/service/nodes"
 	"vea/backend/service/proxy"
 	"vea/backend/service/shared"
@@ -305,8 +307,52 @@ func (f *Facade) SyncConfigNodes(configID string) ([]domain.Node, error) {
 		if err := f.config.Sync(ctx, configID); err != nil {
 			return nil, err
 		}
+		cfg, err = f.config.Get(ctx, configID)
+		if err != nil {
+			return nil, err
+		}
 	}
-	return f.config.PullNodes(ctx, configID)
+
+	payloadTrimmed := strings.TrimSpace(cfg.Payload)
+	nodesFromConfig, parseErrs := node.ParseMultipleLinks(cfg.Payload)
+	if len(parseErrs) > 0 {
+		log.Printf("[SyncConfigNodes] parse errors for %s: %d", configID, len(parseErrs))
+	}
+	if len(nodesFromConfig) == 0 {
+		// payload 非空但解析不到节点：这是订阅异常/格式不支持的强信号。
+		// 为避免把已有节点清空导致 FRouter 变“未知”，这里直接报错并保留现有节点。
+		if payloadTrimmed != "" {
+			parseErr := fmt.Errorf("%w: 订阅内容无法解析为节点（仅支持 vmess/vless/trojan/ss 分享链接）；已保留现有节点", repository.ErrInvalidData)
+			cfg.LastSyncError = parseErr.Error()
+			if _, updateErr := f.config.Update(ctx, configID, cfg); updateErr != nil {
+				log.Printf("[SyncConfigNodes] failed to update config %s with parse error: %v", configID, updateErr)
+			}
+			return nil, parseErr
+		}
+
+		existing, err := f.nodes.List(ctx)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]domain.Node, 0, len(existing))
+		for _, n := range existing {
+			if n.SourceConfigID == configID {
+				out = append(out, n)
+			}
+		}
+		return out, nil
+	}
+	updated, err := f.nodes.ReplaceNodesForConfig(ctx, configID, nodesFromConfig)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.LastSyncError != "" {
+		cfg.LastSyncError = ""
+		if _, updateErr := f.config.Update(ctx, configID, cfg); updateErr != nil {
+			log.Printf("[SyncConfigNodes] failed to clear lastSyncError for config %s: %v", configID, updateErr)
+		}
+	}
+	return updated, nil
 }
 
 // ========== Proxy 操作 ==========

@@ -363,7 +363,6 @@ func splitHostPort(hostPort string) (string, string, error) {
 // ParseMultipleLinks 解析多个分享链接
 // 支持 base64 编码的订阅内容和纯文本链接列表
 func ParseMultipleLinks(links string) ([]domain.Node, []error) {
-	var nodes []domain.Node
 	var errs []error
 
 	text := strings.TrimSpace(links)
@@ -387,6 +386,7 @@ func ParseMultipleLinks(links string) ([]domain.Node, []error) {
 
 	// 遍历候选内容，解析节点
 	for _, candidate := range candidates {
+		var nodes []domain.Node
 		lines := strings.Split(candidate, "\n")
 		for _, line := range lines {
 			line = strings.TrimSpace(line)
@@ -408,53 +408,14 @@ func ParseMultipleLinks(links string) ([]domain.Node, []error) {
 		}
 		// 如果解析出节点，使用这个候选
 		if len(nodes) > 0 {
-			return filterSubscriptionNodes(nodes), errs
+			filtered := filterSubscriptionNodes(nodes)
+			if len(filtered) > 0 {
+				return filtered, errs
+			}
 		}
 	}
 
-	return nodes, errs
-}
-
-func filterSubscriptionNodes(nodes []domain.Node) []domain.Node {
-	if len(nodes) == 0 {
-		return nodes
-	}
-	out := make([]domain.Node, 0, len(nodes))
-	for _, n := range nodes {
-		if isLikelySubscriptionInfoNode(n) {
-			continue
-		}
-		out = append(out, n)
-	}
-	return out
-}
-
-func isLikelySubscriptionInfoNode(node domain.Node) bool {
-	addr := strings.ToLower(strings.TrimSpace(node.Address))
-	name := strings.ToLower(strings.TrimSpace(node.Name))
-	if addr == "" || name == "" {
-		return false
-	}
-
-	isLoopback := addr == "127.0.0.1" || addr == "localhost" || addr == "0.0.0.0"
-	if !isLoopback {
-		return false
-	}
-	if node.Port != 1080 && node.Port != 0 {
-		return false
-	}
-
-	keywords := []string{
-		"剩余", "流量", "到期", "过期", "有效期",
-		"升级", "版本", "客户端", "官网", "教程",
-		"traffic", "expire", "expired", "upgrade", "version",
-	}
-	for _, kw := range keywords {
-		if strings.Contains(name, kw) {
-			return true
-		}
-	}
-	return false
+	return nil, errs
 }
 
 // decodeBase64Flexible 灵活解码 base64（自动补齐 padding）
@@ -488,6 +449,50 @@ func isLikelyShareLinks(text string) bool {
 			continue
 		}
 		if isShareLink(line) {
+			return true
+		}
+	}
+	return false
+}
+
+var subscriptionInfoKeywords = []string{
+	"剩余", "流量", "到期", "过期", "有效期",
+	"升级", "版本", "客户端", "官网", "教程",
+	"traffic", "expire", "expired", "upgrade", "version",
+}
+
+func filterSubscriptionNodes(nodes []domain.Node) []domain.Node {
+	if len(nodes) == 0 {
+		return nodes
+	}
+	out := make([]domain.Node, 0, len(nodes))
+	for _, n := range nodes {
+		if isLikelySubscriptionInfoNode(n) {
+			continue
+		}
+		out = append(out, n)
+	}
+	return out
+}
+
+func isLikelySubscriptionInfoNode(node domain.Node) bool {
+	addr := strings.ToLower(strings.TrimSpace(node.Address))
+	name := strings.ToLower(strings.TrimSpace(node.Name))
+	if addr == "" || name == "" {
+		return false
+	}
+
+	// 订阅“提示节点”通常指向本地回环端口（如 127.0.0.1:1080）。
+	isLoopback := addr == "127.0.0.1" || addr == "localhost" || addr == "0.0.0.0"
+	if !isLoopback {
+		return false
+	}
+	if node.Port != 1080 && node.Port != 0 {
+		return false
+	}
+
+	for _, kw := range subscriptionInfoKeywords {
+		if strings.Contains(name, kw) {
 			return true
 		}
 	}
