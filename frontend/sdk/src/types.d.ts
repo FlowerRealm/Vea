@@ -145,7 +145,7 @@ export interface GeoResource {
   updatedAt: string
 }
 
-export type CoreComponentKind = 'xray' | 'singbox' | 'geo' | 'generic'
+export type CoreComponentKind = 'xray' | 'singbox' | 'clash' | 'geo' | 'generic'
 
 export interface CoreComponent {
   id: string
@@ -175,7 +175,7 @@ export interface SystemProxySettings {
 
 export type InboundMode = 'socks' | 'http' | 'mixed' | 'tun'
 
-export type CoreEngineKind = 'xray' | 'singbox' | 'auto'
+export type CoreEngineKind = 'xray' | 'singbox' | 'clash' | 'auto'
 
 export interface CoreEngineInfo {
   kind: CoreEngineKind

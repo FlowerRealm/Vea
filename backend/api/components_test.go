@@ -67,6 +67,9 @@ func TestGETComponents_SeedsDefaultComponents(t *testing.T) {
 	if countKind(components, domain.ComponentSingBox) != 1 {
 		t.Fatalf("expected exactly 1 singbox component, got %d", countKind(components, domain.ComponentSingBox))
 	}
+	if countKind(components, domain.ComponentClash) != 1 {
+		t.Fatalf("expected exactly 1 clash component, got %d", countKind(components, domain.ComponentClash))
+	}
 }
 
 func countKind(components []domain.CoreComponent, kind domain.CoreComponentKind) int {

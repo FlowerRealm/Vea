@@ -1939,27 +1939,42 @@
           </div>
           <div class="metric-value" id="home-node-speed">--</div>
         </div>
-        <div class="metric-card" id="tun-status-card">
-          <div class="metric-label">
-            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
-              <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-            </svg>
-            TUN 模式
-          </div>
-          <div style="display:flex; align-items:center; gap:12px;">
-            <div class="metric-value" id="tun-status-value" style="cursor:pointer;" title="点击查看详情">--</div>
-            <label class="toggle-switch" title="启用/禁用 TUN 模式">
-              <input type="checkbox" id="tun-toggle">
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-        </div>
-        <div class="metric-card" id="ip-geo-card" style="grid-column: span 2;">
-          <div class="metric-label">
-            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="2" y1="12" x2="22" y2="12"></line>
+	        <div class="metric-card" id="tun-status-card">
+	          <div class="metric-label">
+	            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
+	              <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+	              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+	            </svg>
+	            TUN 模式
+	          </div>
+	          <div style="display:flex; align-items:center; gap:12px;">
+	            <div class="metric-value" id="tun-status-value" style="cursor:pointer;" title="点击查看详情">--</div>
+	            <label class="toggle-switch" title="启用/禁用 TUN 模式">
+	              <input type="checkbox" id="tun-toggle">
+	              <span class="toggle-slider"></span>
+	            </label>
+	          </div>
+	        </div>
+	        <div class="metric-card" id="engine-select-card">
+	          <div class="metric-label">
+	            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
+	              <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
+	              <rect x="9" y="9" width="6" height="6"></rect>
+	            </svg>
+	            内核偏好
+	          </div>
+	          <select id="engine-select" title="选择内核偏好（需要时会重启内核）">
+	            <option value="auto" data-label="自动">自动</option>
+	            <option value="xray" data-label="Xray">Xray</option>
+	            <option value="singbox" data-label="sing-box">sing-box</option>
+	            <option value="clash" data-label="Clash">Clash</option>
+	          </select>
+	        </div>
+	        <div class="metric-card" id="ip-geo-card" style="grid-column: span 2;">
+	          <div class="metric-label">
+	            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
+	              <circle cx="12" cy="12" r="10"></circle>
+	              <line x1="2" y1="12" x2="22" y2="12"></line>
               <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">
               </path>
             </svg>
@@ -2220,7 +2235,7 @@
       <div class="panel-header">
         <div class="panel-title">
           <h2>日志</h2>
-          <p>内核（Xray / sing-box）与应用（后端）运行日志（独立于终端输出）。</p>
+          <p>内核（Xray / sing-box / Clash）与应用（后端）运行日志（独立于终端输出）。</p>
         </div>
       </div>
 
@@ -3278,14 +3293,16 @@
 	        appLogsPollHandle = null;
 	      }
 
-	      async function loadKernelLogs() {
+	      async function loadKernelLogs(options = {}) {
 	        const metaEl = document.getElementById("kernel-log-meta");
 	        const pre = document.getElementById("kernel-log-content");
 	        const logContainer = document.getElementById("kernel-log-container");
 	        if (!pre) return;
 
 	        try {
-	          const payload = await api.get(`/proxy/kernel/logs?since=${kernelLogOffset}`);
+	          const forceFromStart = Boolean(options && options.forceFromStart);
+	          const since = forceFromStart ? 0 : kernelLogOffset;
+	          const payload = await api.get(`/proxy/kernel/logs?since=${since}`);
 	          const data = payload || {};
 	          const session = Number(data.session || 0);
 	          const startedAt = data.startedAt || "";
@@ -3294,6 +3311,13 @@
 
 	          const sessionChanged = session && session !== kernelLogSession;
 	          const startedAtChanged = startedAt && startedAt !== kernelLogStartedAt;
+
+	          // 新 session 不应从旧 offset 续读：否则会丢掉“kernel start ...”等关键起始信息。
+	          if (!forceFromStart && (sessionChanged || startedAtChanged) && kernelLogOffset !== 0) {
+	            kernelLogOffset = 0;
+	            await loadKernelLogs({ forceFromStart: true });
+	            return;
+	          }
 
 	          const shouldReset = lost || sessionChanged || startedAtChanged || kernelLogOffset === 0;
 	          if (shouldReset) {
@@ -3307,13 +3331,13 @@
 	            kernelLogOffset = data.to;
 	          }
 
-	          if (metaEl) {
-	            const parts = [];
-	            if (data.engine) {
-	              parts.push(String(data.engine));
-	            } else {
-	              parts.push("内核");
-	            }
+		          if (metaEl) {
+		            const parts = [];
+		            if (data.engine) {
+		              parts.push(componentDisplayName(String(data.engine)));
+		            } else {
+		              parts.push("内核");
+		            }
 	            if (data.running === false) parts.push("已停止");
 	            if (data.pid) parts.push(`pid ${data.pid}`);
 	            if (startedAt) parts.push(`启动于 ${formatTime(startedAt)}`);
@@ -3331,20 +3355,28 @@
 	        }
 	      }
 
-	      async function loadAppLogs() {
+	      async function loadAppLogs(options = {}) {
 	        const metaEl = document.getElementById("app-log-meta");
 	        const pre = document.getElementById("app-log-content");
 	        const logContainer = document.getElementById("app-log-container");
 	        if (!pre) return;
 
 	        try {
-	          const payload = await api.get(`/app/logs?since=${appLogOffset}`);
+	          const forceFromStart = Boolean(options && options.forceFromStart);
+	          const since = forceFromStart ? 0 : appLogOffset;
+	          const payload = await api.get(`/app/logs?since=${since}`);
 	          const data = payload || {};
 	          const startedAt = data.startedAt || "";
 	          const lost = Boolean(data.lost);
 	          const chunk = data.text || "";
 
 	          const startedAtChanged = startedAt && startedAt !== appLogStartedAt;
+
+	          if (!forceFromStart && startedAtChanged && appLogOffset !== 0) {
+	            appLogOffset = 0;
+	            await loadAppLogs({ forceFromStart: true });
+	            return;
+	          }
 
 	          const shouldReset = lost || startedAtChanged || appLogOffset === 0;
 	          if (shouldReset) {
@@ -3581,11 +3613,14 @@
         const coreRunning = Boolean(status.running);
         const systemProxyEnabled = Boolean(systemProxySettings && systemProxySettings.enabled);
 
-        // Update core status indicator
-        if (indicator) {
-          indicator.className = coreRunning ? "badge active" : "badge";
-          indicator.textContent = coreRunning ? "运行中" : "已停止";
-        }
+	        // Update core status indicator
+	        if (indicator) {
+	          indicator.className = coreRunning ? "badge active" : "badge";
+	          const engineLabel = coreRunning && status.engine ? componentDisplayName(status.engine) : "";
+	          indicator.textContent = coreRunning
+	            ? `核心：运行中${engineLabel ? `（${engineLabel}）` : ""}`
+	            : "核心：已停止";
+	        }
 
         // Update proxy toggle button
         if (!proxyToggle) return;
@@ -3637,6 +3672,218 @@
           tunSettingsCache = { enabled: false };
           updateTUNToggle(tunSettingsCache);
         }
+      }
+
+      // Engine Settings state
+      let engineSettingsCache = null;
+
+      function isCoreComponentInstalled(kind) {
+        const list = Array.isArray(componentsCache) ? componentsCache : [];
+        const target = list.find((item) => item && item.kind === kind);
+        return Boolean(target && target.installDir);
+      }
+
+      function updateEngineSelectOptions() {
+        const select = document.getElementById("engine-select");
+        if (!select) return;
+
+        Array.from(select.options).forEach((opt) => {
+          const value = opt.value || "";
+          const baseLabel = opt.dataset.label || opt.textContent || value || "-";
+          if (!opt.dataset.label) {
+            opt.dataset.label = baseLabel;
+          }
+
+          if (value === "auto") {
+            opt.disabled = false;
+            opt.textContent = baseLabel;
+            return;
+          }
+
+          const installed = isCoreComponentInstalled(value);
+          opt.disabled = !installed;
+          opt.textContent = installed ? baseLabel : `${baseLabel}（未安装）`;
+        });
+      }
+
+      async function loadEngineSettings() {
+        const select = document.getElementById("engine-select");
+        if (!select) return;
+        try {
+          const cfg = await api.get("/proxy/config");
+          const preferred = cfg && cfg.preferredEngine ? cfg.preferredEngine : "auto";
+          engineSettingsCache = { preferredEngine: preferred };
+          select.value = preferred || "auto";
+        } catch (err) {
+          console.error("Failed to load engine settings:", err);
+          engineSettingsCache = { preferredEngine: "auto" };
+          select.value = "auto";
+        } finally {
+          updateEngineSelectOptions();
+        }
+      }
+
+      async function updateEngineSetting(preferredEngine) {
+        const select = document.getElementById("engine-select");
+        if (!select) return;
+
+        const normalized = ["auto", "xray", "singbox", "clash"].includes(preferredEngine)
+          ? preferredEngine
+          : "auto";
+
+        select.disabled = true;
+
+        let prevEngine = "auto";
+        try {
+          if (engineSettingsCache && engineSettingsCache.preferredEngine) {
+            prevEngine = engineSettingsCache.preferredEngine;
+          } else {
+            const cfg = await api.get("/proxy/config");
+            prevEngine = cfg && cfg.preferredEngine ? cfg.preferredEngine : "auto";
+          }
+        } catch {
+          prevEngine = "auto";
+        }
+
+        if (normalized === prevEngine) {
+          select.value = normalized;
+          select.disabled = false;
+          updateEngineSelectOptions();
+          return;
+        }
+
+        const ignoreHosts = collectIgnoreHosts();
+        let wasRunning = false;
+        try {
+          const status = await api.proxy.status();
+          xrayStatus = status || xrayStatus;
+          wasRunning = Boolean(status && status.running);
+        } catch {
+          wasRunning = false;
+        }
+
+	        const wasSystemProxyEnabled = Boolean(systemProxySettings && systemProxySettings.enabled);
+	        let systemProxyDisabled = false;
+	        let configSaved = false;
+
+	        try {
+	          const updated = await api.put("/proxy/config", { preferredEngine: normalized });
+	          configSaved = true;
+	          engineSettingsCache = { preferredEngine: updated && updated.preferredEngine ? updated.preferredEngine : normalized };
+	          select.value = engineSettingsCache.preferredEngine || normalized;
+
+	          const selectedFRouter = getCurrentFRouter();
+	          const frouterId = selectedFRouter && selectedFRouter.id
+	            ? selectedFRouter.id
+	            : (updated && updated.frouterId ? updated.frouterId : (xrayStatus && xrayStatus.frouterId ? xrayStatus.frouterId : ""));
+	          if (!frouterId) {
+	            showStatus("内核偏好已保存，但未选择 FRouter，无法重启内核", "warn", 4000);
+	            return;
+	          }
+
+	          if (wasSystemProxyEnabled) {
+	            try {
+	              await api.put("/settings/system-proxy", { enabled: false, ignoreHosts });
+	              systemProxyDisabled = true;
+	              await loadSystemProxySettings();
+	            } catch (err) {
+	              showStatus(`关闭系统代理失败：${err.message}（将继续重启内核）`, "warn", 5000);
+	            }
+	          }
+
+	          showStatus(wasRunning ? "正在重启内核..." : "正在启动内核...", "info", 2000);
+	          await api.post("/proxy/start", { frouterId });
+	          await sleep(500);
+	          await refreshXrayStatus();
+
+	          if (wasSystemProxyEnabled && systemProxyDisabled) {
+	            try {
+	              await api.put("/settings/system-proxy", { enabled: true, ignoreHosts });
+	            } catch (err) {
+	              showStatus(`系统代理未能恢复：${err.message}`, "warn", 6000);
+            }
+	            await loadSystemProxySettings();
+	          }
+
+	          await loadIPGeo();
+
+	          if (currentPanel === "panel-logs") {
+	            kernelLogOffset = 0;
+	            kernelLogSession = 0;
+	            kernelLogStartedAt = "";
+	            const pre = document.getElementById("kernel-log-content");
+	            resetKernelLogRender(pre);
+	            await loadKernelLogs();
+	          }
+
+	          const actualEngine = xrayStatus && xrayStatus.engine ? String(xrayStatus.engine) : "";
+	          const action = wasRunning ? "重启" : "启动";
+	          if (normalized === "auto") {
+	            const label = actualEngine ? componentDisplayName(actualEngine) : "";
+	            showStatus(label ? `内核已${action}（自动：${label}）` : `内核已${action}`, "success", 2000);
+	          } else if (actualEngine && actualEngine !== normalized) {
+	            showStatus(`内核已${action}，但实际运行：${componentDisplayName(actualEngine)}`, "warn", 5000);
+	          } else {
+	            const label = actualEngine ? componentDisplayName(actualEngine) : componentDisplayName(normalized);
+	            showStatus(label ? `内核已${action}（${label}）` : `内核已${action}`, "success", 2000);
+	          }
+	        } catch (err) {
+	          showStatus(`切换内核失败：${err.message}`, "error", 6000);
+	          if (configSaved && wasRunning) {
+	            select.value = prevEngine || "auto";
+	            engineSettingsCache = { preferredEngine: prevEngine || "auto" };
+
+	            try {
+	              await api.put("/proxy/config", { preferredEngine: prevEngine || "auto" });
+	            } catch {
+	              // ignore
+	            }
+
+	            const selectedFRouter = getCurrentFRouter();
+	            const frouterId = selectedFRouter && selectedFRouter.id
+	              ? selectedFRouter.id
+	              : (xrayStatus && xrayStatus.frouterId ? xrayStatus.frouterId : "");
+	            if (frouterId) {
+	              try {
+	                await api.post("/proxy/start", { frouterId });
+	                await sleep(500);
+	              } catch {
+	                // ignore
+	              }
+	            }
+	          } else if (!configSaved) {
+	            select.value = prevEngine || "auto";
+	            engineSettingsCache = { preferredEngine: prevEngine || "auto" };
+	          } else {
+	            select.value = normalized;
+	            engineSettingsCache = { preferredEngine: normalized };
+	          }
+
+	          await refreshXrayStatus();
+
+	          if (wasSystemProxyEnabled && systemProxyDisabled && xrayStatus && xrayStatus.running) {
+            try {
+              await api.put("/settings/system-proxy", { enabled: true, ignoreHosts });
+            } catch {
+              // ignore
+            }
+          }
+
+	          await loadSystemProxySettings();
+	          await loadIPGeo();
+
+	          if (currentPanel === "panel-logs") {
+	            kernelLogOffset = 0;
+	            kernelLogSession = 0;
+	            kernelLogStartedAt = "";
+	            const pre = document.getElementById("kernel-log-content");
+	            resetKernelLogRender(pre);
+	            await loadKernelLogs();
+	          }
+	        } finally {
+	          select.disabled = false;
+	          updateEngineSelectOptions();
+	        }
       }
 
       // IP Geo info
@@ -4410,9 +4657,11 @@
           refreshXrayStatus({ notify }),
           loadSystemProxySettings({ notify }),
           checkTUNStatus({ notify }),
-          loadTUNSettings()
+          loadTUNSettings(),
+          loadEngineSettings()
 	        ]);
 	        updateHomeFRouterMetrics();
+          updateEngineSelectOptions();
 	        autoTestHomePanel({ notify: true });
 	      }
 
@@ -4507,14 +4756,27 @@
           meta: { repo: "SagerNet/sing-box" },
         };
 
+        const clash = list.find((item) => item && item.kind === "clash") || {
+          id: "",
+          name: "clash",
+          kind: "clash",
+          lastInstalledAt: "",
+          installDir: "",
+          lastVersion: "",
+          checksum: "",
+          lastSyncError: "",
+          meta: { repo: "MetaCubeX/mihomo" },
+        };
+
         const rest = list.filter((item) => {
           if (!item || typeof item !== "object") return false;
           if (item.kind === "xray") return item !== xray;
           if (item.kind === "singbox") return item !== singbox;
+          if (item.kind === "clash") return item !== clash;
           return true;
         });
 
-        return [xray, singbox, ...rest];
+        return [xray, singbox, clash, ...rest];
       }
 
       function renderComponents(components) {
@@ -4570,7 +4832,7 @@
               actionBtn = `<button class="primary" data-action="update-component">安装</button>`;
             }
 
-            const isCoreComponent = component.kind === "xray" || component.kind === "singbox";
+            const isCoreComponent = component.kind === "xray" || component.kind === "singbox" || component.kind === "clash";
             const deleteBtn = isCoreComponent ? '' : '<button class="danger" data-action="delete-component">删除</button>';
 
             return `
@@ -4596,6 +4858,7 @@
           const components = await api.get("/components");
           componentsCache = Array.isArray(components) ? components : [];
           renderComponents(componentsCache);
+          updateEngineSelectOptions();
           await refreshXrayStatus();
           if (notify) {
             showStatus("组件列表已刷新", "success");
@@ -4604,6 +4867,7 @@
           showStatus(`加载组件失败：${err.message}`, "error", 6000);
           componentsCache = [];
           renderComponents([]);
+          updateEngineSelectOptions();
           await refreshXrayStatus();
         }
       }
@@ -4614,6 +4878,8 @@
             return "Xray";
           case "singbox":
             return "sing-box";
+          case "clash":
+            return "Clash";
           default:
             return kind || "组件";
         }
@@ -5663,19 +5929,27 @@
         tunStatusValue.addEventListener("click", showTUNStatusDialog);
       }
 
-      // TUN toggle handler
-      const tunToggle = document.getElementById("tun-toggle");
-      if (tunToggle) {
-        tunToggle.addEventListener("change", (event) => {
-          updateTUNSetting(event.target.checked);
-        });
-      }
+	      // TUN toggle handler
+	      const tunToggle = document.getElementById("tun-toggle");
+	      if (tunToggle) {
+	        tunToggle.addEventListener("change", (event) => {
+	          updateTUNSetting(event.target.checked);
+	        });
+	      }
 
-      const systemProxyIgnoreInput = document.getElementById("system-proxy-ignore");
-      const systemProxySaveButton = document.getElementById("system-proxy-save");
-      const systemProxyResetButton = document.getElementById("system-proxy-reset");
-      const proxyToggleButton = document.getElementById("proxy-toggle");
-      if (proxyToggleButton) {
+	      // Engine select handler
+	      const engineSelect = document.getElementById("engine-select");
+	      if (engineSelect) {
+	        engineSelect.addEventListener("change", (event) => {
+	          updateEngineSetting(event.target.value);
+	        });
+	      }
+
+	      const systemProxyIgnoreInput = document.getElementById("system-proxy-ignore");
+	      const systemProxySaveButton = document.getElementById("system-proxy-save");
+	      const systemProxyResetButton = document.getElementById("system-proxy-reset");
+	      const proxyToggleButton = document.getElementById("proxy-toggle");
+	      if (proxyToggleButton) {
         proxyToggleButton.addEventListener("click", handleProxyToggle);
       }
 

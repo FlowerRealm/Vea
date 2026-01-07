@@ -1703,7 +1703,7 @@ components:
           type: string
         kind:
           type: string
-          enum: [xray, singbox, geo, generic]
+          enum: [xray, singbox, clash, geo, generic]
         sourceUrl:
           type: string
         archiveType:
@@ -1751,7 +1751,7 @@ components:
           type: string
         kind:
           type: string
-          enum: [xray, singbox, geo, generic]
+          enum: [xray, singbox, clash, geo, generic]
         sourceUrl:
           type: string
         archiveType:
@@ -1762,7 +1762,7 @@ components:
       properties:
         kind:
           type: string
-          enum: [xray, singbox, auto]
+          enum: [xray, singbox, clash, auto]
         binaryPath:
           type: string
         version:
@@ -1806,7 +1806,7 @@ components:
           additionalProperties: true
         preferredEngine:
           type: string
-          enum: [xray, singbox, auto]
+          enum: [xray, singbox, clash, auto]
         frouterId:
           type: string
         updatedAt:

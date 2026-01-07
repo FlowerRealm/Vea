@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -193,6 +194,60 @@ func TestService_Start_MissingFRouterIDIsInvalidData(t *testing.T) {
 	}
 	if !errors.Is(err, repository.ErrInvalidData) {
 		t.Fatalf("expected errors.Is(..., ErrInvalidData)=true, got err=%v", err)
+	}
+}
+
+func TestTuneTUNSettingsForEngine_ClashLinux_AdjustsDefaultMTU(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("linux-only: MTU default fix is for Linux + mihomo")
+	}
+
+	cfg := domain.ProxyConfig{
+		InboundMode: domain.InboundTUN,
+		TUNSettings: &domain.TUNConfiguration{
+			InterfaceName: "tun0",
+			MTU:           9000,
+			Address:       []string{"172.19.0.1/30"},
+			AutoRoute:     true,
+			StrictRoute:   true,
+			Stack:         "mixed",
+			DNSHijack:     true,
+		},
+	}
+
+	got, changed := tuneTUNSettingsForEngine(domain.EngineClash, cfg)
+	if !changed {
+		t.Fatalf("expected config to be tuned, got changed=false")
+	}
+	if got.TUNSettings == nil {
+		t.Fatalf("expected tun settings to be present")
+	}
+	if got.TUNSettings.MTU != 1500 {
+		t.Fatalf("expected MTU=1500 after tuning, got %d", got.TUNSettings.MTU)
+	}
+}
+
+func TestTuneTUNSettingsForEngine_ClashLinux_DoesNotOverrideCustomMTU(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("linux-only: MTU default fix is for Linux + mihomo")
+	}
+
+	cfg := domain.ProxyConfig{
+		InboundMode: domain.InboundTUN,
+		TUNSettings: &domain.TUNConfiguration{
+			InterfaceName: "tun0",
+			MTU:           1500,
+			Address:       []string{"172.19.0.1/30"},
+			AutoRoute:     true,
+			StrictRoute:   true,
+			Stack:         "mixed",
+			DNSHijack:     true,
+		},
+	}
+
+	got, changed := tuneTUNSettingsForEngine(domain.EngineClash, cfg)
+	if changed {
+		t.Fatalf("expected config not to be tuned, got changed=true (mtu=%d)", got.TUNSettings.MTU)
 	}
 }
 

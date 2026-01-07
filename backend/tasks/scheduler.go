@@ -10,8 +10,8 @@ import (
 )
 
 type Scheduler struct {
-	config    *configsvc.Service
-	geo       *geo.Service
+	config *configsvc.Service
+	geo    *geo.Service
 }
 
 func NewScheduler(configSvc *configsvc.Service, geoSvc *geo.Service) *Scheduler {

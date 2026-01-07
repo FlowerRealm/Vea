@@ -80,6 +80,27 @@ func V2RayPluginAssetCandidates() ([]string, error) {
 	}
 }
 
+// ClashAssetCandidates 返回 mihomo(Clash.Meta) 资源候选列表
+func ClashAssetCandidates() ([]string, error) {
+	key := runtime.GOOS + "/" + runtime.GOARCH
+	switch key {
+	case "linux/amd64":
+		return []string{"mihomo-linux-amd64-v*.gz"}, nil
+	case "linux/arm64":
+		return []string{"mihomo-linux-arm64-v*.gz"}, nil
+	case "windows/amd64":
+		return []string{"mihomo-windows-amd64-v*.zip"}, nil
+	case "windows/arm64":
+		return []string{"mihomo-windows-arm64-v*.zip"}, nil
+	case "darwin/amd64":
+		return []string{"mihomo-darwin-amd64-v*.gz"}, nil
+	case "darwin/arm64":
+		return []string{"mihomo-darwin-arm64-v*.gz"}, nil
+	default:
+		return nil, fmt.Errorf("unsupported platform %s for clash release asset", key)
+	}
+}
+
 // GetComponentRepo 获取组件的 GitHub 仓库
 func GetComponentRepo(kind string) string {
 	switch kind {
@@ -87,6 +108,9 @@ func GetComponentRepo(kind string) string {
 		return "XTLS/Xray-core"
 	case "singbox":
 		return "SagerNet/sing-box"
+	case "clash":
+		// 注意：这里使用 mihomo（Clash.Meta 继任项目）。
+		return "MetaCubeX/mihomo"
 	case "v2ray-plugin":
 		return "shadowsocks/v2ray-plugin"
 	default:
@@ -101,6 +125,8 @@ func GetComponentAssetCandidates(kind string) ([]string, error) {
 		return XrayAssetCandidates()
 	case "singbox":
 		return SingBoxAssetCandidates()
+	case "clash":
+		return ClashAssetCandidates()
 	case "v2ray-plugin":
 		return V2RayPluginAssetCandidates()
 	default:

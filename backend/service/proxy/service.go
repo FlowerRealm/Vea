@@ -64,6 +64,7 @@ type Service struct {
 	mainHandle *adapters.ProcessHandle
 	mainEngine domain.CoreEngineKind
 	activeCfg  domain.ProxyConfig
+	tunIface   string
 
 	lastRestartAt    time.Time
 	lastRestartError string
@@ -89,6 +90,7 @@ func NewService(
 		adapters: map[domain.CoreEngineKind]adapters.CoreAdapter{
 			domain.EngineXray:    &adapters.XrayAdapter{},
 			domain.EngineSingBox: &adapters.SingBoxAdapter{},
+			domain.EngineClash:   &adapters.ClashAdapter{},
 		},
 	}
 }
@@ -118,9 +120,12 @@ func (s *Service) Start(ctx context.Context, cfg domain.ProxyConfig) error {
 	}
 	previousTunInterface := ""
 	if previousCfg.InboundMode == domain.InboundTUN {
-		previousTunInterface = "tun0"
-		if previousCfg.TUNSettings != nil && previousCfg.TUNSettings.InterfaceName != "" {
-			previousTunInterface = previousCfg.TUNSettings.InterfaceName
+		previousTunInterface = strings.TrimSpace(s.tunIface)
+		if previousTunInterface == "" {
+			previousTunInterface = "tun0"
+			if previousCfg.TUNSettings != nil && previousCfg.TUNSettings.InterfaceName != "" {
+				previousTunInterface = previousCfg.TUNSettings.InterfaceName
+			}
 		}
 	}
 
@@ -182,6 +187,15 @@ func (s *Service) Start(ctx context.Context, cfg domain.ProxyConfig) error {
 		return err
 	}
 
+	// 基于“实际选中引擎”修正配置默认值（避免不同内核的默认假设相互污染）。
+	//
+	// 典型问题：前端/后端默认 MTU=9000（偏 sing-box），但 Linux + mihomo 的 TUN 在部分网络环境下
+	// 会因为 PMTU/分片兼容性表现为“看起来全网断开”。主流 mihomo GUI 在 Linux 上更偏向默认 1500。
+	if tunedCfg, changed := tuneTUNSettingsForEngine(engine, cfg); changed {
+		cfg = tunedCfg
+		log.Printf("[TUN] 已按引擎(%s)调整默认 TUN 配置（如需自定义请在设置中修改）", engine)
+	}
+
 	// 直到这里都不应该停掉现有代理；避免“新配置编译失败就把用户网络断掉”这种灾难。
 
 	// 获取适配器
@@ -235,7 +249,11 @@ func (s *Service) Start(ctx context.Context, cfg domain.ProxyConfig) error {
 
 	// 写入配置文件
 	configDir := engineConfigDir(engine)
-	configPath := filepath.Join(configDir, "config.json")
+	configName := "config.json"
+	if engine == domain.EngineClash {
+		configName = "config.yaml"
+	}
+	configPath := filepath.Join(configDir, configName)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return rollback(fmt.Errorf("failed to create config dir: %w", err))
 	}
@@ -246,6 +264,14 @@ func (s *Service) Start(ctx context.Context, cfg domain.ProxyConfig) error {
 	// 写入可读诊断信息（不影响启动流程）
 	explainPath := filepath.Join(configDir, "config.explain.txt")
 	_ = os.WriteFile(explainPath, []byte(plan.Explain()), 0600)
+
+	// mihomo/clash 使用 GeoSite.dat/GeoIP.dat（大小写敏感）；这里把已有的 geo 资源同步一份过去，
+	// 避免每次启动都触发“找不到 GeoSite.dat -> 在线下载”的行为。
+	if engine == domain.EngineClash {
+		if err := ensureClashGeoData(configDir); err != nil {
+			log.Printf("[Clash] ensure geo data failed: %v", err)
+		}
+	}
 
 	// 启动进程
 	if err := s.startProcess(adapter, engine, binaryPath, configPath, cfg); err != nil {
@@ -362,6 +388,7 @@ func (s *Service) stopLocked() {
 
 	s.mainHandle = nil
 	s.mainEngine = ""
+	s.tunIface = ""
 }
 
 func (s *Service) resolveFRouter(ctx context.Context, cfg domain.ProxyConfig) (domain.FRouter, error) {
@@ -390,9 +417,11 @@ func (s *Service) applyConfigDefaults(cfg domain.ProxyConfig) domain.ProxyConfig
 	}
 	cfg.LogConfig.Level = "debug"
 
-	// TUN 模式强制 sing-box
+	// TUN 模式：补齐默认 TUNSettings；默认引擎保持 auto（优先选择支持 TUN 的已安装内核）。
 	if cfg.InboundMode == domain.InboundTUN {
-		cfg.PreferredEngine = domain.EngineSingBox
+		if cfg.PreferredEngine == "" {
+			cfg.PreferredEngine = domain.EngineAuto
+		}
 		if cfg.TUNSettings == nil {
 			cfg.TUNSettings = &domain.TUNConfiguration{
 				InterfaceName: "tun0",
@@ -426,13 +455,58 @@ func (s *Service) applyConfigDefaults(cfg domain.ProxyConfig) domain.ProxyConfig
 	return cfg
 }
 
-func (s *Service) selectEngine(ctx context.Context, cfg domain.ProxyConfig, frouter domain.FRouter, nodes []domain.Node) (domain.CoreEngineKind, error) {
-	// TUN 模式强制 sing-box
-	if cfg.InboundMode == domain.InboundTUN {
-		return domain.EngineSingBox, nil
+func tuneTUNSettingsForEngine(engine domain.CoreEngineKind, cfg domain.ProxyConfig) (domain.ProxyConfig, bool) {
+	if cfg.InboundMode != domain.InboundTUN || cfg.TUNSettings == nil {
+		return cfg, false
 	}
 
-	engine, _, err := selectEngineForFRouter(ctx, frouter, nodes, cfg.PreferredEngine, s.components, s.settings, s.adapters)
+	// Linux + mihomo: 默认 MTU 使用 1500 更稳（避免某些网络/防火墙下 jumbo frame 兼容性问题）。
+	// 注意：仅对“明显是 Vea 默认值”的情况做修正，避免意外覆盖用户显式配置。
+	if runtime.GOOS == "linux" && engine == domain.EngineClash {
+		if isLikelyDefaultTUNSettings(cfg.TUNSettings) {
+			cfg.TUNSettings.MTU = 1500
+			return cfg, true
+		}
+	}
+
+	return cfg, false
+}
+
+func isLikelyDefaultTUNSettings(cfg *domain.TUNConfiguration) bool {
+	if cfg == nil {
+		return false
+	}
+
+	// 前端 schema 与后端 applyConfigDefaults 的默认值（偏 sing-box）：
+	// - MTU=9000, Address=172.19.0.1/30, AutoRoute=true, StrictRoute=true, Stack=mixed, DNSHijack=true
+	// 这里用“完整匹配默认组合”的方式判断是否可安全修正。
+	if cfg.MTU != 9000 {
+		return false
+	}
+	if cfg.InterfaceName != "" && cfg.InterfaceName != "tun0" {
+		return false
+	}
+	if len(cfg.Address) != 1 || strings.TrimSpace(cfg.Address[0]) != "172.19.0.1/30" {
+		return false
+	}
+	if !cfg.AutoRoute || !cfg.StrictRoute || !cfg.DNSHijack {
+		return false
+	}
+	if strings.TrimSpace(cfg.Stack) != "" && strings.TrimSpace(cfg.Stack) != "mixed" {
+		return false
+	}
+	if cfg.AutoRedirect || cfg.EndpointIndependentNat || cfg.UDPTimeout != 0 {
+		return false
+	}
+	if len(cfg.RouteAddress) != 0 || len(cfg.RouteExcludeAddress) != 0 {
+		return false
+	}
+
+	return true
+}
+
+func (s *Service) selectEngine(ctx context.Context, cfg domain.ProxyConfig, frouter domain.FRouter, nodes []domain.Node) (domain.CoreEngineKind, error) {
+	engine, _, err := selectEngineForFRouter(ctx, cfg.InboundMode, frouter, nodes, cfg.PreferredEngine, s.components, s.settings, s.adapters)
 	return engine, err
 }
 
@@ -444,6 +518,8 @@ func (s *Service) getEngineBinary(ctx context.Context, engine domain.CoreEngineK
 		kind = domain.ComponentXray
 	case domain.EngineSingBox:
 		kind = domain.ComponentSingBox
+	case domain.EngineClash:
+		kind = domain.ComponentClash
 	default:
 		return "", fmt.Errorf("unknown engine: %s", engine)
 	}
@@ -467,6 +543,8 @@ func (s *Service) getEngineBinary(ctx context.Context, engine domain.CoreEngineK
 			candidates = []string{"xray", "xray.exe"}
 		case domain.EngineSingBox:
 			candidates = []string{"sing-box", "sing-box.exe"}
+		case domain.EngineClash:
+			candidates = []string{"mihomo", "mihomo.exe", "clash", "clash.exe"}
 		}
 	}
 
@@ -501,16 +579,16 @@ func (s *Service) startProcess(adapter adapters.CoreAdapter, engine domain.CoreE
 		// 每次用 pkexec 启动内核会带来两个严重问题：
 		// 1) 后端（普通用户态）无法可靠 stop root 进程，容易留下孤儿 sing-box，占用 tun 设备；
 		// 2) 重启/更新配置时会频繁弹出提权框，UX 很差。
-		configured, err := shared.CheckTUNCapabilities()
+		configured, err := shared.CheckTUNCapabilitiesForBinary(binaryPath)
 		if err != nil {
 			return fmt.Errorf("check TUN capabilities: %w", err)
 		}
 		if !configured && runtime.GOOS == "linux" {
-			_, err := shared.EnsureTUNCapabilities()
+			_, err := shared.EnsureTUNCapabilitiesForBinary(binaryPath)
 			if err != nil {
 				return fmt.Errorf("configure TUN capabilities: %w", err)
 			}
-			configured, err = shared.CheckTUNCapabilities()
+			configured, err = shared.CheckTUNCapabilitiesForBinary(binaryPath)
 			if err != nil {
 				return fmt.Errorf("check TUN capabilities: %w", err)
 			}
@@ -518,7 +596,7 @@ func (s *Service) startProcess(adapter adapters.CoreAdapter, engine domain.CoreE
 		if !configured {
 			switch runtime.GOOS {
 			case "linux":
-				return fmt.Errorf("TUN 模式未配置：请运行 `sudo ./vea setup-tun` 或调用 POST /tun/setup")
+				return fmt.Errorf("TUN 模式未配置：请运行 `sudo ./vea setup-tun`（默认 sing-box）或 `sudo ./vea setup-tun --binary <内核路径>`")
 			case "darwin":
 				return fmt.Errorf("TUN 模式需要 root 权限：请使用 sudo 运行 vea")
 			case "windows":
@@ -529,9 +607,9 @@ func (s *Service) startProcess(adapter adapters.CoreAdapter, engine domain.CoreE
 		}
 	}
 
-	// Linux + sing-box(TUN): sing-box 会调用 resolvectl 配置 systemd-resolved，触发多次 polkit 授权。
+	// Linux + TUN(sing-box/mihomo): 内核可能会调用 resolvectl 配置 systemd-resolved，触发多次 polkit 授权。
 	// 做法：用 PATH shim 拦截 resolvectl，转发到同一生命周期内的 root helper（只需授权一次）。
-	if runtime.GOOS == "linux" && engine == domain.EngineSingBox && cfg.InboundMode == domain.InboundTUN {
+	if runtime.GOOS == "linux" && cfg.InboundMode == domain.InboundTUN && (engine == domain.EngineSingBox || engine == domain.EngineClash) {
 		shimDir, err := shared.EnsureResolvectlShim()
 		if err != nil {
 			log.Printf("[TUN] ensure resolvectl shim failed: %v", err)
@@ -598,6 +676,11 @@ func (s *Service) startProcess(adapter adapters.CoreAdapter, engine domain.CoreE
 		}
 	}
 
+	existingIfaces := map[string]int(nil)
+	if cfg.InboundMode == domain.InboundTUN {
+		existingIfaces = snapshotInterfaceIndices()
+	}
+
 	handle, err := adapter.Start(procCfg, configPath)
 	if err != nil {
 		if logFile != nil {
@@ -631,18 +714,40 @@ func (s *Service) startProcess(adapter adapters.CoreAdapter, engine domain.CoreE
 	}
 
 	if cfg.InboundMode == domain.InboundTUN {
-		interfaceName := "tun0"
-		if cfg.TUNSettings != nil && cfg.TUNSettings.InterfaceName != "" {
-			interfaceName = cfg.TUNSettings.InterfaceName
+		if engine == domain.EngineSingBox || engine == domain.EngineClash {
+			interfaceName := "tun0"
+			if cfg.TUNSettings != nil && cfg.TUNSettings.InterfaceName != "" {
+				interfaceName = cfg.TUNSettings.InterfaceName
+			}
+
+			prevIndex := 0
+			if existingIfaces != nil {
+				if idx, ok := existingIfaces[interfaceName]; ok {
+					prevIndex = idx
+				}
+			}
+
+			if err := s.waitForTUNReadyWithIndex(interfaceName, prevIndex, 10*time.Second); err != nil {
+				// TUN 接口没起来就宣告成功是误导；直接失败并回收进程。
+				_ = adapter.Stop(handle)
+				s.mainHandle = nil
+				s.mainEngine = ""
+				return fmt.Errorf("TUN interface not ready: %w", err)
+			}
+			s.tunIface = interfaceName
+			return nil
 		}
 
-		if err := s.waitForTUNReady(interfaceName, 10*time.Second); err != nil {
+		ifaceName, err := s.waitForNewTUNReady(existingIfaces, 10*time.Second)
+		if err != nil {
 			// TUN 接口没起来就宣告成功是误导；直接失败并回收进程。
 			_ = adapter.Stop(handle)
 			s.mainHandle = nil
 			s.mainEngine = ""
 			return fmt.Errorf("TUN interface not ready: %w", err)
 		}
+		s.tunIface = ifaceName
+		return nil
 	}
 
 	return nil
@@ -663,6 +768,98 @@ func (s *Service) waitForTUNReady(interfaceName string, timeout time.Duration) e
 		time.Sleep(500 * time.Millisecond)
 	}
 	return fmt.Errorf("TUN interface %s not ready after %v", interfaceName, timeout)
+}
+
+func (s *Service) waitForTUNReadyWithIndex(interfaceName string, prevIndex int, timeout time.Duration) error {
+	interfaceName = strings.TrimSpace(interfaceName)
+	if interfaceName == "" {
+		return errors.New("interface name is empty")
+	}
+	if prevIndex <= 0 {
+		return s.waitForTUNReady(interfaceName, timeout)
+	}
+
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		interfaces, err := net.Interfaces()
+		if err == nil {
+			for _, iface := range interfaces {
+				if strings.TrimSpace(iface.Name) != interfaceName {
+					continue
+				}
+				if iface.Index != prevIndex {
+					return nil
+				}
+			}
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return fmt.Errorf("TUN interface %s not recreated after %v (previous index %d)", interfaceName, timeout, prevIndex)
+}
+
+func snapshotInterfaceIndices() map[string]int {
+	out := make(map[string]int)
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return out
+	}
+	for _, iface := range ifaces {
+		name := strings.TrimSpace(iface.Name)
+		if name == "" {
+			continue
+		}
+		out[name] = iface.Index
+	}
+	return out
+}
+
+func isTunInterfaceName(name string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+
+	lower := strings.ToLower(name)
+	if strings.HasPrefix(lower, "tun") || strings.HasPrefix(lower, "utun") {
+		return true
+	}
+
+	// Linux: TUN 设备名不一定以 tun*/utun* 开头（例如某些内核会用自定义名称）。
+	// 通过 sysfs 判断是否是 TUN 设备更可靠。
+	if runtime.GOOS == "linux" {
+		if _, err := os.Stat(filepath.Join("/sys/class/net", name, "tun_flags")); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// waitForNewTUNReady 等待一个“新出现的”TUN 接口（用于无法指定/无法预知接口名的内核）
+func (s *Service) waitForNewTUNReady(existing map[string]int, timeout time.Duration) (string, error) {
+	if existing == nil {
+		existing = map[string]int{}
+	}
+
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		interfaces, err := net.Interfaces()
+		if err == nil {
+			for _, iface := range interfaces {
+				name := strings.TrimSpace(iface.Name)
+				if name == "" {
+					continue
+				}
+				if _, ok := existing[name]; ok {
+					continue
+				}
+				if isTunInterfaceName(name) {
+					return name, nil
+				}
+			}
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return "", fmt.Errorf("no new TUN interface detected after %v", timeout)
 }
 
 // waitForTUNAbsent 等待 TUN 接口释放（主要用于快速重启时避免 EBUSY）
@@ -753,6 +950,7 @@ func (s *Service) monitorProcess(handle *adapters.ProcessHandle, done chan struc
 	if s.mainHandle == handle {
 		s.mainHandle = nil
 		s.mainEngine = ""
+		s.tunIface = ""
 	}
 	s.mu.Unlock()
 }
@@ -772,6 +970,7 @@ type EngineRecommendation struct {
 type EngineStatus struct {
 	XrayInstalled    bool                  `json:"xrayInstalled"`
 	SingBoxInstalled bool                  `json:"singboxInstalled"`
+	ClashInstalled   bool                  `json:"clashInstalled"`
 	DefaultEngine    domain.CoreEngineKind `json:"defaultEngine"`
 	Recommendation   EngineRecommendation  `json:"recommendation"`
 }
@@ -823,6 +1022,11 @@ func (s *Service) GetEngineStatus(ctx context.Context) EngineStatus {
 	if comp, err := s.components.GetByKind(ctx, domain.ComponentSingBox); err == nil {
 		if comp.InstallDir != "" && comp.LastInstalledAt.Unix() > 0 {
 			status.SingBoxInstalled = true
+		}
+	}
+	if comp, err := s.components.GetByKind(ctx, domain.ComponentClash); err == nil {
+		if comp.InstallDir != "" && comp.LastInstalledAt.Unix() > 0 {
+			status.ClashInstalled = true
 		}
 	}
 

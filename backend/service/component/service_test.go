@@ -29,6 +29,9 @@ func TestList_SeedsDefaultComponents(t *testing.T) {
 	if countKind(components, domain.ComponentSingBox) != 1 {
 		t.Fatalf("expected exactly 1 singbox component, got %d", countKind(components, domain.ComponentSingBox))
 	}
+	if countKind(components, domain.ComponentClash) != 1 {
+		t.Fatalf("expected exactly 1 clash component, got %d", countKind(components, domain.ComponentClash))
+	}
 
 	components2, err := svc.List(context.Background())
 	if err != nil {
@@ -40,6 +43,9 @@ func TestList_SeedsDefaultComponents(t *testing.T) {
 	}
 	if countKind(components2, domain.ComponentSingBox) != 1 {
 		t.Fatalf("expected exactly 1 singbox component after second List, got %d", countKind(components2, domain.ComponentSingBox))
+	}
+	if countKind(components2, domain.ComponentClash) != 1 {
+		t.Fatalf("expected exactly 1 clash component after second List, got %d", countKind(components2, domain.ComponentClash))
 	}
 }
 
@@ -81,6 +87,9 @@ func TestCreate_CoreComponent_IsIdempotent(t *testing.T) {
 	}
 	if countKind(components, domain.ComponentSingBox) != 1 {
 		t.Fatalf("expected exactly 1 singbox component, got %d", countKind(components, domain.ComponentSingBox))
+	}
+	if countKind(components, domain.ComponentClash) != 1 {
+		t.Fatalf("expected exactly 1 clash component, got %d", countKind(components, domain.ComponentClash))
 	}
 }
 

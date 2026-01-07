@@ -18,14 +18,22 @@ func CheckTUNCapabilities() (bool, error) {
 	return isAdmin()
 }
 
+func CheckTUNCapabilitiesForBinary(binaryPath string) (bool, error) {
+	return CheckTUNCapabilities()
+}
+
 // SetupTUN Windows 不需要特殊设置
 func SetupTUN() error {
 	return fmt.Errorf("TUN setup is automatic on Windows (requires running as Administrator)")
 }
 
+func SetupTUNForBinary(binaryPath string) error {
+	return SetupTUN()
+}
+
 // SetupTUNForSingBoxBinary Windows stub（仅为跨平台编译提供一致接口）
 func SetupTUNForSingBoxBinary(binaryPath string) error {
-	return SetupTUN()
+	return SetupTUNForBinary(binaryPath)
 }
 
 // isAdmin 检查当前进程是否以管理员身份运行
@@ -58,4 +66,8 @@ func EnsureTUNCapabilities() (bool, error) {
 		return false, fmt.Errorf("TUN mode requires administrator privileges. Please run Vea as Administrator")
 	}
 	return false, nil
+}
+
+func EnsureTUNCapabilitiesForBinary(binaryPath string) (bool, error) {
+	return EnsureTUNCapabilities()
 }

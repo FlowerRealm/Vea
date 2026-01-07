@@ -81,3 +81,28 @@ func TestFindSingBoxBinary_RespectsArtifactsRoot(t *testing.T) {
 		t.Fatalf("expected %q, got %q", bin, got)
 	}
 }
+
+func TestFindClashBinary_RespectsArtifactsRoot(t *testing.T) {
+	old := ArtifactsRoot
+	t.Cleanup(func() { ArtifactsRoot = old })
+
+	ArtifactsRoot = t.TempDir()
+
+	sub := filepath.Join(ArtifactsRoot, "core", "clash", "mihomo-linux-amd64-v1.0.0")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	bin := filepath.Join(sub, "mihomo")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("write binary: %v", err)
+	}
+
+	got, err := FindClashBinary()
+	if err != nil {
+		t.Fatalf("expected to find binary, got err: %v", err)
+	}
+	if got != bin {
+		t.Fatalf("expected %q, got %q", bin, got)
+	}
+}

@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -142,7 +143,7 @@ func run() int {
 	snapshotter := persist.NewSnapshotterV2(*statePath, memStore)
 	snapshotter.SubscribeEvents(eventBus)
 
-	// 7.1 确保核心组件存在（清空数据后也应显示 xray/sing-box）
+	// 7.1 确保核心组件存在（清空数据后也应显示 xray/sing-box/clash）
 	if err := componentSvc.EnsureDefaultComponents(context.Background()); err != nil {
 		log.Printf("ensure default components failed: %v", err)
 	}
@@ -230,6 +231,7 @@ func setupTUNMode(args []string) error {
 	log.Println("Setting up TUN mode privileges...")
 
 	fs := flag.NewFlagSet("setup-tun", flag.ContinueOnError)
+	binary := fs.String("binary", "", "path to core binary (optional)")
 	singBoxBinary := fs.String("singbox-binary", "", "path to sing-box binary (optional)")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -246,8 +248,12 @@ func setupTUNMode(args []string) error {
 			return errors.New("TUN setup requires root privileges. Run: sudo vea setup-tun")
 		}
 		var err error
-		if *singBoxBinary != "" {
-			err = shared.SetupTUNForSingBoxBinary(*singBoxBinary)
+		binaryPath := strings.TrimSpace(*binary)
+		if binaryPath == "" {
+			binaryPath = strings.TrimSpace(*singBoxBinary) // legacy flag
+		}
+		if binaryPath != "" {
+			err = shared.SetupTUNForBinary(binaryPath)
 		} else {
 			err = shared.SetupTUN()
 		}

@@ -241,6 +241,8 @@ func InferArchiveType(name string) string {
 		return "tar.gz"
 	case strings.HasSuffix(trimmed, ".zip"):
 		return "zip"
+	case strings.HasSuffix(trimmed, ".gz"):
+		return "gz"
 	default:
 		return "raw"
 	}
@@ -271,6 +273,25 @@ func ExtractArchive(targetDir, archiveType string, data []byte) (string, error) 
 		target := filepath.Join(tmpDir, ComponentFile)
 		if err := os.WriteFile(target, data, 0o755); err != nil {
 			installErr = err
+		}
+	case "gz":
+		gr, err := gzip.NewReader(bytes.NewReader(data))
+		if err != nil {
+			installErr = err
+			break
+		}
+		defer gr.Close()
+
+		target := filepath.Join(tmpDir, ComponentFile)
+		out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+		if err != nil {
+			installErr = err
+			break
+		}
+		_, copyErr := io.Copy(out, gr)
+		_ = out.Close()
+		if copyErr != nil {
+			installErr = copyErr
 		}
 	case "zip":
 		reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))

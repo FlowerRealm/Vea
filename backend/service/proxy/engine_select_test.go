@@ -11,7 +11,7 @@ import (
 	"vea/backend/service/adapters"
 )
 
-func installTestEngines(t *testing.T, store *memory.Store, installXray, installSingBox bool) *memory.ComponentRepo {
+func installTestEngines(t *testing.T, store *memory.Store, installXray, installSingBox, installClash bool) *memory.ComponentRepo {
 	t.Helper()
 
 	repo := memory.NewComponentRepo(store)
@@ -39,6 +39,17 @@ func installTestEngines(t *testing.T, store *memory.Store, installXray, installS
 		}
 	}
 
+	if installClash {
+		clashDir := filepath.Join(t.TempDir(), "clash")
+		comp, err := repo.Create(ctx, domain.CoreComponent{Kind: domain.ComponentClash, Name: "Clash"})
+		if err != nil {
+			t.Fatalf("create clash component: %v", err)
+		}
+		if err := repo.SetInstalled(ctx, comp.ID, clashDir, "test", ""); err != nil {
+			t.Fatalf("set clash installed: %v", err)
+		}
+	}
+
 	return repo
 }
 
@@ -46,7 +57,7 @@ func TestSelectEngineForFRouter_PrefersPreferredEngineWhenSupported(t *testing.T
 	t.Parallel()
 
 	store := memory.NewStore(nil)
-	componentRepo := installTestEngines(t, store, true, true)
+	componentRepo := installTestEngines(t, store, true, true, false)
 	settingsRepo := memory.NewSettingsRepo(store)
 
 	nodes := []domain.Node{
@@ -62,7 +73,7 @@ func TestSelectEngineForFRouter_PrefersPreferredEngineWhenSupported(t *testing.T
 		},
 	}
 
-	engine, _, err := selectEngineForFRouter(context.Background(), frouter, nodes, domain.EngineXray, componentRepo, settingsRepo, map[domain.CoreEngineKind]adapters.CoreAdapter{
+	engine, _, err := selectEngineForFRouter(context.Background(), domain.InboundMixed, frouter, nodes, domain.EngineXray, componentRepo, settingsRepo, map[domain.CoreEngineKind]adapters.CoreAdapter{
 		domain.EngineXray:    &adapters.XrayAdapter{},
 		domain.EngineSingBox: &adapters.SingBoxAdapter{},
 	})
@@ -74,11 +85,11 @@ func TestSelectEngineForFRouter_PrefersPreferredEngineWhenSupported(t *testing.T
 	}
 }
 
-func TestSelectEngineForFRouter_NodeRequiresSingBoxOverridesPreferred(t *testing.T) {
+func TestSelectEngineForFRouter_PreferredEngineUnsupportedReturnsError(t *testing.T) {
 	t.Parallel()
 
 	store := memory.NewStore(nil)
-	componentRepo := installTestEngines(t, store, true, true)
+	componentRepo := installTestEngines(t, store, true, true, false)
 	settingsRepo := memory.NewSettingsRepo(store)
 
 	nodes := []domain.Node{
@@ -94,15 +105,12 @@ func TestSelectEngineForFRouter_NodeRequiresSingBoxOverridesPreferred(t *testing
 		},
 	}
 
-	engine, _, err := selectEngineForFRouter(context.Background(), frouter, nodes, domain.EngineXray, componentRepo, settingsRepo, map[domain.CoreEngineKind]adapters.CoreAdapter{
+	_, _, err := selectEngineForFRouter(context.Background(), domain.InboundMixed, frouter, nodes, domain.EngineXray, componentRepo, settingsRepo, map[domain.CoreEngineKind]adapters.CoreAdapter{
 		domain.EngineXray:    &adapters.XrayAdapter{},
 		domain.EngineSingBox: &adapters.SingBoxAdapter{},
 	})
-	if err != nil {
-		t.Fatalf("selectEngineForFRouter() error: %v", err)
-	}
-	if engine != domain.EngineSingBox {
-		t.Fatalf("expected engine %q, got %q", domain.EngineSingBox, engine)
+	if err == nil {
+		t.Fatalf("expected error, got nil")
 	}
 }
 
@@ -110,7 +118,7 @@ func TestSelectEngineForFRouter_SettingsDefaultEngineUsedWhenPreferredAuto(t *te
 	t.Parallel()
 
 	store := memory.NewStore(nil)
-	componentRepo := installTestEngines(t, store, false, true) // only sing-box installed
+	componentRepo := installTestEngines(t, store, false, true, false) // only sing-box installed
 	settingsRepo := memory.NewSettingsRepo(store)
 
 	_, err := settingsRepo.UpdateFrontend(context.Background(), map[string]interface{}{
@@ -133,7 +141,7 @@ func TestSelectEngineForFRouter_SettingsDefaultEngineUsedWhenPreferredAuto(t *te
 		},
 	}
 
-	engine, _, err := selectEngineForFRouter(context.Background(), frouter, nodes, domain.EngineAuto, componentRepo, settingsRepo, map[domain.CoreEngineKind]adapters.CoreAdapter{
+	engine, _, err := selectEngineForFRouter(context.Background(), domain.InboundMixed, frouter, nodes, domain.EngineAuto, componentRepo, settingsRepo, map[domain.CoreEngineKind]adapters.CoreAdapter{
 		domain.EngineXray:    &adapters.XrayAdapter{},
 		domain.EngineSingBox: &adapters.SingBoxAdapter{},
 	})
@@ -149,7 +157,7 @@ func TestSelectEngineForFRouter_NoInstalledEngineSupportsNodes(t *testing.T) {
 	t.Parallel()
 
 	store := memory.NewStore(nil)
-	componentRepo := installTestEngines(t, store, true, false) // only xray installed
+	componentRepo := installTestEngines(t, store, true, false, false) // only xray installed
 	settingsRepo := memory.NewSettingsRepo(store)
 
 	nodes := []domain.Node{
@@ -165,7 +173,7 @@ func TestSelectEngineForFRouter_NoInstalledEngineSupportsNodes(t *testing.T) {
 		},
 	}
 
-	engine, _, err := selectEngineForFRouter(context.Background(), frouter, nodes, domain.EngineAuto, componentRepo, settingsRepo, map[domain.CoreEngineKind]adapters.CoreAdapter{
+	engine, _, err := selectEngineForFRouter(context.Background(), domain.InboundMixed, frouter, nodes, domain.EngineAuto, componentRepo, settingsRepo, map[domain.CoreEngineKind]adapters.CoreAdapter{
 		domain.EngineXray:    &adapters.XrayAdapter{},
 		domain.EngineSingBox: &adapters.SingBoxAdapter{},
 	})
@@ -177,19 +185,41 @@ func TestSelectEngineForFRouter_NoInstalledEngineSupportsNodes(t *testing.T) {
 	}
 }
 
-func TestAnyNodeRequiresSingBox_ShadowSocksPluginRequiresSingBox(t *testing.T) {
+func TestSelectEngineForFRouter_PrefersClashForShadowsocksPlugin(t *testing.T) {
 	t.Parallel()
+
+	store := memory.NewStore(nil)
+	componentRepo := installTestEngines(t, store, true, true, true)
+	settingsRepo := memory.NewSettingsRepo(store)
 
 	nodes := []domain.Node{
 		{
 			ID:       "n1",
 			Name:     "ss",
 			Protocol: domain.ProtocolShadowsocks,
-			Security: &domain.NodeSecurity{Plugin: "v2ray-plugin"},
+			Security: &domain.NodeSecurity{Method: "aes-128-gcm", Password: "p", Plugin: "obfs-local", PluginOpts: "obfs=http;obfs-host=example.com"},
 		},
 	}
-	if !anyNodeRequiresSingBox(nodes) {
-		t.Fatalf("expected anyNodeRequiresSingBox=true")
+	frouter := domain.FRouter{
+		ID:   "fr1",
+		Name: "test",
+		ChainProxy: domain.ChainProxySettings{
+			Edges: []domain.ProxyEdge{
+				{ID: "e-default", From: domain.EdgeNodeLocal, To: "n1", Enabled: true},
+			},
+		},
+	}
+
+	engine, _, err := selectEngineForFRouter(context.Background(), domain.InboundMixed, frouter, nodes, domain.EngineClash, componentRepo, settingsRepo, map[domain.CoreEngineKind]adapters.CoreAdapter{
+		domain.EngineXray:    &adapters.XrayAdapter{},
+		domain.EngineSingBox: &adapters.SingBoxAdapter{},
+		domain.EngineClash:   &adapters.ClashAdapter{},
+	})
+	if err != nil {
+		t.Fatalf("selectEngineForFRouter() error: %v", err)
+	}
+	if engine != domain.EngineClash {
+		t.Fatalf("expected engine %q, got %q", domain.EngineClash, engine)
 	}
 }
 

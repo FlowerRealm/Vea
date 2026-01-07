@@ -67,6 +67,7 @@ func NewSpeedMeasurer(
 		adapters: map[domain.CoreEngineKind]adapters.CoreAdapter{
 			domain.EngineXray:    &adapters.XrayAdapter{},
 			domain.EngineSingBox: &adapters.SingBoxAdapter{},
+			domain.EngineClash:   &adapters.ClashAdapter{},
 		},
 		measureSem: make(chan struct{}, measureConcurrency),
 	}
@@ -195,10 +196,29 @@ func (m *SpeedMeasurer) startMeasurement(frouter domain.FRouter, nodes []domain.
 		return nil, 0, fmt.Errorf("speed measurer missing component repository")
 	}
 
-	engine, engineComponent, err := selectEngineForFRouter(ctx, frouter, nodes, domain.EngineAuto, m.components, m.settings, m.adapters)
+	preferred := domain.EngineAuto
+	if m.settings != nil {
+		if cfg, err := m.settings.GetProxyConfig(ctx); err == nil {
+			if cfg.PreferredEngine != "" {
+				preferred = cfg.PreferredEngine
+			}
+		}
+	}
+
+	engine, engineComponent, err := selectEngineForFRouter(ctx, domain.InboundSOCKS, frouter, nodes, preferred, m.components, m.settings, m.adapters)
+	if err != nil && preferred != "" && preferred != domain.EngineAuto {
+		engine, engineComponent, err = selectEngineForFRouter(ctx, domain.InboundSOCKS, frouter, nodes, domain.EngineAuto, m.components, m.settings, m.adapters)
+	}
 	if err != nil {
 		release()
 		return nil, 0, err
+	}
+	if (engineComponent.InstallDir == "" || engineComponent.LastInstalledAt.IsZero()) && preferred != "" && preferred != domain.EngineAuto {
+		engine, engineComponent, err = selectEngineForFRouter(ctx, domain.InboundSOCKS, frouter, nodes, domain.EngineAuto, m.components, m.settings, m.adapters)
+		if err != nil {
+			release()
+			return nil, 0, err
+		}
 	}
 
 	adapter := m.adapters[engine]
@@ -272,6 +292,15 @@ func (m *SpeedMeasurer) startMeasurement(frouter domain.FRouter, nodes []domain.
 		_ = os.RemoveAll(configDir)
 		release()
 		return nil, 0, err
+	}
+
+	// mihomo/clash 需要 GeoSite.dat/GeoIP.dat（大小写敏感）。
+	if engine == domain.EngineClash {
+		if err := ensureClashGeoData(configDir); err != nil {
+			_ = os.RemoveAll(configDir)
+			release()
+			return nil, 0, err
+		}
 	}
 
 	// 启动进程
@@ -366,6 +395,8 @@ func engineFromComponent(component domain.CoreComponent) (domain.CoreEngineKind,
 		return domain.EngineXray, true
 	case domain.ComponentSingBox:
 		return domain.EngineSingBox, true
+	case domain.ComponentClash:
+		return domain.EngineClash, true
 	}
 	return "", false
 }

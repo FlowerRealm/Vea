@@ -385,6 +385,8 @@ func (f *Facade) ensureCoreEngineInstalled(ctx context.Context, engine domain.Co
 		kind = domain.ComponentXray
 	case domain.EngineSingBox:
 		kind = domain.ComponentSingBox
+	case domain.EngineClash:
+		kind = domain.ComponentClash
 	default:
 		return fmt.Errorf("unknown engine: %s", engine)
 	}

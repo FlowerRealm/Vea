@@ -13,6 +13,7 @@ import (
 
 func selectEngineForFRouter(
 	ctx context.Context,
+	inboundMode domain.InboundMode,
 	frouter domain.FRouter,
 	nodes []domain.Node,
 	preferred domain.CoreEngineKind,
@@ -32,7 +33,6 @@ func selectEngineForFRouter(
 	}
 
 	installed := installedEnginesFromComponents(componentsList)
-	strong := make(map[domain.CoreEngineKind]struct{}, 2)
 	candidates := make([]domain.CoreEngineKind, 0, 4)
 	addCandidate := func(engine domain.CoreEngineKind) {
 		if engine == "" || engine == domain.EngineAuto {
@@ -47,13 +47,30 @@ func selectEngineForFRouter(
 	}
 
 	if preferred != "" && preferred != domain.EngineAuto {
-		strong[preferred] = struct{}{}
-		addCandidate(preferred)
-	}
-
-	if anyNodeRequiresSingBox(activeNodes) {
-		strong[domain.EngineSingBox] = struct{}{}
-		addCandidate(domain.EngineSingBox)
+		adapter := adapters[preferred]
+		if adapter == nil {
+			return "", domain.CoreComponent{}, fmt.Errorf("内核适配器不存在: %s", preferred)
+		}
+		if inboundMode != "" && !adapter.SupportsInbound(inboundMode) {
+			return "", domain.CoreComponent{}, fmt.Errorf("指定内核 %s 不支持入站模式 %s", preferred, inboundMode)
+		}
+		for _, node := range activeNodes {
+			if !supportsNode(adapter, node) {
+				name := strings.TrimSpace(node.Name)
+				if name == "" {
+					name = strings.TrimSpace(node.ID)
+				}
+				if name == "" {
+					name = "unknown"
+				}
+				return "", domain.CoreComponent{}, fmt.Errorf("指定内核 %s 不支持节点 %s（%s）", preferred, name, node.Protocol)
+			}
+		}
+		if comp, ok := installed[preferred]; ok {
+			return preferred, comp, nil
+		}
+		// 允许“指定引擎但未安装”：由上层触发安装后重试启动。
+		return preferred, domain.CoreComponent{}, nil
 	}
 
 	if len(candidates) == 0 && settings != nil {
@@ -72,6 +89,7 @@ func selectEngineForFRouter(
 
 	addCandidate(domain.EngineSingBox)
 	addCandidate(domain.EngineXray)
+	addCandidate(domain.EngineClash)
 
 	fallback := domain.CoreEngineKind("")
 	for _, engine := range candidates {
@@ -79,16 +97,13 @@ func selectEngineForFRouter(
 		if adapter == nil {
 			continue
 		}
-		if !supportsAllNodes(adapter, activeNodes) {
+		if !supportsAllNodes(adapter, inboundMode, activeNodes) {
 			continue
 		}
 
 		comp, ok := installed[engine]
 		if ok {
 			return engine, comp, nil
-		}
-		if _, ok := strong[engine]; ok {
-			return engine, domain.CoreComponent{}, nil
 		}
 		if fallback == "" {
 			fallback = engine
@@ -101,31 +116,11 @@ func selectEngineForFRouter(
 	return "", domain.CoreComponent{}, fmt.Errorf("no engine supports frouter nodes")
 }
 
-func anyNodeRequiresSingBox(nodes []domain.Node) bool {
-	for _, node := range nodes {
-		if requiresSingBoxForNode(node) {
-			return true
-		}
-	}
-	return false
-}
-
-func requiresSingBoxForNode(node domain.Node) bool {
-	switch node.Protocol {
-	case domain.ProtocolHysteria2, domain.ProtocolTUIC:
-		return true
-	case domain.ProtocolShadowsocks:
-		if node.Security == nil {
-			return false
-		}
-		return strings.TrimSpace(node.Security.Plugin) != ""
-	default:
+func supportsAllNodes(adapter adapters.CoreAdapter, inboundMode domain.InboundMode, nodes []domain.Node) bool {
+	if adapter == nil {
 		return false
 	}
-}
-
-func supportsAllNodes(adapter adapters.CoreAdapter, nodes []domain.Node) bool {
-	if adapter == nil {
+	if inboundMode != "" && !adapter.SupportsInbound(inboundMode) {
 		return false
 	}
 	for _, node := range nodes {
@@ -143,8 +138,17 @@ func supportsNode(adapter adapters.CoreAdapter, node domain.Node) bool {
 	if !adapter.SupportsProtocol(node.Protocol) {
 		return false
 	}
-	if requiresSingBoxForNode(node) && adapter.Kind() != domain.EngineSingBox {
-		return false
+
+	// Shadowsocks 插件（如 obfs-local）：
+	// - Xray 配置模型里不支持插件（无法表达/无法工作）
+	// - sing-box / mihomo(clash) 支持
+	if node.Protocol == domain.ProtocolShadowsocks && node.Security != nil && strings.TrimSpace(node.Security.Plugin) != "" {
+		switch adapter.Kind() {
+		case domain.EngineSingBox, domain.EngineClash:
+			return true
+		default:
+			return false
+		}
 	}
 	return true
 }
@@ -178,7 +182,7 @@ func recommendEngineForNodes(nodes []domain.Node, adapters map[domain.CoreEngine
 
 	if singBoxOnly > 0 {
 		rec.RecommendedEngine = domain.EngineSingBox
-		rec.Reason = fmt.Sprintf("存在 %d 个仅 sing-box 支持的节点（如 Hysteria2/TUIC）", singBoxOnly)
+		rec.Reason = fmt.Sprintf("存在 %d 个 Xray 不支持的节点（如 Hysteria2/TUIC）", singBoxOnly)
 	} else if xrayCompatible == len(nodes) {
 		rec.RecommendedEngine = domain.EngineXray
 		rec.Reason = "所有节点均支持 Xray，推荐使用更成熟稳定的 Xray"

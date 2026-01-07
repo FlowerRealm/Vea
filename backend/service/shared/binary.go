@@ -62,3 +62,20 @@ func FindSingBoxBinary() (string, error) {
 	}
 	return "", errors.New("artifacts root is empty")
 }
+
+// FindClashBinary 在 artifacts/core/clash 下查找 mihomo/clash 二进制（支持子目录 1 层）
+func FindClashBinary() (string, error) {
+	var lastErr error
+	for _, root := range ArtifactsSearchRoots() {
+		dir := filepath.Join(root, "core", "clash")
+		path, err := FindBinaryInDir(dir, []string{"mihomo", "mihomo.exe", "clash", "clash.exe"})
+		if err == nil {
+			return path, nil
+		}
+		lastErr = err
+	}
+	if lastErr != nil {
+		return "", lastErr
+	}
+	return "", errors.New("artifacts root is empty")
+}

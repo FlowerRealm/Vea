@@ -134,6 +134,7 @@ type CoreComponentKind string
 const (
 	ComponentXray    CoreComponentKind = "xray"
 	ComponentSingBox CoreComponentKind = "singbox"
+	ComponentClash   CoreComponentKind = "clash"
 	ComponentGeo     CoreComponentKind = "geo"
 	ComponentGeneric CoreComponentKind = "generic"
 )
@@ -275,6 +276,7 @@ type CoreEngineKind string
 const (
 	EngineXray    CoreEngineKind = "xray"
 	EngineSingBox CoreEngineKind = "singbox"
+	EngineClash   CoreEngineKind = "clash"
 	EngineAuto    CoreEngineKind = "auto"
 )
 

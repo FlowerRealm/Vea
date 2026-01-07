@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -75,8 +76,8 @@ func (s *Service) Get(ctx context.Context, id string) (domain.CoreComponent, err
 
 // Create 创建组件
 func (s *Service) Create(ctx context.Context, comp domain.CoreComponent) (domain.CoreComponent, error) {
-	// 核心组件（xray/sing-box）使用幂等创建：缺失时补齐默认配置，存在则直接返回
-	if comp.Kind == domain.ComponentXray || comp.Kind == domain.ComponentSingBox {
+	// 核心组件（xray/sing-box/clash）使用幂等创建：缺失时补齐默认配置，存在则直接返回
+	if comp.Kind == domain.ComponentXray || comp.Kind == domain.ComponentSingBox || comp.Kind == domain.ComponentClash {
 		if err := s.EnsureDefaultComponents(ctx); err != nil {
 			return domain.CoreComponent{}, err
 		}
@@ -124,22 +125,26 @@ type installInfo struct {
 }
 
 func (s *Service) detectInstalled(kind domain.CoreComponentKind) *installInfo {
-	var subdir, binary string
+	var subdir string
+	var binaries []string
 
 	switch kind {
 	case domain.ComponentXray:
 		subdir = "core/xray"
-		binary = "xray"
+		binaries = []string{"xray", "xray.exe"}
 	case domain.ComponentSingBox:
 		subdir = "core/sing-box"
-		binary = "sing-box"
+		binaries = []string{"sing-box", "sing-box.exe"}
+	case domain.ComponentClash:
+		subdir = "core/clash"
+		binaries = []string{"mihomo", "mihomo.exe", "clash", "clash.exe"}
 	default:
 		return nil
 	}
 
 	for _, root := range shared.ArtifactsSearchRoots() {
 		dir := filepath.Join(root, subdir)
-		binaryPath, err := shared.FindBinaryInDir(dir, []string{binary, binary + ".exe"})
+		binaryPath, err := shared.FindBinaryInDir(dir, binaries)
 		if err != nil {
 			continue
 		}
@@ -179,6 +184,8 @@ func (s *Service) doInstall(id string) {
 		kindStr = "xray"
 	case domain.ComponentSingBox:
 		kindStr = "singbox"
+	case domain.ComponentClash:
+		kindStr = "clash"
 	default:
 		s.repo.UpdateInstallStatus(ctx, id, domain.InstallStatusError, 0, "Unknown component kind")
 		return
@@ -246,6 +253,14 @@ func (s *Service) doInstall(id string) {
 		s.cleanupXrayInstall(installDir)
 	}
 
+	// mihomo 的发布包在 Linux/macOS 通常是单文件 gzip（无文件名信息）；这里把解压产物统一规整为可执行文件名。
+	if comp.Kind == domain.ComponentClash {
+		if err := normalizeClashInstall(installDir); err != nil {
+			s.repo.UpdateInstallStatus(ctx, id, domain.InstallStatusError, 0, "安装后处理失败: "+err.Error())
+			return
+		}
+	}
+
 	// 设置二进制文件执行权限
 	s.setExecutablePermissions(installDir, kindStr)
 
@@ -300,6 +315,22 @@ func (s *Service) EnsureDefaultComponents(ctx context.Context) error {
 		}
 	}
 
+	// 确保 clash(mihomo) 组件存在
+	if _, err := s.repo.GetByKind(ctx, domain.ComponentClash); err != nil {
+		if !errors.Is(err, repository.ErrComponentNotFound) {
+			return err
+		}
+		if _, err := s.repo.Create(ctx, domain.CoreComponent{
+			Name: "clash",
+			Kind: domain.ComponentClash,
+			Meta: map[string]string{
+				"repo": "MetaCubeX/mihomo",
+			},
+		}); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -311,6 +342,8 @@ func (s *Service) resolveInstallDir(comp domain.CoreComponent) string {
 		return filepath.Join(base, "xray")
 	case domain.ComponentSingBox:
 		return filepath.Join(base, "sing-box")
+	case domain.ComponentClash:
+		return filepath.Join(base, "clash")
 	default:
 		return filepath.Join(base, comp.Name)
 	}
@@ -357,6 +390,8 @@ func (s *Service) setExecutablePermissions(dir, kind string) {
 		binaries = []string{"xray", "xray.exe"}
 	case "singbox":
 		binaries = []string{"sing-box", "sing-box.exe"}
+	case "clash":
+		binaries = []string{"mihomo", "mihomo.exe", "clash", "clash.exe"}
 	}
 
 	for _, bin := range binaries {
@@ -379,4 +414,112 @@ func (s *Service) setExecutablePermissions(dir, kind string) {
 			}
 		}
 	}
+}
+
+func normalizeClashInstall(dir string) error {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return errors.New("install dir is empty")
+	}
+
+	targetName := "mihomo"
+	if runtime.GOOS == "windows" {
+		targetName = "mihomo.exe"
+	}
+	targetPath := filepath.Join(dir, targetName)
+	if _, err := os.Stat(targetPath); err == nil {
+		return nil
+	}
+
+	findOneLevel := func(name string) string {
+		rootPath := filepath.Join(dir, name)
+		if _, err := os.Stat(rootPath); err == nil {
+			return rootPath
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return ""
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			p := filepath.Join(dir, entry.Name(), name)
+			if _, err := os.Stat(p); err == nil {
+				return p
+			}
+		}
+		return ""
+	}
+
+	if src := findOneLevel(shared.ComponentFile); src != "" {
+		if err := os.Rename(src, targetPath); err != nil {
+			return err
+		}
+		if runtime.GOOS != "windows" {
+			_ = os.Chmod(targetPath, 0o755)
+		}
+		return nil
+	}
+
+	// 兜底：zip 解压后可能带版本/平台后缀，这里做一次 best-effort 归一化，确保后续能找到二进制。
+	isCandidate := func(name string) bool {
+		lower := strings.ToLower(strings.TrimSpace(name))
+		if lower == "" {
+			return false
+		}
+		if runtime.GOOS == "windows" && !strings.HasSuffix(lower, ".exe") {
+			return false
+		}
+		return strings.HasPrefix(lower, "mihomo") || strings.HasPrefix(lower, "clash")
+	}
+
+	tryRename := func(path string) bool {
+		if path == "" {
+			return false
+		}
+		if err := os.Rename(path, targetPath); err != nil {
+			return false
+		}
+		if runtime.GOOS != "windows" {
+			_ = os.Chmod(targetPath, 0o755)
+		}
+		return true
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			if isCandidate(entry.Name()) {
+				if tryRename(filepath.Join(dir, entry.Name())) {
+					return nil
+				}
+			}
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			sub := filepath.Join(dir, entry.Name())
+			subEntries, subErr := os.ReadDir(sub)
+			if subErr != nil {
+				continue
+			}
+			for _, subEntry := range subEntries {
+				if subEntry.IsDir() {
+					continue
+				}
+				if isCandidate(subEntry.Name()) {
+					if tryRename(filepath.Join(sub, subEntry.Name())) {
+						return nil
+					}
+				}
+			}
+		}
+	}
+
+	return fmt.Errorf("clash binary not found after extraction in %s", dir)
 }
