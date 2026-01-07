@@ -505,15 +505,23 @@ func normalizeClashInstall(dir string) error {
 		return strings.HasPrefix(lower, "mihomo") || strings.HasPrefix(lower, "clash")
 	}
 
+	var tryRenameErr error
 	tryRename := func(path string) bool {
 		if path == "" {
 			return false
 		}
+
 		if err := os.Rename(path, targetPath); err != nil {
+			tryRenameErr = fmt.Errorf("rename %s -> %s: %w", path, targetPath, err)
 			return false
 		}
 		if runtime.GOOS != "windows" {
-			_ = os.Chmod(targetPath, 0o755)
+			if err := os.Chmod(targetPath, 0o755); err != nil {
+				tryRenameErr = fmt.Errorf("chmod %s: %w", targetPath, err)
+				// best-effort rollback to avoid leaving an unusable binary at targetPath
+				_ = os.Rename(targetPath, path)
+				return false
+			}
 		}
 		return true
 	}
@@ -552,5 +560,8 @@ func normalizeClashInstall(dir string) error {
 		}
 	}
 
+	if tryRenameErr != nil {
+		return fmt.Errorf("failed to normalize clash binary in %s: %w", dir, tryRenameErr)
+	}
 	return fmt.Errorf("clash binary not found after extraction in %s", dir)
 }

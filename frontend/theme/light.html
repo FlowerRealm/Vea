@@ -3810,7 +3810,8 @@
               systemProxyDisabled = true;
               await loadSystemProxySettings();
             } catch (err) {
-              showStatus(`关闭系统代理失败：${err.message}（将继续重启内核）`, "warn", 5000);
+              showStatus(`关闭系统代理失败：${err.message}`, "error", 6000);
+              return;
             }
           }
 

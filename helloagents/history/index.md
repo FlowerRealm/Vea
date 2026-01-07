@@ -10,6 +10,7 @@
 | 202601051238 | fix-clash-tun-mtu | 修复 | ✅已完成 | [2026-01/202601051238_fix-clash-tun-mtu](2026-01/202601051238_fix-clash-tun-mtu/) |
 | 202601071130 | fix-gz-extract-clash-install | 修复 | ✅已完成 | [2026-01/202601071130_fix-gz-extract-clash-install](2026-01/202601071130_fix-gz-extract-clash-install/) |
 | 202601071248 | refactor-tun-defaults-engine-ui | 重构 | ✅已完成 | [2026-01/202601071248_refactor-tun-defaults-engine-ui](2026-01/202601071248_refactor-tun-defaults-engine-ui/) |
+| 202601071306 | fix-chmod-engine-switch-proxy-failfast | 修复 | ✅已完成 | [2026-01/202601071306_fix-chmod-engine-switch-proxy-failfast](2026-01/202601071306_fix-chmod-engine-switch-proxy-failfast/) |
 
 ## 按月归档
 
@@ -19,3 +20,4 @@
 - [202601051238_fix-clash-tun-mtu](2026-01/202601051238_fix-clash-tun-mtu/) - 修复 Linux 下 mihomo(Clash) TUN 默认 MTU=9000 导致“看起来全网断开”
 - [202601071130_fix-gz-extract-clash-install](2026-01/202601071130_fix-gz-extract-clash-install/) - 组件管理：新增核心组件卸载接口；修复 .gz 安装文件命名并清理冗余逻辑
 - [202601071248_refactor-tun-defaults-engine-ui](2026-01/202601071248_refactor-tun-defaults-engine-ui/) - 维护性：提取 TUN 默认值常量；主题页内核偏好切换公共刷新逻辑去重
+- [202601071306_fix-chmod-engine-switch-proxy-failfast](2026-01/202601071306_fix-chmod-engine-switch-proxy-failfast/) - 修复 clash 安装归一化 chmod 错误处理；主题页切换内核关闭系统代理失败改为快失败
