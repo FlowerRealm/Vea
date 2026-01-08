@@ -14,6 +14,7 @@ import (
 
 	"vea/backend/domain"
 	"vea/backend/service/nodegroup"
+	"vea/backend/service/shared"
 
 	"gopkg.in/yaml.v3"
 )
@@ -753,26 +754,18 @@ func normalizeSSPlugin(plugin, opts string) (string, map[string]interface{}) {
 }
 
 func parsePluginOpts(opts string) map[string]interface{} {
-	opts = strings.TrimSpace(opts)
-	if opts == "" {
+	kv := shared.ParsePluginOptsString(opts)
+	if kv == nil {
 		return nil
 	}
-	out := make(map[string]interface{})
-	for _, part := range strings.Split(opts, ";") {
-		part = strings.TrimSpace(part)
-		if part == "" {
+
+	out := make(map[string]interface{}, len(kv))
+	for k, v := range kv {
+		if v == "" {
+			out[k] = true
 			continue
 		}
-		if k, v, ok := strings.Cut(part, "="); ok {
-			k = strings.TrimSpace(k)
-			v = strings.TrimSpace(v)
-			if k == "" || v == "" {
-				continue
-			}
-			out[k] = v
-			continue
-		}
-		out[part] = true
+		out[k] = v
 	}
 	return out
 }
