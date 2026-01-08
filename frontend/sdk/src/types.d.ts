@@ -111,7 +111,7 @@ export interface FRouter {
   updatedAt: string
 }
 
-export type ConfigFormat = 'xray-json'
+export type ConfigFormat = 'subscription'
 
 export interface Config {
   id: string
@@ -145,7 +145,7 @@ export interface GeoResource {
   updatedAt: string
 }
 
-export type CoreComponentKind = 'xray' | 'singbox' | 'clash' | 'geo' | 'generic'
+export type CoreComponentKind = 'singbox' | 'clash' | 'geo' | 'generic'
 
 export interface CoreComponent {
   id: string
@@ -175,7 +175,7 @@ export interface SystemProxySettings {
 
 export type InboundMode = 'socks' | 'http' | 'mixed' | 'tun'
 
-export type CoreEngineKind = 'xray' | 'singbox' | 'clash' | 'auto'
+export type CoreEngineKind = 'singbox' | 'clash' | 'auto'
 
 export interface CoreEngineInfo {
   kind: CoreEngineKind
@@ -194,7 +194,6 @@ export interface ProxyConfig {
   dnsConfig?: Record<string, any>
   logConfig?: Record<string, any>
   performanceConfig?: Record<string, any>
-  xrayConfig?: Record<string, any>
   preferredEngine: CoreEngineKind
   frouterId: string
   updatedAt: string

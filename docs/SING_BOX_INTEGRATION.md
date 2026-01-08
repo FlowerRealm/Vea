@@ -5,9 +5,9 @@
 ## 核心特性
 
 ### ✅ 已实现
-- **双内核支持**：Xray + sing-box 自动选择
+- **多内核支持**：sing-box + Clash(mihomo) 自动选择
 - **TUN 模式**：系统级透明代理（Linux/Windows/macOS）
-- **新协议支持**：Hysteria2、TUIC（仅 sing-box）
+- **新协议支持**：Hysteria2、TUIC
 - **自动引擎选择**：根据节点协议和入站模式自动选择最佳内核
 - **权限管理**：Linux CAP_NET_ADMIN、Windows 管理员、macOS sudo
 
@@ -64,7 +64,7 @@ getcap <path>
 
 ### ProxyConfig API（单例运行配置）
 
-#### 配置 SOCKS 模式（Xray）并启动
+#### 配置 SOCKS 模式并启动
 
 ```bash
 curl -X PUT http://localhost:19080/proxy/config \
@@ -72,7 +72,7 @@ curl -X PUT http://localhost:19080/proxy/config \
   -d '{
     "inboundMode": "socks",
     "inboundPort": 38087,
-    "preferredEngine": "xray"
+    "preferredEngine": "auto"
   }'
 
 curl -X POST http://localhost:19080/proxy/start \
@@ -104,7 +104,7 @@ curl -X POST http://localhost:19080/proxy/start \
   -d '{ "frouterId": "<frouter-id>" }'
 ```
 
-**注意**：`inboundMode: "tun"` 会强制选择 `engine: "singbox"`。
+**注意**：实际运行的 `engine` 会根据可用内核与节点协议自动选择；如需固定可设置 `preferredEngine` 为 `singbox` 或 `clash`。
 
 #### 查看代理状态
 
@@ -135,12 +135,10 @@ curl -X POST http://localhost:19080/proxy/stop
 
 ### 规则优先级
 
-1. **TUN 模式** → 强制 sing-box
-2. **节点要求 sing-box**（Hysteria2/TUIC 或 Shadowsocks 插件）→ 优先 sing-box
-3. **用户偏好**（`preferredEngine`）→ 已安装且支持全部节点时优先
-4. **前端默认引擎**（`engine.defaultEngine`）→ 作为候选
-5. **协议推荐结果** → 作为候选
-6. **兜底候选** → sing-box → xray
+1. **用户偏好**（`preferredEngine`）→ 支持入站模式且能覆盖全部节点时优先（未安装会触发安装后重试）
+2. **前端默认引擎**（`engine.defaultEngine`）→ 作为候选
+3. **协议推荐结果** → 作为候选（优先 sing-box，无法满足时回退 clash）
+4. **兜底候选** → sing-box → clash
 
 最终会在候选列表里选择第一个“已安装且支持全部节点”的引擎，否则报错。
 
@@ -148,9 +146,9 @@ curl -X POST http://localhost:19080/proxy/stop
 
 | 节点协议 | 入站模式 | 用户偏好 | 实际使用 | 原因 |
 |---------|---------|---------|---------|------|
-| VLESS | SOCKS | xray | Xray | 用户偏好 + 协议支持 |
-| Hysteria2 | SOCKS | xray | sing-box | 协议强制 |
-| VMess | TUN | auto | sing-box | TUN 强制 |
+| VLESS | SOCKS | auto | sing-box | 默认推荐 |
+| Hysteria2 | SOCKS | clash | clash | 用户偏好 + 协议支持 |
+| VMess | TUN | auto | sing-box | 默认推荐 |
 | Trojan | Mixed | singbox | sing-box | 用户偏好 + 协议支持 |
 
 ---
@@ -228,16 +226,13 @@ curl http://localhost:19080/tun/check
 
 ## 节点协议支持
 
-### Xray 支持的协议
+### 支持的协议
 - VLESS
 - VMess
 - Trojan
 - Shadowsocks
-
-### sing-box 额外支持
-- **Hysteria2** ✅
-- **TUIC** ✅
-- 以及所有 Xray 协议
+- Hysteria2
+- TUIC
 
 ---
 
@@ -336,20 +331,12 @@ curl -X POST http://localhost:19080/proxy/start \
 ---
 
 ## 性能对比
-
-| 特性 | Xray | sing-box |
-|------|------|----------|
-| 内存占用 | ~50 MB | ~30 MB |
-| TUN 模式 | ❌ | ✅ |
-| Hysteria2 | ❌ | ✅ |
-| TUIC | ❌ | ✅ |
-| 配置复杂度 | 中 | 低 |
-| 社区活跃度 | 高 | 高 |
+（已移除对其他内核的对比；以实际运行体验为准）
 
 ---
 
 ## 参考资料
 
 - [sing-box 官方文档](https://sing-box.sagernet.org/)
-- [Xray 文档](https://xtls.github.io/)
+- [mihomo(Clash.Meta) 项目](https://github.com/MetaCubeX/mihomo)
 - [Linux Capabilities](https://man7.org/linux/man-pages/man7/capabilities.7.html)

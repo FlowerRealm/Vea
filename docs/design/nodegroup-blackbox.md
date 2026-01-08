@@ -11,7 +11,7 @@
 **输入**
 - ProxyConfig / FRouter / Nodes / ChainProxySettings
 - Purpose：`proxy` / `measurement`
-- Engine：`xray` / `sing-box`
+- Engine：`sing-box` / `clash`
 
 **输出**
 - RuntimePlan（引擎无关的中间表示）
@@ -32,7 +32,7 @@
 1. CompileFRouter：解析/校验 `ChainProxySettings`（虚拟节点语义：`local`/`direct`/`block`/slot），产出 rules/default/detour
 2. ActiveNodeIDs：从 default/rules 出发，计算 detour 上游闭包，得到本次计划实际需要的节点集合
 3. CompileProxyPlan / CompileMeasurementPlan：组装 RuntimePlan（Purpose/Engine/Inbound/ProxyConfig 等）
-4. Render：adapter 根据 RuntimePlan 输出各引擎配置（Xray / sing-box）
+4. Render：adapter 根据 RuntimePlan 输出各引擎配置（sing-box / clash）
 
 ## 对外接口建议
 

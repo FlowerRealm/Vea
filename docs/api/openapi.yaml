@@ -7,9 +7,9 @@ info:
 
     ## 特性
     - FRouter 管理：导入、测速、延迟测试、链路封装
-    - 配置管理：导入 Xray JSON 或订阅链接，自动刷新
+    - 配置管理：导入订阅链接，自动刷新
     - Geo 资源：GeoIP/GeoSite 管理
-    - 核心组件：Xray/sing-box/Geo 核心下载与安装
+    - 核心组件：sing-box/mihomo(Clash)/Geo 核心下载与安装
     - 代理运行配置：ProxyConfig（入站模式、引擎选择、绑定 FRouter）
     - 系统设置：系统代理、前端设置
     - TUN 能力检查与配置：/tun/check、/tun/setup
@@ -47,8 +47,6 @@ tags:
     description: Geo 资源管理
   - name: components
     description: 核心组件管理
-  - name: xray
-    description: Xray 控制
   - name: proxy
     description: 代理运行控制
   - name: tun
@@ -110,6 +108,7 @@ paths:
           schema:
             type: integer
             format: int64
+            minimum: 0
       responses:
         '200':
           description: 成功返回日志片段
@@ -486,7 +485,7 @@ paths:
     post:
       tags: [configs]
       summary: 导入配置
-      description: 导入新的 Xray 配置或订阅链接
+      description: 导入新的订阅/配置源
       operationId: importConfig
       requestBody:
         required: true
@@ -680,7 +679,7 @@ paths:
     get:
       tags: [components]
       summary: 列出所有核心组件
-      description: 获取核心组件列表（如 Xray）
+      description: 获取核心组件列表
       operationId: listComponents
       responses:
         '200':
@@ -884,6 +883,13 @@ paths:
                   lastRestartError:
                     type: string
                     description: 最近一次自动重启失败的错误信息（空/缺省表示无错误）
+                  userStopped:
+                    type: boolean
+                    description: true 表示用户显式停止（keepalive 不会自动拉起）
+                  userStoppedAt:
+                    type: string
+                    format: date-time
+                    description: 用户显式停止的时间
                 additionalProperties: true
 
   /proxy/kernel/logs:
@@ -900,6 +906,7 @@ paths:
           schema:
             type: integer
             format: int64
+            minimum: 0
       responses:
         '200':
           description: 成功返回日志片段
@@ -960,7 +967,7 @@ paths:
     get:
       tags: [engine]
       summary: 推荐引擎
-      description: 根据当前 ProxyConfig/FRouter 约束推荐 Xray 或 sing-box
+      description: 根据当前 ProxyConfig/FRouter 约束推荐 sing-box 或 Clash
       operationId: getEngineRecommendation
       responses:
         '200':
@@ -1588,10 +1595,10 @@ components:
           type: string
         format:
           type: string
-          enum: [xray-json]
+          enum: [subscription]
         payload:
           type: string
-          description: 配置内容（JSON 字符串）
+          description: 配置内容（订阅/分享链接/Clash YAML 等）
         sourceUrl:
           type: string
           description: 配置源地址或订阅链接
@@ -1625,7 +1632,7 @@ components:
           type: string
         format:
           type: string
-          enum: [xray-json]
+          enum: [subscription]
         sourceUrl:
           type: string
           description: 配置源地址或订阅链接
@@ -1649,7 +1656,7 @@ components:
           type: string
         format:
           type: string
-          enum: [xray-json]
+          enum: [subscription]
         sourceUrl:
           type: string
         payload:
@@ -1723,7 +1730,7 @@ components:
           type: string
         kind:
           type: string
-          enum: [xray, singbox, clash, geo, generic]
+          enum: [singbox, clash, geo, generic]
         sourceUrl:
           type: string
         archiveType:
@@ -1771,7 +1778,7 @@ components:
           type: string
         kind:
           type: string
-          enum: [xray, singbox, clash, geo, generic]
+          enum: [singbox, clash, geo, generic]
         sourceUrl:
           type: string
         archiveType:
@@ -1782,7 +1789,7 @@ components:
       properties:
         kind:
           type: string
-          enum: [xray, singbox, clash, auto]
+          enum: [singbox, clash, auto]
         binaryPath:
           type: string
         version:
@@ -1821,12 +1828,9 @@ components:
         performanceConfig:
           type: object
           additionalProperties: true
-        xrayConfig:
-          type: object
-          additionalProperties: true
         preferredEngine:
           type: string
-          enum: [xray, singbox, clash, auto]
+          enum: [singbox, clash, auto]
         frouterId:
           type: string
         updatedAt:

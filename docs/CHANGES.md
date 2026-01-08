@@ -1,16 +1,16 @@
-# 更新日志：sing-box 内核集成
+# 更新日志：内核集成（sing-box / Clash）
 
 ## 🎉 重大更新
 
-Vea 现已支持 **sing-box 内核**，实现了以下核心功能：
+Vea 现已支持 **sing-box / Clash(mihomo) 内核**，实现了以下核心功能：
 
 ---
 
 ## 新增功能
 
 ### 1. **双内核架构**
-- ✅ **Xray-core**：传统代理协议（VLESS/VMess/Trojan/Shadowsocks）
 - ✅ **sing-box**：现代代理协议 + TUN 模式
+- ✅ **Clash(mihomo)**：Clash 生态兼容内核
 - ✅ **自动选择**：根据节点协议和入站模式智能选择最佳内核
 
 ### 2. **TUN 模式支持**
@@ -25,7 +25,7 @@ Vea 现已支持 **sing-box 内核**，实现了以下核心功能：
 ### 4. **ProxyConfig（单例运行配置）**
 - ✅ **以 FRouter 为一等单元**：启动/切换只需要指定 `frouterId`
 - ✅ **配置收敛**：入站模式、引擎选择、TUN 配置统一归入 `ProxyConfig`
-- ✅ **持久化**：配置自动保存到 `data/state.json`
+- ✅ **持久化**：配置自动保存到 userData 的 `data/state.json`
 
 ### 5. **Node 独立实体（食材）**
 - ✅ **节点全局列表**：Node 独立于 FRouter（工具），提供 `/nodes` 列表与测速/延迟测量 API
@@ -54,8 +54,8 @@ const (
 // 内核引擎类型
 type CoreEngineKind string
 const (
-    EngineXray    CoreEngineKind = "xray"
     EngineSingBox CoreEngineKind = "singbox"
+    EngineClash   CoreEngineKind = "clash"
     EngineAuto    CoreEngineKind = "auto"
 )
 
@@ -98,8 +98,8 @@ type CoreAdapter interface {
 ```
 
 #### 实现
-- ✅ **XrayAdapter**：`backend/service/adapters/xray.go`
 - ✅ **SingBoxAdapter**：`backend/service/adapters/singbox.go`
+- ✅ **ClashAdapter**：`backend/service/adapters/clash.go`
 
 ### 权限管理
 
@@ -199,9 +199,10 @@ docs/
 
 ### 功能测试
 
-- [ ] SOCKS 模式 + Xray
+- [ ] SOCKS 模式 + sing-box
 - [ ] Mixed 模式 + sing-box
 - [ ] TUN 模式 + sing-box
+- [ ] Mixed 模式 + Clash
 - [ ] Hysteria2 节点自动选择 sing-box
 - [ ] 权限检查 API
 - [ ] 代理启动/停止
@@ -217,9 +218,8 @@ docs/
 
 ## 已知限制
 
-1. **Xray TUN 模式**：已移除（使用 sing-box 替代）
-2. **自动协议转换**：不支持 Xray ↔ sing-box 配置互转
-3. **TUN DNS 劫持**：需要 `autoRoute: true`
+1. **自动协议转换**：不提供“节点/订阅数据 → 某内核原生配置”的双向互转能力
+2. **TUN DNS 劫持**：需要 `autoRoute: true`
 
 ---
 
@@ -229,18 +229,16 @@ docs/
 - [ ] 前端 UI 界面（ProxyConfig 配置）
 - [ ] 节点测速（TUN 模式下）
 - [ ] 流量统计（按 FRouter）
-- [ ] Clash 内核支持
 
 ---
 
 ## 贡献者
 
 感谢以下开源项目：
-- [Xray-core](https://github.com/XTLS/Xray-core)
 - [sing-box](https://github.com/SagerNet/sing-box)
 - [v2ray-rules-dat](https://github.com/Loyalsoldier/v2ray-rules-dat)
 
 ---
 
-**更新时间**: 2025-12-25
-**版本**: v2.1.0 (arch v2 + sing-box integration)
+**更新时间**: 2026-01-08
+**版本**: v2.1.0 (arch v2 + core integration)

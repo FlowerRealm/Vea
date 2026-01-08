@@ -27,9 +27,6 @@ func (c ProxyConfig) ApplyPatch(patch ProxyConfig) ProxyConfig {
 	if patch.PerformanceConfig != nil {
 		c.PerformanceConfig = patch.PerformanceConfig
 	}
-	if patch.XrayConfig != nil {
-		c.XrayConfig = patch.XrayConfig
-	}
 	if patch.PreferredEngine != "" {
 		c.PreferredEngine = patch.PreferredEngine
 	}

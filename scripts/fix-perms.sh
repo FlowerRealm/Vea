@@ -7,8 +7,12 @@ usage() {
   ./scripts/fix-perms.sh
 
 说明:
-  处理“之前用 sudo 跑过 Vea 导致 data/、artifacts/、/tmp/vea-debug.log 变成 root 拥有”的情况。
-  脚本会通过 pkexec 只弹一次授权，然后把 *root-owned* 的条目修回当前用户。
+  修复“旧版本/误用 sudo 运行”遗留在仓库目录的权限问题：
+  - ./data/、./artifacts/ 可能被 root 拥有，导致后续迁移/清理失败
+  - /tmp/vea-debug.log 可能被 root 创建（历史调试日志）
+
+  当前版本运行期数据统一写入 userData，不再写入仓库目录；
+  本脚本仅用于处理遗留的 *root-owned* 条目（通过 pkexec 只弹一次授权）。
 EOF
 }
 
@@ -107,4 +111,3 @@ fix_tree "${DATA_DIR}"
 fix_tree "${ARTIFACTS_DIR}"
 
 echo "[Vea] 权限修复完成"
-

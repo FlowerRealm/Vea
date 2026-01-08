@@ -7,8 +7,8 @@ flowchart TD
     UI[Electron 前端] -->|HTTP 127.0.0.1:19080| API[Go 后端 API]
     API --> Compile[Plan 编译/规则生成]
     API --> Adapter[内核适配器 adapters/*]
-    Adapter --> Core[Xray / sing-box / mihomo(Clash)]
-    API --> Persist[状态持久化 data/state.json]
+    Adapter --> Core[sing-box / mihomo(Clash)]
+    API --> Persist[状态持久化 <userData>/data/state.json]
 ```
 
 ## 技术栈

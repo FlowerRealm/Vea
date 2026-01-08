@@ -40,7 +40,7 @@ func TestGETComponents_SeedsDefaultComponents(t *testing.T) {
 	nodeSvc.SetMeasurer(speedMeasurer)
 	frouterSvc.SetMeasurer(speedMeasurer)
 
-	configSvc := configsvc.NewService(configRepo, nodeSvc)
+	configSvc := configsvc.NewService(configRepo, nodeSvc, frouterRepo)
 	proxySvc := proxy.NewService(frouterRepo, nodeRepo, componentRepo, settingsRepo)
 	componentSvc := component.NewService(componentRepo)
 	geoSvc := geo.NewService(geoRepo)
@@ -61,9 +61,6 @@ func TestGETComponents_SeedsDefaultComponents(t *testing.T) {
 		t.Fatalf("unmarshal response: %v; body=%q", err, rec.Body.String())
 	}
 
-	if countKind(components, domain.ComponentXray) != 1 {
-		t.Fatalf("expected exactly 1 xray component, got %d", countKind(components, domain.ComponentXray))
-	}
 	if countKind(components, domain.ComponentSingBox) != 1 {
 		t.Fatalf("expected exactly 1 singbox component, got %d", countKind(components, domain.ComponentSingBox))
 	}

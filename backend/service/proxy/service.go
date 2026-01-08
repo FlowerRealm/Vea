@@ -75,6 +75,8 @@ type Service struct {
 
 	lastRestartAt    time.Time
 	lastRestartError string
+	userStopped      bool
+	userStoppedAt    time.Time
 
 	kernelLogPath      string
 	kernelLogSession   uint64
@@ -95,7 +97,6 @@ func NewService(
 		components: components,
 		settings:   settings,
 		adapters: map[domain.CoreEngineKind]adapters.CoreAdapter{
-			domain.EngineXray:    &adapters.XrayAdapter{},
 			domain.EngineSingBox: &adapters.SingBoxAdapter{},
 			domain.EngineClash:   &adapters.ClashAdapter{},
 		},
@@ -108,6 +109,9 @@ func NewService(
 func (s *Service) Start(ctx context.Context, cfg domain.ProxyConfig) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	s.userStopped = false
+	s.userStoppedAt = time.Time{}
 
 	hadPrevious := s.mainHandle != nil
 	previousCfg := s.activeCfg
@@ -307,6 +311,17 @@ func (s *Service) Stop(ctx context.Context) error {
 	return nil
 }
 
+// StopUser 停止代理（用户显式触发），用于让 keepalive 尊重“用户已停止”的状态。
+func (s *Service) StopUser(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.userStopped = true
+	s.userStoppedAt = time.Now()
+	s.stopLocked()
+	return nil
+}
+
 // MarkRestartScheduled 记录一次“重启已触发/计划中”（用于前端轮询提示）。
 func (s *Service) MarkRestartScheduled() {
 	s.mu.Lock()
@@ -349,6 +364,10 @@ func (s *Service) Status(ctx context.Context) map[string]interface{} {
 	}
 	if s.lastRestartError != "" {
 		status["lastRestartError"] = s.lastRestartError
+	}
+	if s.userStopped {
+		status["userStopped"] = true
+		status["userStoppedAt"] = s.userStoppedAt
 	}
 
 	if running {
@@ -521,8 +540,6 @@ func (s *Service) getEngineBinary(ctx context.Context, engine domain.CoreEngineK
 	var kind domain.CoreComponentKind
 
 	switch engine {
-	case domain.EngineXray:
-		kind = domain.ComponentXray
 	case domain.EngineSingBox:
 		kind = domain.ComponentSingBox
 	case domain.EngineClash:
@@ -546,8 +563,6 @@ func (s *Service) getEngineBinary(ctx context.Context, engine domain.CoreEngineK
 	}
 	if len(candidates) == 0 {
 		switch engine {
-		case domain.EngineXray:
-			candidates = []string{"xray", "xray.exe"}
 		case domain.EngineSingBox:
 			candidates = []string{"sing-box", "sing-box.exe"}
 		case domain.EngineClash:
@@ -686,6 +701,8 @@ func (s *Service) startProcess(adapter adapters.CoreAdapter, engine domain.CoreE
 	existingIfaces := map[string]int(nil)
 	if cfg.InboundMode == domain.InboundTUN {
 		existingIfaces = snapshotInterfaceIndices()
+		// 清理可能与 TUN 冲突的遗留 iptables 规则（例如 XRAY/XRAY_SELF 链）。
+		shared.CleanConflictingIPTablesRules()
 	}
 
 	handle, err := adapter.Start(procCfg, configPath)
@@ -968,14 +985,11 @@ func (s *Service) monitorProcess(handle *adapters.ProcessHandle, done chan struc
 type EngineRecommendation struct {
 	RecommendedEngine domain.CoreEngineKind `json:"recommendedEngine"`
 	Reason            string                `json:"reason"`
-	XrayCompatible    int                   `json:"xrayCompatible"`
-	SingBoxOnly       int                   `json:"singBoxOnly"`
 	TotalNodes        int                   `json:"totalNodes"`
 }
 
 // EngineStatus 引擎状态
 type EngineStatus struct {
-	XrayInstalled    bool                  `json:"xrayInstalled"`
 	SingBoxInstalled bool                  `json:"singboxInstalled"`
 	ClashInstalled   bool                  `json:"clashInstalled"`
 	DefaultEngine    domain.CoreEngineKind `json:"defaultEngine"`
@@ -984,10 +998,8 @@ type EngineStatus struct {
 
 // RecommendEngine 根据现有节点智能推荐引擎
 // 规则：
-// 1. 无节点 → 默认 Xray（更成熟稳定）
-// 2. 存在 Hysteria2/TUIC 节点 → 推荐 sing-box
-// 3. 所有节点支持 Xray → 推荐 Xray
-// 4. 混合场景 → 推荐 sing-box（支持更广）
+// 1. 优先 sing-box（协议覆盖更广）
+// 2. sing-box 不可用时回退到 clash(mihomo)
 func (s *Service) RecommendEngine(ctx context.Context) EngineRecommendation {
 	nodes := []domain.Node(nil)
 	if s.nodes != nil {
@@ -1021,11 +1033,6 @@ func (s *Service) GetEngineStatus(ctx context.Context) EngineStatus {
 	}
 
 	// 检查引擎是否真正安装（有安装目录且有安装时间）
-	if comp, err := s.components.GetByKind(ctx, domain.ComponentXray); err == nil {
-		if comp.InstallDir != "" && comp.LastInstalledAt.Unix() > 0 {
-			status.XrayInstalled = true
-		}
-	}
 	if comp, err := s.components.GetByKind(ctx, domain.ComponentSingBox); err == nil {
 		if comp.InstallDir != "" && comp.LastInstalledAt.Unix() > 0 {
 			status.SingBoxInstalled = true

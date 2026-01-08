@@ -5,31 +5,6 @@ import (
 	"runtime"
 )
 
-// XrayAssetCandidates 返回 Xray 资源候选列表
-func XrayAssetCandidates() ([]string, error) {
-	key := runtime.GOOS + "/" + runtime.GOARCH
-	switch key {
-	case "linux/amd64":
-		return []string{"Xray-linux-64.zip"}, nil
-	case "linux/386":
-		return []string{"Xray-linux-32.zip"}, nil
-	case "linux/arm64":
-		return []string{"Xray-linux-arm64-v8a.zip", "Xray-linux-arm64.zip"}, nil
-	case "linux/arm":
-		return []string{"Xray-linux-arm32-v7a.zip"}, nil
-	case "windows/amd64":
-		return []string{"Xray-windows-64.zip"}, nil
-	case "windows/386":
-		return []string{"Xray-windows-32.zip"}, nil
-	case "darwin/amd64":
-		return []string{"Xray-macos-64.zip"}, nil
-	case "darwin/arm64":
-		return []string{"Xray-macos-arm64-v8a.zip", "Xray-macos-arm64.zip"}, nil
-	default:
-		return nil, fmt.Errorf("unsupported platform %s for xray release asset", key)
-	}
-}
-
 // SingBoxAssetCandidates 返回 sing-box 资源候选列表
 func SingBoxAssetCandidates() ([]string, error) {
 	key := runtime.GOOS + "/" + runtime.GOARCH
@@ -104,8 +79,6 @@ func ClashAssetCandidates() ([]string, error) {
 // GetComponentRepo 获取组件的 GitHub 仓库
 func GetComponentRepo(kind string) string {
 	switch kind {
-	case "xray":
-		return "XTLS/Xray-core"
 	case "singbox":
 		return "SagerNet/sing-box"
 	case "clash":
@@ -121,8 +94,6 @@ func GetComponentRepo(kind string) string {
 // GetComponentAssetCandidates 获取组件的资源候选列表
 func GetComponentAssetCandidates(kind string) ([]string, error) {
 	switch kind {
-	case "xray":
-		return XrayAssetCandidates()
 	case "singbox":
 		return SingBoxAssetCandidates()
 	case "clash":

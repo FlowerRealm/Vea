@@ -59,7 +59,7 @@ func TestNodeRepoReplaceNodesForConfig_StableIDAndPreservesRuntimeMetrics(t *tes
 	}
 }
 
-func TestNodeRepoReplaceNodesForConfig_RemovesOnlyNodesInThatConfig(t *testing.T) {
+func TestNodeRepoReplaceNodesForConfig_DoesNotRemoveExistingNodes(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -88,8 +88,8 @@ func TestNodeRepoReplaceNodesForConfig_RemovesOnlyNodesInThatConfig(t *testing.T
 	if err != nil {
 		t.Fatalf("ListByConfigID cfg1: %v", err)
 	}
-	if len(nodesCfg1) != 1 {
-		t.Fatalf("expected cfg1 nodes=1, got %d", len(nodesCfg1))
+	if len(nodesCfg1) != 2 {
+		t.Fatalf("expected cfg1 nodes=2, got %d", len(nodesCfg1))
 	}
 
 	nodesCfg2, err := repo.ListByConfigID(ctx, "cfg2")
@@ -112,5 +112,45 @@ func TestStableNodeIDForConfig_DiffConfigProducesDiffID(t *testing.T) {
 	}
 	if id1 == id2 {
 		t.Fatalf("expected different config to produce different IDs, got %q", id1)
+	}
+}
+
+func TestNodeRepoReplaceNodesForConfig_NilSliceClearsOnlyThatConfig(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := NewStore(nil)
+	repo := NewNodeRepo(store)
+
+	if _, err := repo.ReplaceNodesForConfig(ctx, "cfg1", []domain.Node{
+		{Name: "n1", Protocol: domain.ProtocolVLESS, Address: "example.com", Port: 443},
+		{Name: "n2", Protocol: domain.ProtocolTrojan, Address: "example.net", Port: 443},
+	}); err != nil {
+		t.Fatalf("replace cfg1: %v", err)
+	}
+	if _, err := repo.ReplaceNodesForConfig(ctx, "cfg2", []domain.Node{
+		{Name: "m1", Protocol: domain.ProtocolVLESS, Address: "example.org", Port: 443},
+	}); err != nil {
+		t.Fatalf("replace cfg2: %v", err)
+	}
+
+	if _, err := repo.ReplaceNodesForConfig(ctx, "cfg1", domain.ClearNodes); err != nil {
+		t.Fatalf("clear cfg1: %v", err)
+	}
+
+	nodesCfg1, err := repo.ListByConfigID(ctx, "cfg1")
+	if err != nil {
+		t.Fatalf("ListByConfigID cfg1: %v", err)
+	}
+	if len(nodesCfg1) != 0 {
+		t.Fatalf("expected cfg1 nodes=0 after clear, got %d", len(nodesCfg1))
+	}
+
+	nodesCfg2, err := repo.ListByConfigID(ctx, "cfg2")
+	if err != nil {
+		t.Fatalf("ListByConfigID cfg2: %v", err)
+	}
+	if len(nodesCfg2) != 1 {
+		t.Fatalf("expected cfg2 nodes=1, got %d", len(nodesCfg2))
 	}
 }

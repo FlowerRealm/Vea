@@ -88,7 +88,6 @@ func selectEngineForFRouter(
 	}
 
 	addCandidate(domain.EngineSingBox)
-	addCandidate(domain.EngineXray)
 	addCandidate(domain.EngineClash)
 
 	fallback := domain.CoreEngineKind("")
@@ -139,9 +138,7 @@ func supportsNode(adapter adapters.CoreAdapter, node domain.Node) bool {
 		return false
 	}
 
-	// Shadowsocks 插件（如 obfs-local）：
-	// - Xray 配置模型里不支持插件（无法表达/无法工作）
-	// - sing-box / mihomo(clash) 支持
+	// Shadowsocks 插件（如 obfs-local）：sing-box 与 mihomo(clash) 支持。
 	if node.Protocol == domain.ProtocolShadowsocks && node.Security != nil && strings.TrimSpace(node.Security.Plugin) != "" {
 		switch adapter.Kind() {
 		case domain.EngineSingBox, domain.EngineClash:
@@ -154,42 +151,66 @@ func supportsNode(adapter adapters.CoreAdapter, node domain.Node) bool {
 }
 
 func recommendEngineForNodes(nodes []domain.Node, adapters map[domain.CoreEngineKind]adapters.CoreAdapter) EngineRecommendation {
-	// 无节点时默认推荐 Xray
+	// 无节点时默认推荐 sing-box（项目默认内核）。
 	if len(nodes) == 0 {
 		return EngineRecommendation{
-			RecommendedEngine: domain.EngineXray,
-			Reason:            "无节点，推荐使用更成熟稳定的 Xray",
+			RecommendedEngine: domain.EngineSingBox,
+			Reason:            "无节点，默认使用 sing-box",
 			TotalNodes:        0,
 		}
 	}
 
-	xrayAdapter := adapters[domain.EngineXray]
-	var xrayCompatible, singBoxOnly int
+	singBoxAdapter := adapters[domain.EngineSingBox]
+	clashAdapter := adapters[domain.EngineClash]
 
+	var singBoxSupported, clashSupported int
 	for _, node := range nodes {
-		if supportsNode(xrayAdapter, node) {
-			xrayCompatible++
-		} else {
-			singBoxOnly++
+		if supportsNode(singBoxAdapter, node) {
+			singBoxSupported++
+		}
+		if supportsNode(clashAdapter, node) {
+			clashSupported++
 		}
 	}
 
-	rec := EngineRecommendation{
-		XrayCompatible: xrayCompatible,
-		SingBoxOnly:    singBoxOnly,
-		TotalNodes:     len(nodes),
+	total := len(nodes)
+
+	// 规则：优先 sing-box（协议覆盖更广），不行则回退 clash(mihomo)。
+	if singBoxAdapter != nil && singBoxSupported == total {
+		return EngineRecommendation{
+			RecommendedEngine: domain.EngineSingBox,
+			Reason:            "sing-box 支持协议覆盖更广，推荐作为通用选择",
+			TotalNodes:        total,
+		}
 	}
 
-	if singBoxOnly > 0 {
-		rec.RecommendedEngine = domain.EngineSingBox
-		rec.Reason = fmt.Sprintf("存在 %d 个 Xray 不支持的节点（如 Hysteria2/TUIC）", singBoxOnly)
-	} else if xrayCompatible == len(nodes) {
-		rec.RecommendedEngine = domain.EngineXray
-		rec.Reason = "所有节点均支持 Xray，推荐使用更成熟稳定的 Xray"
-	} else {
-		rec.RecommendedEngine = domain.EngineSingBox
-		rec.Reason = "sing-box 支持更多协议，推荐作为通用选择"
+	if clashAdapter != nil && clashSupported == total {
+		return EngineRecommendation{
+			RecommendedEngine: domain.EngineClash,
+			Reason:            "节点均可由 clash(mihomo) 支持，推荐使用 clash",
+			TotalNodes:        total,
+		}
 	}
 
-	return rec
+	// 部分兼容时：仍优先 sing-box（若适配器存在），否则回退 clash。
+	if singBoxAdapter != nil {
+		return EngineRecommendation{
+			RecommendedEngine: domain.EngineSingBox,
+			Reason:            fmt.Sprintf("sing-box 可支持 %d/%d 个节点，优先作为默认选择", singBoxSupported, total),
+			TotalNodes:        total,
+		}
+	}
+	if clashAdapter != nil {
+		return EngineRecommendation{
+			RecommendedEngine: domain.EngineClash,
+			Reason:            fmt.Sprintf("clash 可支持 %d/%d 个节点，作为兜底选择", clashSupported, total),
+			TotalNodes:        total,
+		}
+	}
+
+	return EngineRecommendation{
+		RecommendedEngine: "",
+		Reason:            "未找到可用内核适配器",
+		TotalNodes:        total,
+	}
 }

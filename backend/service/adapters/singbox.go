@@ -15,6 +15,7 @@ import (
 
 	"vea/backend/domain"
 	"vea/backend/service/nodegroup"
+	"vea/backend/service/shared"
 )
 
 // getDefaultInterface 获取系统默认网络接口名称
@@ -366,16 +367,18 @@ func (a *SingBoxAdapter) buildOutbound(node domain.Node, geo GeoFiles) (map[stri
 		outbound["method"] = sec.Method
 		outbound["password"] = sec.Password
 
-		// 处理插件：sing-box 直接支持 obfs-local，不需要转换
-		if sec.Plugin == "obfs-local" {
+		plugin, pluginOpts := shared.NormalizeShadowsocksPluginAlias(sec.Plugin, sec.PluginOpts)
+
+		// 处理插件：sing-box 直接支持 obfs-local（simple-obfs）
+		if plugin == "obfs-local" {
 			// sing-box 原生支持 obfs-local (simple-obfs)
 			outbound["plugin"] = "obfs-local"
-			outbound["plugin_opts"] = sec.PluginOpts
-		} else if sec.Plugin != "" {
-			// 其他插件（v2ray-plugin 等）保留原样
-			outbound["plugin"] = sec.Plugin
-			if sec.PluginOpts != "" {
-				outbound["plugin_opts"] = sec.PluginOpts
+			outbound["plugin_opts"] = pluginOpts
+		} else if plugin != "" {
+			// 其他插件（v2ray-plugin 等）保留原样（如果 sing-box 不支持会在启动时直接报错）
+			outbound["plugin"] = plugin
+			if pluginOpts != "" {
+				outbound["plugin_opts"] = pluginOpts
 			}
 		}
 
@@ -495,7 +498,7 @@ func (a *SingBoxAdapter) buildRoute(plan nodegroup.RuntimePlan, geo GeoFiles, ta
 	// TUN 模式：排除代理进程，避免流量循环（自保规则，不属于用户路由语义）
 	if plan.InboundMode == domain.InboundTUN {
 		rules = append(rules, map[string]interface{}{
-			"process_name": []string{"sing-box", "xray", "v2ray"},
+			"process_name": []string{"sing-box"},
 			"outbound":     "direct",
 		})
 	}
@@ -578,9 +581,17 @@ func (a *SingBoxAdapter) buildDNS(profile domain.ProxyConfig, defaultTag string)
 	}
 	dnsRemote := map[string]interface{}{
 		"tag": "dns-remote",
-		// 重要：默认用 TCP，避免很多代理链路/插件不支持 UDP 导致外网域名解析卡死。
-		"type":   "tcp",
-		"server": "8.8.8.8", // Google DNS，走代理
+		// 关键：不要默认用 53 端口（udp/tcp）。
+		// 在 TUN 场景下，很多节点/VPS/网络环境会对 53 端口做出站限制，表现为“IP 能通但域名解析卡死”。
+		// 改用 DoH(443) 可以显著降低此类问题概率（并且仍可通过 detour 走代理，避免污染）。
+		"type":        "https",
+		"server":      "1.1.1.1",
+		"server_port": 443,
+		"path":        "/dns-query",
+		"tls": map[string]interface{}{
+			"enabled":     true,
+			"server_name": "cloudflare-dns.com",
+		},
 	}
 	// sing-box 会在运行期拒绝「DNS server detour 指向一个空的 direct outbound」。
 	// 当 defaultTag=direct 且 direct outbound 没有 dialer 参数时，显式 detour="direct" 会直接 FATAL。

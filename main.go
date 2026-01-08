@@ -58,9 +58,28 @@ func run() int {
 	}
 
 	addr := flag.String("addr", ":19080", "HTTP listen address")
-	statePath := flag.String("state", "data/state.json", "path to state snapshot")
+	statePath := flag.String("state", shared.DefaultStatePath(), "path to state snapshot")
 	dev := flag.Bool("dev", false, "enable development mode with verbose logging")
 	flag.Parse()
+
+	// Normalize state path:
+	// - Default is already absolute under userData.
+	// - Relative paths are resolved under userData to avoid writing into source/working directories.
+	if strings.TrimSpace(*statePath) == "" {
+		*statePath = shared.DefaultStatePath()
+	}
+	if !filepath.IsAbs(*statePath) {
+		if root := strings.TrimSpace(shared.UserDataRoot()); root != "" {
+			*statePath = filepath.Join(root, *statePath)
+		} else if abs, err := filepath.Abs(*statePath); err == nil {
+			*statePath = abs
+		}
+	}
+
+	// Migrate legacy runtime directories (repo/exe dir) into userData before any writes.
+	if err := shared.MigrateLegacyData(shared.LegacyDataMigrationOptions{}); err != nil {
+		log.Printf("[Migrate] legacy data migration failed: %v", err)
+	}
 
 	// 配置日志级别
 	if *dev {
@@ -130,7 +149,7 @@ func run() int {
 	nodeSvc.SetMeasurer(speedMeasurer)
 	frouterSvc.SetMeasurer(speedMeasurer)
 
-	configSvc := configsvc.NewService(configRepo, nodeSvc)
+	configSvc := configsvc.NewService(configRepo, nodeSvc, frouterRepo)
 	proxySvc := proxy.NewService(frouterRepo, nodeRepo, componentRepo, settingsRepo)
 	componentSvc := component.NewService(componentRepo)
 	geoSvc := geo.NewService(geoRepo)
@@ -143,7 +162,7 @@ func run() int {
 	snapshotter := persist.NewSnapshotterV2(*statePath, memStore)
 	snapshotter.SubscribeEvents(eventBus)
 
-	// 7.1 确保核心组件存在（清空数据后也应显示 xray/sing-box/clash）
+	// 7.1 确保核心组件存在（清空数据后也应显示 sing-box/clash）
 	if err := componentSvc.EnsureDefaultComponents(context.Background()); err != nil {
 		log.Printf("ensure default components failed: %v", err)
 	}
@@ -160,6 +179,9 @@ func run() int {
 
 	// 7.3 启动后台任务（订阅/Geo）
 	tasks.NewScheduler(configSvc, geoSvc).Start(ctx)
+
+	// 7.35 内核随应用生命周期常驻运行（不自动启用系统代理）
+	startKernelKeepalive(ctx, facade)
 
 	// 8. 创建路由
 	router := api.NewRouter(facade)
@@ -204,6 +226,93 @@ func run() int {
 	}
 	<-cleanupDone
 	return 0
+}
+
+func startKernelKeepalive(ctx context.Context, facade *service.Facade) {
+	if facade == nil {
+		return
+	}
+
+	const (
+		keepaliveInterval      = 2 * time.Second
+		minRestartAttemptDelay = 10 * time.Second
+	)
+
+	go func() {
+		ticker := time.NewTicker(keepaliveInterval)
+		defer ticker.Stop()
+
+		lastAttemptAt := time.Time{}
+
+		ensureRunning := func() {
+			if ctx.Err() != nil {
+				return
+			}
+			status := facade.GetProxyStatus()
+			if status == nil {
+				return
+			}
+			if busy, ok := status["busy"].(bool); ok && busy {
+				return
+			}
+			if userStopped, ok := status["userStopped"].(bool); ok && userStopped {
+				return
+			}
+			if running, ok := status["running"].(bool); ok && running {
+				return
+			}
+
+			// 避免在“缺少内核/权限/网络”等场景下疯狂重试刷屏。
+			if !lastAttemptAt.IsZero() && time.Since(lastAttemptAt) < minRestartAttemptDelay {
+				return
+			}
+			lastAttemptAt = time.Now()
+
+			cfg, err := facade.GetProxyConfig()
+			if err != nil {
+				log.Printf("[Kernel] auto-start skipped: get proxy config failed: %v", err)
+				return
+			}
+
+			if strings.TrimSpace(cfg.FRouterID) == "" {
+				// 理论上 EnsureDefaultFRouter 已保证该值不为空；这里做一次兜底。
+				frouters, err := facade.ListFRouters()
+				if err == nil && len(frouters) > 0 {
+					picked := frouters[0]
+					for i := range frouters {
+						if frouters[i].CreatedAt.Before(picked.CreatedAt) {
+							picked = frouters[i]
+						}
+					}
+					if picked.ID != "" {
+						cfg.FRouterID = picked.ID
+					}
+				}
+			}
+			if strings.TrimSpace(cfg.FRouterID) == "" {
+				log.Printf("[Kernel] auto-start skipped: no frouterId")
+				return
+			}
+
+			log.Printf("[Kernel] proxy not running, auto-starting (frouter=%s, inboundMode=%s)", cfg.FRouterID, cfg.InboundMode)
+			if err := facade.StartProxy(cfg); err != nil {
+				facade.MarkProxyRestartFailed(err)
+				log.Printf("[Kernel] auto-start failed: %v", err)
+			}
+		}
+
+		// 启动后立即尝试一次，避免等待一个周期。
+		ensureRunning()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				ensureRunning()
+			}
+		}
+	}()
 }
 
 func setupAppLogging() (path string, startedAt time.Time, closeFn func()) {

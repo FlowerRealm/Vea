@@ -70,3 +70,25 @@ func TestParseMultipleLinks_FiltersSubscriptionInfoNodes(t *testing.T) {
 		t.Fatalf("expected node address %q, got %q", "example.com", nodes[0].Address)
 	}
 }
+
+func TestParseShareLink_Shadowsocks_ObfsAliasNormalizesToObfsLocal(t *testing.T) {
+	t.Parallel()
+
+	link := "ss://YWVzLTEyOC1nY206cGFzcw==@example.com:8388/?plugin=obfs%3Bmode%3Dtls%3Bhost%3Dobfs.example.com#ss-obfs"
+	parsed, err := ParseShareLink(link)
+	if err != nil {
+		t.Fatalf("parse share link: %v", err)
+	}
+	if parsed.Protocol != domain.ProtocolShadowsocks {
+		t.Fatalf("expected protocol %q, got %q", domain.ProtocolShadowsocks, parsed.Protocol)
+	}
+	if parsed.Security == nil {
+		t.Fatalf("expected security to be set")
+	}
+	if parsed.Security.Plugin != "obfs-local" {
+		t.Fatalf("expected plugin=obfs-local, got %q", parsed.Security.Plugin)
+	}
+	if parsed.Security.PluginOpts != "obfs=tls;obfs-host=obfs.example.com" {
+		t.Fatalf("expected pluginOpts normalized, got %q", parsed.Security.PluginOpts)
+	}
+}

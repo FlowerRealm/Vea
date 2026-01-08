@@ -1984,7 +1984,6 @@
 	          </div>
 	          <select id="engine-select" title="选择内核偏好（需要时会重启内核）">
 	            <option value="auto" data-label="自动">自动</option>
-	            <option value="xray" data-label="Xray">Xray</option>
 	            <option value="singbox" data-label="sing-box">sing-box</option>
 	            <option value="clash" data-label="Clash">Clash</option>
 	          </select>
@@ -2140,7 +2139,7 @@
 	          <p>管理和监控你的 FRouter 配置。</p>
 	        </div>
 	        <div class="panel-actions">
-          <span id="xray-state" style="font-size:12px; color:var(--text-secondary); margin-right:16px;">核心：
+          <span id="core-state" style="font-size:12px; color:var(--text-secondary); margin-right:16px;">核心：
             未知</span>
 	          <button id="node-refresh">刷新 FRouter</button>
 	        </div>
@@ -2254,7 +2253,7 @@
 		      <div class="panel-header">
 		        <div class="panel-title">
 		          <h2>日志</h2>
-		          <p>内核（Xray / sing-box / Clash）与应用（后端）运行日志（独立于终端输出）。</p>
+		          <p>内核（sing-box / Clash）与应用（后端）运行日志（独立于终端输出）。</p>
 		        </div>
 		      </div>
 
@@ -2357,13 +2356,6 @@
             </svg>
             sing-box
           </button>
-          <button class="settings-nav-item" data-settings-tab="xray">
-            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-linecap="round"
-              stroke-linejoin="round">
-              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-            </svg>
-            Xray
-          </button>
           <button class="settings-nav-item" data-settings-tab="advanced">
             <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-linecap="round"
               stroke-linejoin="round">
@@ -2387,9 +2379,6 @@
 
           <!-- sing-box 设置 -->
           <div class="settings-content" id="settings-singbox" style="display:none;"></div>
-
-          <!-- Xray 设置 -->
-          <div class="settings-content" id="settings-xray" style="display:none;"></div>
 
           <!-- 高级设置 -->
           <div class="settings-content" id="settings-advanced" style="display:none;"></div>
@@ -2785,7 +2774,7 @@
       let frouterTags = [];
       let currentFRouterTab = "全部";
 
-      let xrayStatus = {
+      let coreStatus = {
         enabled: false,
         running: false,
         binary: "",
@@ -3351,19 +3340,19 @@
 	            kernelLogOffset = data.to;
 	          }
 
-		          if (metaEl) {
-		            const parts = [];
-		            if (data.engine) {
-		              parts.push(componentDisplayName(String(data.engine)));
-		            } else {
-		              parts.push("内核");
-		            }
-		            if (data.running === false) parts.push("已停止");
-		            if (data.pid) parts.push(`pid ${data.pid}`);
-		            if (startedAt) parts.push(`启动于 ${formatTime(startedAt)}`);
-		            if (data.error) parts.push(`错误：${data.error}`);
-		            metaEl.textContent = parts.length ? parts.join(" · ") : "-";
-		          }
+	          if (metaEl) {
+	            const parts = [];
+	            if (data.engine) {
+	              parts.push(componentDisplayName(String(data.engine)));
+	            } else {
+	              parts.push("内核");
+	            }
+	            if (data.running === false) parts.push("已停止");
+	            if (data.pid) parts.push(`pid ${data.pid}`);
+	            if (startedAt) parts.push(`启动于 ${formatTime(startedAt)}`);
+	            if (data.error) parts.push(`错误：${data.error}`);
+	            metaEl.textContent = parts.length ? parts.join(" · ") : "-";
+	          }
 
 	          if (kernelLogAutoScroll && logContainer) {
 	            logContainer.scrollTop = logContainer.scrollHeight;
@@ -3533,8 +3522,8 @@
           return;
         }
 
-        xrayStatus = status || {};
-        updateXrayUI(xrayStatus);
+        coreStatus = status || {};
+        updateCoreUI(coreStatus);
 
         const coreRunning = Boolean(status && status.running);
         if (!coreRunning) {
@@ -3579,14 +3568,14 @@
           await api.post("/proxy/start", { frouterId });
         } catch (err) {
           showStatus(`切换失败：${err.message}`, "error", 6000);
-          await refreshXrayStatus();
+          await refreshCoreStatus();
           await loadSystemProxySettings();
           await loadIPGeo();
           return;
         }
 
         await sleep(500);
-        await refreshXrayStatus();
+        await refreshCoreStatus();
 
         if (wasSystemProxyEnabled) {
           try {
@@ -3606,36 +3595,37 @@
         }
       }
 
-      async function refreshXrayStatus({ notify = false } = {}) {
+      async function refreshCoreStatus({ notify = false } = {}) {
         try {
           const status = await api.proxy.status();
-          xrayStatus = status || {};
-          updateXrayUI(xrayStatus);
+          coreStatus = status || {};
+          updateCoreUI(coreStatus);
 
-          if (notify && xrayStatus.running) {
+          if (notify && coreStatus.running) {
             showStatus("内核已启动", "success");
           }
         } catch (err) {
           console.error("Failed to refresh proxy status:", err);
         }
       }
-	      function updateXrayUI(status = {}) {
-	        if (!status || typeof status !== "object") {
-	          status = {};
-	        }
-	        const indicator = document.getElementById("xray-state");
-	        const proxyToggle = document.getElementById("proxy-toggle");
 
-	        const coreRunning = Boolean(status.running);
-	        const systemProxyEnabled = Boolean(systemProxySettings && systemProxySettings.enabled);
+      function updateCoreUI(status = {}) {
+        if (!status || typeof status !== "object") {
+          status = {};
+        }
+        const indicator = document.getElementById("core-state");
+        const proxyToggle = document.getElementById("proxy-toggle");
 
-	        if (indicator) {
-	          indicator.className = coreRunning ? "badge active" : "badge";
-	          const engineLabel = coreRunning && status.engine ? componentDisplayName(status.engine) : "";
-	          indicator.textContent = coreRunning
-	            ? `核心：运行中${engineLabel ? `（${engineLabel}）` : ""}`
-	            : "核心：已停止";
-	        }
+        const coreRunning = Boolean(status.running);
+        const systemProxyEnabled = Boolean(systemProxySettings && systemProxySettings.enabled);
+
+        if (indicator) {
+          indicator.className = coreRunning ? "badge active" : "badge";
+          const engineLabel = coreRunning && status.engine ? componentDisplayName(status.engine) : "";
+          indicator.textContent = coreRunning
+            ? `核心：运行中${engineLabel ? `（${engineLabel}）` : ""}`
+            : "核心：已停止";
+        }
 
         if (!proxyToggle) {
           return;
@@ -3652,7 +3642,6 @@
           proxyToggle.title = coreRunning ? "启用系统代理（内核已在后台运行）" : "启用系统代理";
         }
       }
-
 
       // TUN status management
       let tunStatusCache = null;
@@ -3745,7 +3734,7 @@
         const select = document.getElementById("engine-select");
         if (!select) return;
 
-        const normalized = ["auto", "xray", "singbox", "clash"].includes(preferredEngine)
+        const normalized = ["auto", "singbox", "clash"].includes(preferredEngine)
           ? preferredEngine
           : "auto";
 
@@ -3774,7 +3763,7 @@
         let wasRunning = false;
         try {
           const status = await api.proxy.status();
-          xrayStatus = status || xrayStatus;
+          coreStatus = status || coreStatus;
           wasRunning = Boolean(status && status.running);
         } catch {
           wasRunning = false;
@@ -3785,7 +3774,7 @@
         let configSaved = false;
 
         async function refreshEngineSwitchUI({ alwaysLoadSystemProxy = false, restoreSystemProxy = null } = {}) {
-          await refreshXrayStatus();
+          await refreshCoreStatus();
 
           if (typeof restoreSystemProxy === "function") {
             await restoreSystemProxy();
@@ -3816,7 +3805,7 @@
           const selectedFRouter = getCurrentFRouter();
           const frouterId = selectedFRouter && selectedFRouter.id
             ? selectedFRouter.id
-            : (updated && updated.frouterId ? updated.frouterId : (xrayStatus && xrayStatus.frouterId ? xrayStatus.frouterId : ""));
+            : (updated && updated.frouterId ? updated.frouterId : (coreStatus && coreStatus.frouterId ? coreStatus.frouterId : ""));
           if (!frouterId) {
             showStatus("内核偏好已保存，但未选择 FRouter，无法重启内核", "warn", 4000);
             return;
@@ -3848,7 +3837,7 @@
             },
           });
 
-          const actualEngine = xrayStatus && xrayStatus.engine ? String(xrayStatus.engine) : "";
+          const actualEngine = coreStatus && coreStatus.engine ? String(coreStatus.engine) : "";
           const action = wasRunning ? "重启" : "启动";
           if (normalized === "auto") {
             const label = actualEngine ? componentDisplayName(actualEngine) : "";
@@ -3874,7 +3863,7 @@
             const selectedFRouter = getCurrentFRouter();
             const frouterId = selectedFRouter && selectedFRouter.id
               ? selectedFRouter.id
-              : (xrayStatus && xrayStatus.frouterId ? xrayStatus.frouterId : "");
+              : (coreStatus && coreStatus.frouterId ? coreStatus.frouterId : "");
             if (frouterId) {
               try {
                 await api.post("/proxy/start", { frouterId });
@@ -3895,7 +3884,7 @@
             alwaysLoadSystemProxy: true,
             restoreSystemProxy: async () => {
               if (!wasSystemProxyEnabled || !systemProxyDisabled) return;
-              if (!(xrayStatus && xrayStatus.running)) return;
+              if (!(coreStatus && coreStatus.running)) return;
               try {
                 await api.put("/settings/system-proxy", { enabled: true, ignoreHosts });
               } catch {
@@ -3963,7 +3952,7 @@
                 ignoreHosts: Array.isArray(data.ignoreHosts) ? data.ignoreHosts : systemProxySettings.ignoreHosts,
               };
               renderSystemProxy(systemProxySettings);
-              updateXrayUI(xrayStatus);
+              updateCoreUI(coreStatus);
             } catch (err) {
               console.warn("Failed to disable system proxy when enabling TUN:", err);
             }
@@ -3973,7 +3962,7 @@
           let status = null;
           try {
             status = await api.proxy.status();
-            xrayStatus = status || xrayStatus;
+            coreStatus = status || coreStatus;
           } catch {
             status = null;
           }
@@ -3991,7 +3980,7 @@
             await api.post("/proxy/start", { frouterId });
           }
 
-          await refreshXrayStatus();
+          await refreshCoreStatus();
           await checkTUNStatus();
           await loadSystemProxySettings();
           await loadIPGeo();
@@ -4108,7 +4097,7 @@
 	          renderFRouters(frouters, currentFRouterId);
 	          updateFRouterSelectors();
 	          updateHomeFRouterMetrics();
-	          refreshXrayStatus();
+	          refreshCoreStatus();
 	          if (notify) {
 	            showStatus("FRouter 列表已刷新", "success");
 	          }
@@ -4572,28 +4561,28 @@
         }
         tbody.innerHTML = configs
           .map((cfg) => {
-            const syncState = cfg.lastSyncError
-              ? `<span class="badge error">失败：${escapeHtml(cfg.lastSyncError)}</span>`
+            const syncErr = cfg.lastSyncError || "";
+            const syncState = syncErr
+              ? `<span class="badge error text-truncate" title="${escapeHtml(syncErr)}">失败：${escapeHtml(syncErr)}</span>`
               : '<span class="badge">正常</span>';
             const source = cfg.sourceUrl ? `<br /><div class="muted text-truncate" title="${escapeHtml(cfg.sourceUrl)}">${escapeHtml(cfg.sourceUrl)}</div>` : "";
             return `
           <tr data-id="${escapeHtml(cfg.id)}">
-            <td>${escapeHtml(cfg.name)}${source}</td>
-            <td><span class="badge">${escapeHtml(cfg.format)}</span></td>
-            <td>${formatInterval(cfg.autoUpdateInterval)}</td>
-            <td>${formatTime(cfg.lastSyncedAt)}</td>
-            <td>${syncState}</td>
-            <td>
-              <button class="ghost" data-action="edit-config">编辑</button>
-              <button class="ghost" data-action="pull-nodes">拉取节点</button>
-              <button class="ghost" data-action="refresh-config">刷新</button>
-              <button class="danger" data-action="delete-config">删除</button>
-            </td>
-          </tr>
-        `;
-          })
-          .join("");
-      }
+	            <td>${escapeHtml(cfg.name)}${source}</td>
+	            <td><span class="badge">${escapeHtml(cfg.format)}</span></td>
+	            <td>${formatInterval(cfg.autoUpdateInterval)}</td>
+	            <td>${formatTime(cfg.lastSyncedAt)}</td>
+	            <td>${syncState}</td>
+	            <td>
+	              <button class="ghost" data-action="edit-config">编辑</button>
+	              <button class="ghost" data-action="pull-nodes">拉取节点</button>
+	              <button class="danger" data-action="delete-config">删除</button>
+	            </td>
+	          </tr>
+	        `;
+	          })
+	          .join("");
+	      }
 
       function renderSystemProxy(settings) {
         if (!systemProxyIgnoreInput) return;
@@ -4610,7 +4599,7 @@
             ignoreHosts: Array.isArray(data.ignoreHosts) ? data.ignoreHosts : [...SYSTEM_PROXY_DEFAULTS],
           };
           renderSystemProxy(systemProxySettings);
-          updateXrayUI(xrayStatus);
+          updateCoreUI(coreStatus);
           if (notify) {
             const msg = payload && payload.message ? payload.message : "系统代理设置已刷新";
             showStatus(msg, payload && payload.message ? "info" : "success");
@@ -4677,7 +4666,7 @@
           loadNodes(),
           loadComponents(),
           loadIPGeo(),
-          refreshXrayStatus({ notify }),
+          refreshCoreStatus({ notify }),
           loadSystemProxySettings({ notify }),
           checkTUNStatus({ notify }),
           loadTUNSettings(),
@@ -4712,7 +4701,7 @@
             let status = null;
             try {
               status = await api.proxy.status();
-              xrayStatus = status || xrayStatus;
+              coreStatus = status || coreStatus;
             } catch {
               status = null;
             }
@@ -4750,7 +4739,7 @@
           showStatus(`操作失败：${err.message}`, "error", 6000);
         } finally {
           proxyToggleButton.disabled = false;
-          await refreshXrayStatus();
+          await refreshCoreStatus();
           await loadSystemProxySettings();
           await loadIPGeo();
         }
@@ -4761,18 +4750,6 @@
 
       function normalizeComponents(components) {
         const list = Array.isArray(components) ? components : [];
-
-        const xray = list.find((item) => item && item.kind === "xray") || {
-          id: "",
-          name: "Xray",
-          kind: "xray",
-          lastInstalledAt: "",
-          installDir: "",
-          lastVersion: "",
-          checksum: "",
-          lastSyncError: "",
-          meta: { repo: "XTLS/Xray-core" },
-        };
 
         const singbox = list.find((item) => item && item.kind === "singbox") || {
           id: "",
@@ -4800,13 +4777,12 @@
 
         const rest = list.filter((item) => {
           if (!item || typeof item !== "object") return false;
-          if (item.kind === "xray") return item !== xray;
           if (item.kind === "singbox") return item !== singbox;
           if (item.kind === "clash") return item !== clash;
           return true;
         });
 
-        return [xray, singbox, clash, ...rest];
+        return [singbox, clash, ...rest];
       }
 
       function renderComponents(components) {
@@ -4862,7 +4838,7 @@
               actionBtn = `<button class="primary" data-action="update-component">安装</button>`;
             }
 
-            const isCoreComponent = component.kind === "xray" || component.kind === "singbox" || component.kind === "clash";
+            const isCoreComponent = component.kind === "singbox" || component.kind === "clash";
             const uninstallBtn = (isCoreComponent && component.installDir && installStatus !== 'downloading' && installStatus !== 'extracting')
               ? '<button class="danger" data-action="uninstall-component">卸载</button>'
               : '';
@@ -4893,7 +4869,7 @@
           componentsCache = Array.isArray(components) ? components : [];
           renderComponents(componentsCache);
           updateEngineSelectOptions();
-          await refreshXrayStatus();
+          await refreshCoreStatus();
           if (notify) {
             showStatus("组件列表已刷新", "success");
           }
@@ -4902,14 +4878,12 @@
           componentsCache = [];
           renderComponents([]);
           updateEngineSelectOptions();
-          await refreshXrayStatus();
+          await refreshCoreStatus();
         }
       }
 
       function componentDisplayName(kind) {
         switch (kind) {
-          case "xray":
-            return "Xray";
           case "singbox":
             return "sing-box";
           case "clash":
@@ -4936,7 +4910,7 @@
           await api.post(`/components/${target.id}/install`);
           showStatus(`${pretty} 安装任务已触发`, "info", 2400);
           await loadComponents();
-          await refreshXrayStatus();
+          await refreshCoreStatus();
         } catch (err) {
           showStatus(`${pretty} 安装失败：${err.message}`, "error", 6000);
         }
@@ -5023,14 +4997,15 @@
         renderRuleItem(edge, index) {
           const target = this.getChainDisplay(edge);
           const targetClass = edge.to === 'direct' ? 'direct' : (edge.to === 'block' ? 'block' : '');
-          const ruleInfo = this.getRuleInfo(edge);
+          const title = this.getRuleTitle(edge);
+          const ruleInfo = `去向: ${target}`;
           const disabledClass = edge.enabled === false ? 'disabled' : '';
 
           return `
             <div class="chain-rule-item ${disabledClass}" data-edge-id="${escapeHtml(edge.id)}" data-index="${index}" draggable="true">
               <div class="chain-rule-drag">⋮⋮</div>
               <div class="chain-rule-main">
-                <div class="chain-rule-target ${targetClass}">${escapeHtml(target)}</div>
+                <div class="chain-rule-target ${targetClass}">${escapeHtml(title)}</div>
                 <div class="chain-rule-info">${escapeHtml(ruleInfo)}</div>
               </div>
               <div class="chain-rule-meta">
@@ -5249,14 +5224,77 @@
           }
         }
 
-        getRuleInfo(edge) {
-          if (!edge.ruleType || edge.ruleType === '') {
-            return edge.description || '默认（匹配所有流量）';
+        getRuleTitle(edge) {
+          const ruleType = edge?.ruleType != null ? String(edge.ruleType) : '';
+          const desc = edge?.description != null ? String(edge.description).trim() : '';
+
+          if (!ruleType) {
+            return desc || '默认（匹配所有流量）';
           }
-          if (edge.ruleType === 'route') {
-            return (edge.description && String(edge.description).trim()) || '自定义';
+
+          if (ruleType === 'route') {
+            if (desc && desc.startsWith('模板:')) {
+              return desc;
+            }
+
+            const tmpl = this.findMatchingTemplate(edge);
+            if (tmpl?.name) {
+              return `模板: ${tmpl.name}`;
+            }
+
+            const domains = Array.isArray(edge?.routeRule?.domains)
+              ? edge.routeRule.domains.map(s => String(s).trim()).filter(Boolean)
+              : [];
+            const ips = Array.isArray(edge?.routeRule?.ips)
+              ? edge.routeRule.ips.map(s => String(s).trim()).filter(Boolean)
+              : [];
+            const total = domains.length + ips.length;
+            if (total > 0) {
+              const first = domains.length > 0 ? domains[0] : ips[0];
+              const kind = domains.length > 0 ? '域名' : 'IP';
+              return `${kind}: ${first}${total > 1 ? ` +${total - 1}` : ''}`;
+            }
+
+            return desc || '自定义';
           }
-          return (edge.description && String(edge.description).trim()) || '自定义';
+
+          return desc || '自定义';
+        }
+
+        findMatchingTemplate(edge) {
+          const rr = edge?.routeRule;
+          if (!rr) return null;
+
+          const normalize = (arr) => {
+            if (!Array.isArray(arr)) return [];
+            return arr
+              .map(v => (v == null ? '' : String(v).trim()))
+              .filter(Boolean)
+              .sort();
+          };
+
+          const domains = normalize(rr.domains);
+          const ips = normalize(rr.ips);
+          const templates = (typeof RULE_TEMPLATES !== 'undefined' && RULE_TEMPLATES && Array.isArray(RULE_TEMPLATES.templates))
+            ? RULE_TEMPLATES.templates
+            : [];
+
+          const equal = (a, b) => {
+            if (a.length !== b.length) return false;
+            for (let i = 0; i < a.length; i++) {
+              if (a[i] !== b[i]) return false;
+            }
+            return true;
+          };
+
+          for (const tmpl of templates) {
+            const tr = tmpl?.rule || {};
+            if (equal(domains, normalize(tr.domains)) && equal(ips, normalize(tr.ips))) {
+              return tmpl;
+            }
+          }
+
+          return null;
         }
 
         bindEvents() {
@@ -6629,20 +6667,12 @@
           event.preventDefault();
           const form = event.target;
           const isEdit = Boolean(editingConfig && editingConfig.id);
-          let inferredFormat = "";
           const typedPayload = (form.payload.value || "").trim();
           const sourceUrlInput = form.sourceUrl.value.trim();
           const sourceUrl = sourceUrlInput || (isEdit ? (editingConfig?.sourceUrl || "") : "");
-          const detectSample = typedPayload || sourceUrl;
-          if (detectSample) {
-            const lower = detectSample.toLowerCase();
-            if (/\"outbounds\"/.test(detectSample) || /\"inbounds\"/.test(detectSample) || /vmess|trojan|vless|ss:/.test(lower)) {
-              inferredFormat = "xray-json";
-            }
-          }
           const payload = {
             name: form.name.value.trim() || (isEdit ? (editingConfig?.name || "") : ""),
-            format: inferredFormat || (isEdit ? (editingConfig?.format || "xray-json") : "xray-json"),
+            format: "subscription",
             sourceUrl,
             payload: typedPayload || (isEdit ? (editingConfig?.payload || "") : ""),
             autoUpdateIntervalMinutes: parseNumber(form.autoUpdateInterval.value),
@@ -6733,22 +6763,18 @@
         const id = tr.dataset.id;
         const action = button.dataset.action;
         try {
-          if (action === "edit-config") {
-            const cfg = Array.isArray(configsCache) ? configsCache.find((item) => item.id === id) : null;
-            if (!cfg) {
-              showStatus("配置未找到", "error", 4000);
-              return;
-            }
-            openConfigModal(cfg);
-          } else if (action === "refresh-config") {
-            await api.post(`/configs/${id}/refresh`);
-            showStatus("配置刷新完成", "success");
-            await Promise.all([loadConfigs(), loadFRouters(), loadNodes()]);
-          } else if (action === "pull-nodes") {
-            await api.post(`/configs/${id}/pull-nodes`);
-            showStatus("订阅节点已同步", "success");
-            await Promise.all([loadConfigs(), loadFRouters(), loadNodes()]);
-          } else if (action === "delete-config") {
+	          if (action === "edit-config") {
+	            const cfg = Array.isArray(configsCache) ? configsCache.find((item) => item.id === id) : null;
+	            if (!cfg) {
+	              showStatus("配置未找到", "error", 4000);
+	              return;
+	            }
+	            openConfigModal(cfg);
+	          } else if (action === "pull-nodes") {
+	            await api.post(`/configs/${id}/pull-nodes`);
+	            showStatus("订阅节点已同步", "success");
+	            await Promise.all([loadConfigs(), loadFRouters(), loadNodes()]);
+	          } else if (action === "delete-config") {
             if (!confirm("确认删除该配置？")) return;
             await api.delete(`/configs/${id}`);
             showStatus("配置已删除", "success");
@@ -6774,7 +6800,7 @@
               ignoreHosts: Array.isArray(data.ignoreHosts) ? data.ignoreHosts : [...SYSTEM_PROXY_DEFAULTS],
             };
             renderSystemProxy(systemProxySettings);
-            updateXrayUI(xrayStatus);
+            updateCoreUI(coreStatus);
             const msg = response && response.message ? response.message : "系统代理设置已保存";
             showStatus(msg, response && response.message ? "info" : "success");
           } catch (err) {
@@ -6792,7 +6818,7 @@
             ignoreHosts: [...SYSTEM_PROXY_DEFAULTS],
           };
           renderSystemProxy(systemProxySettings);
-          updateXrayUI(xrayStatus);
+          updateCoreUI(coreStatus);
         });
       }
 
@@ -6841,7 +6867,6 @@
         proxy: 'settings-proxy',
         tun: 'settings-network',
         singbox: 'settings-singbox',
-        xray: 'settings-xray',
         advanced: 'settings-advanced'
       };
 
@@ -6925,6 +6950,114 @@
         });
       }
 
+      // ===== 系统代理端口（ProxyConfig.inboundPort）联动 =====
+      // 注意：
+      // - sing-box / mihomo(clash): mixed 端口同时提供 HTTP + SOCKS
+      let proxyPortApplyTimeout = null;
+
+      async function syncProxyPortFromBackend() {
+        try {
+          const cfg = await api.get("/proxy/config");
+          const port = cfg && typeof cfg.inboundPort === "number" ? cfg.inboundPort : 0;
+          if (port > 0) {
+            settingsManager.values["proxy.port"] = port; // 直接写入，避免触发监听器
+          }
+        } catch (err) {
+          console.warn("[Settings] 同步代理端口失败:", err.message);
+        }
+      }
+
+      async function applyProxyPortSetting(port) {
+        const normalized = parseInt(String(port), 10);
+        if (!Number.isFinite(normalized) || normalized < 1024 || normalized > 65535) {
+          showStatus("代理端口无效（范围 1024-65535）", "error", 5000);
+          return;
+        }
+
+        let currentCfg = null;
+        try {
+          currentCfg = await api.get("/proxy/config");
+        } catch {
+          currentCfg = null;
+        }
+
+        const inboundMode = currentCfg && currentCfg.inboundMode ? currentCfg.inboundMode : "mixed";
+
+        // TUN 模式下端口不生效，但仍可提前保存到配置中（切回非 TUN 时生效）。
+        if (inboundMode === "tun") {
+          try {
+            await api.put("/proxy/config", { inboundPort: normalized });
+            showStatus("已保存代理端口（当前为 TUN 模式，切回非 TUN 后生效）", "info", 4000);
+          } catch (err) {
+            showStatus(`保存代理端口失败：${err.message}`, "error", 6000);
+          }
+          return;
+        }
+
+        // 非 TUN：强制保持 mixed（系统代理场景需要 HTTP + SOCKS）
+        try {
+          await api.put("/proxy/config", { inboundMode: "mixed", inboundPort: normalized });
+        } catch (err) {
+          showStatus(`保存代理端口失败：${err.message}`, "error", 6000);
+          return;
+        }
+
+        // 如果内核正在运行，需要重启才能让端口变更生效。
+        let status = null;
+        try {
+          status = await api.proxy.status();
+          coreStatus = status || coreStatus;
+        } catch {
+          status = null;
+        }
+
+        const running = Boolean(status && status.running);
+        if (running) {
+          const frouterId = (status && status.frouterId) ? status.frouterId : (getCurrentFRouter()?.id || "");
+          if (!frouterId) {
+            showStatus("已更新端口，但无法自动重启：请先选择一个 FRouter", "warn", 6000);
+            return;
+          }
+
+          showStatus("正在应用代理端口（重启内核）...", "info", 2000);
+          try {
+            await api.post("/proxy/start", { frouterId });
+            await new Promise((r) => setTimeout(r, 500));
+          } catch (err) {
+            showStatus(`重启内核失败：${err.message}`, "error", 6000);
+            return;
+          }
+
+          // 系统代理已启用时，重启后需要重新应用系统代理（端口可能发生变化）。
+          if (systemProxySettings && systemProxySettings.enabled) {
+            try {
+              await api.put("/settings/system-proxy", {
+                enabled: true,
+                ignoreHosts: collectIgnoreHosts(),
+              });
+            } catch (err) {
+              console.warn("[SystemProxy] 重新应用系统代理失败:", err.message);
+            }
+          }
+        }
+
+        await refreshCoreStatus();
+        await loadSystemProxySettings();
+        await loadIPGeo();
+
+        // 提示端口更新结果
+        try {
+          const latest = await api.proxy.status();
+          if (latest && latest.running) {
+            showStatus(`代理端口已更新为 ${normalized}`, "success", 2000);
+          } else {
+            showStatus(`代理端口已更新为 ${normalized}`, "success", 2000);
+          }
+        } catch {
+          showStatus(`代理端口已更新为 ${normalized}`, "success", 2000);
+        }
+      }
+
       // 监听设置变化，保存到后端 API
       let saveTimeout = null;
       for (const category of SETTINGS_SCHEMA.categories) {
@@ -6935,6 +7068,14 @@
             saveTimeout = setTimeout(async () => {
               await settingsManager.saveToAPI(api.client.baseURL);
             }, 300);
+
+            // 特殊联动：系统代理端口 -> 后端 ProxyConfig.inboundPort
+            if (key === "proxy.port") {
+              if (proxyPortApplyTimeout) clearTimeout(proxyPortApplyTimeout);
+              proxyPortApplyTimeout = setTimeout(async () => {
+                await applyProxyPortSetting(value);
+              }, 300);
+            }
           });
         }
       }
@@ -6942,6 +7083,7 @@
       // 从后端 API 加载已保存的设置
       (async function loadSettingsFromAPI() {
         await settingsManager.loadFromAPI(api.client.baseURL);
+        await syncProxyPortFromBackend();
         renderAllSettings();
       })();
 
@@ -6961,13 +7103,13 @@
               await api.delete(`/components/${id}`);
               showStatus("组件已删除", "success");
               await loadComponents();
-              await refreshXrayStatus();
+              await refreshCoreStatus();
             } else if (action === "uninstall-component") {
               if (!confirm("确认卸载该组件？这将删除本地安装文件。")) return;
               await api.post(`/components/${id}/uninstall`);
               showStatus("组件已卸载", "success");
               await loadComponents();
-              await refreshXrayStatus();
+              await refreshCoreStatus();
             } else if (action === "update-component") {
               if (kind) {
                 await ensureComponent(kind);

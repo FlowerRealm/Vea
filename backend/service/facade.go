@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"time"
@@ -17,7 +16,6 @@ import (
 	configsvc "vea/backend/service/config"
 	"vea/backend/service/frouter"
 	"vea/backend/service/geo"
-	"vea/backend/service/node"
 	"vea/backend/service/nodes"
 	"vea/backend/service/proxy"
 	"vea/backend/service/shared"
@@ -307,52 +305,19 @@ func (f *Facade) SyncConfigNodes(configID string) ([]domain.Node, error) {
 		if err := f.config.Sync(ctx, configID); err != nil {
 			return nil, err
 		}
-		cfg, err = f.config.Get(ctx, configID)
-		if err != nil {
-			return nil, err
-		}
 	}
 
-	payloadTrimmed := strings.TrimSpace(cfg.Payload)
-	nodesFromConfig, parseErrs := node.ParseMultipleLinks(cfg.Payload)
-	if len(parseErrs) > 0 {
-		log.Printf("[SyncConfigNodes] parse errors for %s: %d", configID, len(parseErrs))
-	}
-	if len(nodesFromConfig) == 0 {
-		// payload 非空但解析不到节点：这是订阅异常/格式不支持的强信号。
-		// 为避免把已有节点清空导致 FRouter 变“未知”，这里直接报错并保留现有节点。
-		if payloadTrimmed != "" {
-			parseErr := fmt.Errorf("%w: 订阅内容无法解析为节点（仅支持 vmess/vless/trojan/ss 分享链接）；已保留现有节点", repository.ErrInvalidData)
-			cfg.LastSyncError = parseErr.Error()
-			if _, updateErr := f.config.Update(ctx, configID, cfg); updateErr != nil {
-				log.Printf("[SyncConfigNodes] failed to update config %s with parse error: %v", configID, updateErr)
-			}
-			return nil, parseErr
-		}
-
-		existing, err := f.nodes.List(ctx)
-		if err != nil {
-			return nil, err
-		}
-		out := make([]domain.Node, 0, len(existing))
-		for _, n := range existing {
-			if n.SourceConfigID == configID {
-				out = append(out, n)
-			}
-		}
-		return out, nil
-	}
-	updated, err := f.nodes.ReplaceNodesForConfig(ctx, configID, nodesFromConfig)
+	existing, err := f.nodes.List(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if cfg.LastSyncError != "" {
-		cfg.LastSyncError = ""
-		if _, updateErr := f.config.Update(ctx, configID, cfg); updateErr != nil {
-			log.Printf("[SyncConfigNodes] failed to clear lastSyncError for config %s: %v", configID, updateErr)
+	out := make([]domain.Node, 0, len(existing))
+	for _, n := range existing {
+		if n.SourceConfigID == configID {
+			out = append(out, n)
 		}
 	}
-	return updated, nil
+	return out, nil
 }
 
 // ========== Proxy 操作 ==========
@@ -374,9 +339,24 @@ func (f *Facade) MarkProxyRestartFailed(err error) {
 
 // StopProxy 停止代理
 func (f *Facade) StopProxy() error {
+	return f.stopProxy(false)
+}
+
+// StopProxyUser 停止代理（用户显式触发），用于让 keepalive 不会在用户停止后自动拉起。
+func (f *Facade) StopProxyUser() error {
+	return f.stopProxy(true)
+}
+
+func (f *Facade) stopProxy(markUserStopped bool) error {
 	ctx := context.Background()
-	if err := f.proxy.Stop(ctx); err != nil {
-		return err
+	if markUserStopped {
+		if err := f.proxy.StopUser(ctx); err != nil {
+			return err
+		}
+	} else {
+		if err := f.proxy.Stop(ctx); err != nil {
+			return err
+		}
 	}
 
 	// 停止内核后继续保持系统代理是灾难：用户网络直接断。
@@ -427,8 +407,6 @@ func (f *Facade) ensureCoreEngineInstalled(ctx context.Context, engine domain.Co
 
 	var kind domain.CoreComponentKind
 	switch engine {
-	case domain.EngineXray:
-		kind = domain.ComponentXray
 	case domain.EngineSingBox:
 		kind = domain.ComponentSingBox
 	case domain.EngineClash:
@@ -509,8 +487,6 @@ func (f *Facade) UninstallComponent(id string) (domain.CoreComponent, error) {
 	if running && engine != "" {
 		var target string
 		switch comp.Kind {
-		case domain.ComponentXray:
-			target = string(domain.EngineXray)
 		case domain.ComponentSingBox:
 			target = string(domain.EngineSingBox)
 		case domain.ComponentClash:
@@ -578,7 +554,6 @@ func (f *Facade) UpdateSystemProxySettings(settings domain.SystemProxySettings) 
 			return domain.SystemProxySettings{}, "", fmt.Errorf("proxy not running")
 		}
 
-		engine, _ := status["engine"].(string)
 		inboundMode, _ := status["inboundMode"].(string)
 		inboundPort, _ := status["inboundPort"].(int)
 		if inboundPort <= 0 {
@@ -599,16 +574,9 @@ func (f *Facade) UpdateSystemProxySettings(settings domain.SystemProxySettings) 
 		case string(domain.InboundMixed):
 			httpPort, httpsPort = inboundPort, inboundPort
 			socksPort = inboundPort
-			if engine == string(domain.EngineXray) {
-				// Xray mixed = HTTP(port) + SOCKS(port+1)
-				socksPort = inboundPort + 1
-			}
 		default:
 			// 兜底：按 mixed 处理
 			httpPort, httpsPort, socksPort = inboundPort, inboundPort, inboundPort
-			if engine == string(domain.EngineXray) {
-				socksPort = inboundPort + 1
-			}
 		}
 
 		message, err := shared.ApplySystemProxy(shared.SystemProxyConfig{

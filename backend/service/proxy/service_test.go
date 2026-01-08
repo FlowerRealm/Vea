@@ -77,12 +77,27 @@ func (a *fakeCoreAdapter) WaitForReady(handle *coreadapters.ProcessHandle, timeo
 	return a.waitForReadyResult
 }
 
+func seedSingBoxRuleSets(t *testing.T) {
+	t.Helper()
+
+	ruleSetDir := filepath.Join(shared.ArtifactsRoot, "core", "sing-box", "rule-set")
+	if err := os.MkdirAll(ruleSetDir, 0o755); err != nil {
+		t.Fatalf("mkdir rule-set dir: %v", err)
+	}
+	for _, tag := range shared.DefaultSingBoxRuleSetTags {
+		if err := os.WriteFile(filepath.Join(ruleSetDir, tag+".srs"), []byte("dummy"), 0o644); err != nil {
+			t.Fatalf("write rule-set %s: %v", tag, err)
+		}
+	}
+}
+
 func TestService_Start_WritesConfigAndSavesProxyConfig(t *testing.T) {
 	ctx := context.Background()
 
 	oldRoot := shared.ArtifactsRoot
 	shared.ArtifactsRoot = t.TempDir()
 	t.Cleanup(func() { shared.ArtifactsRoot = oldRoot })
+	seedSingBoxRuleSets(t)
 
 	store := memory.NewStore(nil)
 	frouterRepo := memory.NewFRouterRepo(store)
@@ -101,15 +116,15 @@ func TestService_Start_WritesConfigAndSavesProxyConfig(t *testing.T) {
 		t.Fatalf("create frouter: %v", err)
 	}
 
-	comp, err := componentRepo.Create(ctx, domain.CoreComponent{Kind: domain.ComponentXray, Name: "Xray"})
+	comp, err := componentRepo.Create(ctx, domain.CoreComponent{Kind: domain.ComponentSingBox, Name: "sing-box"})
 	if err != nil {
 		t.Fatalf("create component: %v", err)
 	}
-	installDir := filepath.Join(t.TempDir(), "xray")
+	installDir := filepath.Join(t.TempDir(), "sing-box")
 	if err := os.MkdirAll(installDir, 0o755); err != nil {
 		t.Fatalf("mkdir install dir: %v", err)
 	}
-	binPath := filepath.Join(installDir, "xray")
+	binPath := filepath.Join(installDir, "sing-box")
 	if err := os.WriteFile(binPath, []byte("dummy"), 0o644); err != nil {
 		t.Fatalf("write dummy binary: %v", err)
 	}
@@ -118,25 +133,25 @@ func TestService_Start_WritesConfigAndSavesProxyConfig(t *testing.T) {
 	}
 
 	adapter := &fakeCoreAdapter{
-		kind:        domain.EngineXray,
-		binaryNames: []string{"xray"},
+		kind:        domain.EngineSingBox,
+		binaryNames: []string{"sing-box"},
 	}
 	svc := NewService(frouterRepo, nil, componentRepo, settingsRepo)
 	svc.adapters = map[domain.CoreEngineKind]coreadapters.CoreAdapter{
-		domain.EngineXray: adapter,
+		domain.EngineSingBox: adapter,
 	}
 
 	cfg := domain.ProxyConfig{
 		FRouterID:       frouter.ID,
 		InboundMode:     domain.InboundSOCKS,
 		InboundPort:     1081,
-		PreferredEngine: domain.EngineXray,
+		PreferredEngine: domain.EngineSingBox,
 	}
 	if err := svc.Start(ctx, cfg); err != nil {
 		t.Fatalf("Start() error: %v", err)
 	}
 
-	configDir := engineConfigDir(domain.EngineXray)
+	configDir := engineConfigDir(domain.EngineSingBox)
 	configPath := filepath.Join(configDir, "config.json")
 	if _, err := os.Stat(configPath); err != nil {
 		t.Fatalf("config not written: %v", err)
@@ -257,6 +272,7 @@ func TestService_Start_DoesNotStopPreviousProxyOnCompileError(t *testing.T) {
 	oldRoot := shared.ArtifactsRoot
 	shared.ArtifactsRoot = t.TempDir()
 	t.Cleanup(func() { shared.ArtifactsRoot = oldRoot })
+	seedSingBoxRuleSets(t)
 
 	store := memory.NewStore(nil)
 	frouterRepo := memory.NewFRouterRepo(store)
@@ -275,15 +291,15 @@ func TestService_Start_DoesNotStopPreviousProxyOnCompileError(t *testing.T) {
 		t.Fatalf("create frouter: %v", err)
 	}
 
-	comp, err := componentRepo.Create(ctx, domain.CoreComponent{Kind: domain.ComponentXray, Name: "Xray"})
+	comp, err := componentRepo.Create(ctx, domain.CoreComponent{Kind: domain.ComponentSingBox, Name: "sing-box"})
 	if err != nil {
 		t.Fatalf("create component: %v", err)
 	}
-	installDir := filepath.Join(t.TempDir(), "xray")
+	installDir := filepath.Join(t.TempDir(), "sing-box")
 	if err := os.MkdirAll(installDir, 0o755); err != nil {
 		t.Fatalf("mkdir install dir: %v", err)
 	}
-	binPath := filepath.Join(installDir, "xray")
+	binPath := filepath.Join(installDir, "sing-box")
 	if err := os.WriteFile(binPath, []byte("dummy"), 0o644); err != nil {
 		t.Fatalf("write dummy binary: %v", err)
 	}
@@ -292,19 +308,19 @@ func TestService_Start_DoesNotStopPreviousProxyOnCompileError(t *testing.T) {
 	}
 
 	adapter := &fakeCoreAdapter{
-		kind:        domain.EngineXray,
-		binaryNames: []string{"xray"},
+		kind:        domain.EngineSingBox,
+		binaryNames: []string{"sing-box"},
 	}
 	svc := NewService(frouterRepo, nil, componentRepo, settingsRepo)
 	svc.adapters = map[domain.CoreEngineKind]coreadapters.CoreAdapter{
-		domain.EngineXray: adapter,
+		domain.EngineSingBox: adapter,
 	}
 
 	cfg := domain.ProxyConfig{
 		FRouterID:       frouter.ID,
 		InboundMode:     domain.InboundSOCKS,
 		InboundPort:     1081,
-		PreferredEngine: domain.EngineXray,
+		PreferredEngine: domain.EngineSingBox,
 	}
 	if err := svc.Start(ctx, cfg); err != nil {
 		t.Fatalf("Start() error: %v", err)
@@ -366,7 +382,7 @@ func TestService_Start_InvalidFRouterIsCompileErrorAndInvalidData(t *testing.T) 
 		FRouterID:       frouter.ID,
 		InboundMode:     domain.InboundSOCKS,
 		InboundPort:     1080,
-		PreferredEngine: domain.EngineXray,
+		PreferredEngine: domain.EngineSingBox,
 	})
 	if err == nil {
 		t.Fatalf("expected error, got nil")
@@ -387,6 +403,7 @@ func TestService_Start_RollbackToPreviousProxyOnStartFailure(t *testing.T) {
 	oldRoot := shared.ArtifactsRoot
 	shared.ArtifactsRoot = t.TempDir()
 	t.Cleanup(func() { shared.ArtifactsRoot = oldRoot })
+	seedSingBoxRuleSets(t)
 
 	store := memory.NewStore(nil)
 	frouterRepo := memory.NewFRouterRepo(store)
@@ -405,15 +422,15 @@ func TestService_Start_RollbackToPreviousProxyOnStartFailure(t *testing.T) {
 		t.Fatalf("create frouter: %v", err)
 	}
 
-	comp, err := componentRepo.Create(ctx, domain.CoreComponent{Kind: domain.ComponentXray, Name: "Xray"})
+	comp, err := componentRepo.Create(ctx, domain.CoreComponent{Kind: domain.ComponentSingBox, Name: "sing-box"})
 	if err != nil {
 		t.Fatalf("create component: %v", err)
 	}
-	installDir := filepath.Join(t.TempDir(), "xray")
+	installDir := filepath.Join(t.TempDir(), "sing-box")
 	if err := os.MkdirAll(installDir, 0o755); err != nil {
 		t.Fatalf("mkdir install dir: %v", err)
 	}
-	binPath := filepath.Join(installDir, "xray")
+	binPath := filepath.Join(installDir, "sing-box")
 	if err := os.WriteFile(binPath, []byte("dummy"), 0o644); err != nil {
 		t.Fatalf("write dummy binary: %v", err)
 	}
@@ -422,20 +439,20 @@ func TestService_Start_RollbackToPreviousProxyOnStartFailure(t *testing.T) {
 	}
 
 	adapter := &fakeCoreAdapter{
-		kind:        domain.EngineXray,
-		binaryNames: []string{"xray"},
+		kind:        domain.EngineSingBox,
+		binaryNames: []string{"sing-box"},
 		startErrs:   []error{nil, errors.New("boom"), nil},
 	}
 	svc := NewService(frouterRepo, nil, componentRepo, settingsRepo)
 	svc.adapters = map[domain.CoreEngineKind]coreadapters.CoreAdapter{
-		domain.EngineXray: adapter,
+		domain.EngineSingBox: adapter,
 	}
 
 	cfg := domain.ProxyConfig{
 		FRouterID:       frouter.ID,
 		InboundMode:     domain.InboundSOCKS,
 		InboundPort:     1081,
-		PreferredEngine: domain.EngineXray,
+		PreferredEngine: domain.EngineSingBox,
 	}
 	if err := svc.Start(ctx, cfg); err != nil {
 		t.Fatalf("Start() error: %v", err)
@@ -462,8 +479,6 @@ func TestService_Start_RollbackToPreviousProxyOnStartFailure(t *testing.T) {
 }
 
 func TestService_Start_BinaryMissingReturnsErrEngineNotInstalled(t *testing.T) {
-	t.Parallel()
-
 	ctx := context.Background()
 	store := memory.NewStore(nil)
 
@@ -481,11 +496,16 @@ func TestService_Start_BinaryMissingReturnsErrEngineNotInstalled(t *testing.T) {
 	}
 
 	componentRepo := memory.NewComponentRepo(store)
-	comp, err := componentRepo.Create(ctx, domain.CoreComponent{Kind: domain.ComponentXray, Name: "Xray"})
+	comp, err := componentRepo.Create(ctx, domain.CoreComponent{Kind: domain.ComponentSingBox, Name: "sing-box"})
 	if err != nil {
 		t.Fatalf("create component: %v", err)
 	}
-	installDir := filepath.Join(t.TempDir(), "xray")
+	oldRoot := shared.ArtifactsRoot
+	shared.ArtifactsRoot = t.TempDir()
+	t.Cleanup(func() { shared.ArtifactsRoot = oldRoot })
+	seedSingBoxRuleSets(t)
+
+	installDir := filepath.Join(t.TempDir(), "sing-box")
 	if err := os.MkdirAll(installDir, 0o755); err != nil {
 		t.Fatalf("mkdir install dir: %v", err)
 	}
@@ -496,19 +516,19 @@ func TestService_Start_BinaryMissingReturnsErrEngineNotInstalled(t *testing.T) {
 	settingsRepo := memory.NewSettingsRepo(store)
 
 	adapter := &fakeCoreAdapter{
-		kind:        domain.EngineXray,
-		binaryNames: []string{"xray"},
+		kind:        domain.EngineSingBox,
+		binaryNames: []string{"sing-box"},
 	}
 	svc := NewService(frouterRepo, nil, componentRepo, settingsRepo)
 	svc.adapters = map[domain.CoreEngineKind]coreadapters.CoreAdapter{
-		domain.EngineXray: adapter,
+		domain.EngineSingBox: adapter,
 	}
 
 	err = svc.Start(ctx, domain.ProxyConfig{
 		FRouterID:       frouter.ID,
 		InboundMode:     domain.InboundSOCKS,
 		InboundPort:     1080,
-		PreferredEngine: domain.EngineXray,
+		PreferredEngine: domain.EngineSingBox,
 	})
 	if err == nil {
 		t.Fatalf("expected error, got nil")

@@ -71,3 +71,8 @@ func EnsureTUNCapabilities() (bool, error) {
 func EnsureTUNCapabilitiesForBinary(binaryPath string) (bool, error) {
 	return EnsureTUNCapabilities()
 }
+
+// CleanConflictingIPTablesRules Windows 不需要清理 iptables 规则
+func CleanConflictingIPTablesRules() {
+	// Windows 不使用 iptables，无需清理
+}

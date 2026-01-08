@@ -135,6 +135,81 @@ func TestSingBoxAdapter_BuildConfig_DNSRemoteDetourOmittedWhenFinalDirect(t *tes
 	}
 }
 
+func TestSingBoxAdapter_BuildConfig_DNSRemoteUsesDoHByDefault(t *testing.T) {
+	t.Parallel()
+
+	a := &SingBoxAdapter{}
+	nodes := []domain.Node{
+		{
+			ID:       "n1",
+			Name:     "test-ss",
+			Protocol: domain.ProtocolShadowsocks,
+			Address:  "1.1.1.1",
+			Port:     443,
+			Security: &domain.NodeSecurity{Method: "aes-128-gcm", Password: "pass"},
+		},
+	}
+	frouter := domain.FRouter{
+		ID:   "fr1",
+		Name: "test",
+		ChainProxy: domain.ChainProxySettings{
+			Edges: []domain.ProxyEdge{
+				{
+					ID:       "e-default",
+					From:     domain.EdgeNodeLocal,
+					To:       "n1",
+					Priority: 100,
+					Enabled:  true,
+				},
+			},
+		},
+	}
+
+	profile := domain.ProxyConfig{
+		InboundMode: domain.InboundSOCKS,
+		InboundPort: 1080,
+	}
+
+	plan, err := nodegroup.CompileProxyPlan(domain.EngineSingBox, profile, frouter, nodes)
+	if err != nil {
+		t.Fatalf("CompileProxyPlan() error: %v", err)
+	}
+
+	b, err := a.BuildConfig(plan, GeoFiles{ArtifactsDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("BuildConfig() error: %v", err)
+	}
+
+	cfg := mustUnmarshalJSONMap(t, b)
+	dns := mustMap(t, cfg["dns"])
+	servers := mustSlice(t, dns["servers"])
+	dnsRemote := findServerByTag(t, servers, "dns-remote")
+
+	if got, _ := dnsRemote["type"].(string); got != "https" {
+		t.Fatalf("expected dns-remote.type=https, got %v", dnsRemote["type"])
+	}
+	if got, _ := dnsRemote["server"].(string); got != "1.1.1.1" {
+		t.Fatalf("expected dns-remote.server=1.1.1.1, got %v", dnsRemote["server"])
+	}
+	if got, _ := dnsRemote["server_port"].(float64); got != 443 {
+		t.Fatalf("expected dns-remote.server_port=443, got %v", dnsRemote["server_port"])
+	}
+	if got, _ := dnsRemote["path"].(string); got != "/dns-query" {
+		t.Fatalf("expected dns-remote.path=/dns-query, got %v", dnsRemote["path"])
+	}
+
+	tls, ok := dnsRemote["tls"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected dns-remote.tls map, got %T", dnsRemote["tls"])
+	}
+	if got, _ := tls["enabled"].(bool); got != true {
+		t.Fatalf("expected dns-remote.tls.enabled=true, got %v", tls["enabled"])
+	}
+	if got, _ := tls["server_name"].(string); got != "cloudflare-dns.com" {
+		t.Fatalf("expected dns-remote.tls.server_name=cloudflare-dns.com, got %v", tls["server_name"])
+	}
+}
+
 func TestSingBoxAdapter_BuildConfig_DNSRemoteDetourSetWhenFinalProxy(t *testing.T) {
 	t.Parallel()
 

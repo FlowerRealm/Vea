@@ -13,4 +13,5 @@
 - `GET /components` / `POST /components` / `PUT /components/:id` / `DELETE /components/:id`
 - `POST /components/:id/install` / `POST /components/:id/uninstall`
 - `POST /proxy/start` / `POST /proxy/stop`
-- `GET /proxy/status` / `GET /proxy/logs`
+- `GET /proxy/status` / `GET /proxy/logs`（status 在用户显式 stop 后可能包含 `userStopped` / `userStoppedAt`）
+- `GET /app/logs?since=...`（`since` 为非负字节偏移，非法值返回 400）

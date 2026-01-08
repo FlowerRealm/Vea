@@ -65,7 +65,6 @@ func NewSpeedMeasurer(
 		settings:   settings,
 		geoRepo:    geoRepo,
 		adapters: map[domain.CoreEngineKind]adapters.CoreAdapter{
-			domain.EngineXray:    &adapters.XrayAdapter{},
 			domain.EngineSingBox: &adapters.SingBoxAdapter{},
 			domain.EngineClash:   &adapters.ClashAdapter{},
 		},
@@ -391,8 +390,6 @@ func (m *SpeedMeasurer) getEngineBinaryPath(component domain.CoreComponent, adap
 
 func engineFromComponent(component domain.CoreComponent) (domain.CoreEngineKind, bool) {
 	switch component.Kind {
-	case domain.ComponentXray:
-		return domain.EngineXray, true
 	case domain.ComponentSingBox:
 		return domain.EngineSingBox, true
 	case domain.ComponentClash:

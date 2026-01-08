@@ -151,6 +151,21 @@ func (a *ClashAdapter) buildBaseConfig(plan nodegroup.RuntimePlan) (map[string]i
 		"geo-update-interval": 24,
 	}
 
+	// TUN 默认开启 sniffer：避免浏览器/系统启用 DoH 后，域名规则无法命中导致“看起来可启动但无法正常分流/访问”。
+	if plan.InboundMode == domain.InboundTUN {
+		cfg["sniffer"] = map[string]interface{}{
+			"enable": true,
+			"sniff": map[string]interface{}{
+				"TLS": map[string]interface{}{
+					"ports": []int{443},
+				},
+				"HTTP": map[string]interface{}{
+					"ports": []int{80},
+				},
+			},
+		}
+	}
+
 	// find-process-mode 决定 PROCESS-NAME 规则是否可用。
 	// 主流 GUI（如 Clash Party）默认使用 strict；否则我们添加的自保规则会形同虚设。
 	if runtime.GOOS == "linux" && plan.InboundMode == domain.InboundTUN {
@@ -592,6 +607,9 @@ func (a *ClashAdapter) buildRules(mode domain.InboundMode, compiled nodegroup.Co
 			"PROCESS-NAME,mihomo,DIRECT",
 			"PROCESS-NAME,clash,DIRECT",
 			"PROCESS-NAME,vea,DIRECT",
+			// Chrome/Chromium 在 TUN 下常优先 QUIC(UDP/443)，在部分链路/校园网/公司网会表现为“能解析但打不开”。
+			// 这里直接拒绝 UDP/443，强制回落到 TCP/HTTPS（与 sing-box 的默认行为保持一致）。
+			"AND,((NETWORK,UDP),(DST-PORT,443)),REJECT",
 		)
 	}
 

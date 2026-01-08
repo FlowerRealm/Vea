@@ -1,7 +1,7 @@
 {
   "name": "@vea/sdk",
   "version": "1.0.0",
-  "description": "JavaScript SDK for Vea Backend API - Xray management service",
+  "description": "JavaScript SDK for Vea Backend API",
   "type": "module",
   "main": "dist/vea-sdk.cjs.js",
   "module": "dist/vea-sdk.esm.js",
@@ -20,9 +20,7 @@
   },
   "keywords": [
     "vea",
-    "xray",
     "proxy",
-    "v2ray",
     "vpn",
     "sdk",
     "api-client"

@@ -178,20 +178,25 @@ func (r *NodeRepo) ReplaceNodesForConfig(_ context.Context, configID string, nod
 	eventsToPublish := make([]events.Event, 0, len(next)+8)
 
 	r.store.Lock()
-	// 删除该 config 下已不存在的节点
-	for id, existing := range r.store.Nodes() {
-		if existing.SourceConfigID != configID {
-			continue
+	// 仅在显式清空（nodes == nil）时删除节点。
+	// 调用方如需表达“显式清空”，建议传入 domain.ClearNodes（nil slice sentinel）。
+	// 注意：nodes 为空切片（len == 0）时，不会删除已有节点（仍保留历史节点）。
+	//
+	// 订阅/拉取节点存在波动（服务端短暂缺失、返回不完整等）。
+	// 如果每次拉取都按“差集删除”，会导致用户原有节点丢失，并进一步把引用这些节点的 FRouter 变成 invalid。
+	// 由于前端目前没有 Node 删除入口，这里采取更保守的策略：保留历史节点，避免数据丢失。
+	if nodes == nil {
+		for id, existing := range r.store.Nodes() {
+			if existing.SourceConfigID != configID {
+				continue
+			}
+			delete(r.store.Nodes(), id)
+			eventsToPublish = append(eventsToPublish, events.NodeEvent{
+				EventType: events.EventNodeDeleted,
+				NodeID:    id,
+				Node:      existing,
+			})
 		}
-		if _, ok := nextIDs[id]; ok {
-			continue
-		}
-		delete(r.store.Nodes(), id)
-		eventsToPublish = append(eventsToPublish, events.NodeEvent{
-			EventType: events.EventNodeDeleted,
-			NodeID:    id,
-			Node:      existing,
-		})
 	}
 
 	// Upsert 节点集合

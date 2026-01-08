@@ -3,6 +3,7 @@ package persist
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"vea/backend/domain"
@@ -75,7 +76,7 @@ func (m *Migrator) Migrate(data []byte) (domain.ServiceState, error) {
 		if state.GeneratedAt.IsZero() {
 			state.GeneratedAt = time.Now()
 		}
-		return state, nil
+		return sanitizeServiceState(state), nil
 	}
 
 	switch meta.SchemaVersion {
@@ -84,13 +85,13 @@ func (m *Migrator) Migrate(data []byte) (domain.ServiceState, error) {
 		if err := json.Unmarshal(data, &state); err != nil {
 			return domain.ServiceState{}, fmt.Errorf("failed to parse state: %w", err)
 		}
-		return state, nil
+		return sanitizeServiceState(state), nil
 	case legacySchemaVersion_2_0_0:
 		var legacy legacyServiceState_2_0_0
 		if err := json.Unmarshal(data, &legacy); err != nil {
 			return domain.ServiceState{}, fmt.Errorf("failed to parse legacy state: %w", err)
 		}
-		return migrate_2_0_0_to_2_1_0(legacy), nil
+		return sanitizeServiceState(migrate_2_0_0_to_2_1_0(legacy)), nil
 	default:
 		return domain.ServiceState{}, fmt.Errorf("unsupported schemaVersion %s (expected %s)", meta.SchemaVersion, SchemaVersion)
 	}
@@ -159,4 +160,53 @@ func migrate_2_0_0_to_2_1_0(legacy legacyServiceState_2_0_0) domain.ServiceState
 		FrontendSettings: legacy.FrontendSettings,
 		GeneratedAt:      time.Now(),
 	}
+}
+
+func sanitizeServiceState(state domain.ServiceState) domain.ServiceState {
+	// 配置格式：旧版本可能写入 xray-json（历史遗留），统一归一化为 subscription。
+	for i := range state.Configs {
+		format := strings.TrimSpace(string(state.Configs[i].Format))
+		if format == "" || format == "xray-json" {
+			state.Configs[i].Format = domain.ConfigFormatSubscription
+		} else if state.Configs[i].Format != domain.ConfigFormatSubscription {
+			// 兜底：不保留未知格式，避免前端/SDK 枚举不一致。
+			state.Configs[i].Format = domain.ConfigFormatSubscription
+		}
+	}
+
+	// 引擎：移除 Xray 后，旧状态里的 preferredEngine=xray 必须回退。
+	switch state.ProxyConfig.PreferredEngine {
+	case "", domain.EngineAuto, domain.EngineSingBox, domain.EngineClash:
+	default:
+		state.ProxyConfig.PreferredEngine = domain.EngineAuto
+	}
+
+	// 前端设置：移除 Xray 后，清理 xray.* 设置与默认引擎 xray。
+	if state.FrontendSettings != nil {
+		if v, ok := state.FrontendSettings["engine.defaultEngine"].(string); ok {
+			if strings.EqualFold(strings.TrimSpace(v), "xray") {
+				// 选择最接近的默认引擎：sing-box。
+				state.FrontendSettings["engine.defaultEngine"] = string(domain.EngineSingBox)
+			}
+		}
+		for k := range state.FrontendSettings {
+			if strings.HasPrefix(k, "xray.") {
+				delete(state.FrontendSettings, k)
+			}
+		}
+	}
+
+	// 组件：过滤掉 xray 组件，避免前端仍展示“Xray”或后端误处理。
+	if len(state.Components) > 0 {
+		next := make([]domain.CoreComponent, 0, len(state.Components))
+		for _, comp := range state.Components {
+			if strings.EqualFold(strings.TrimSpace(string(comp.Kind)), "xray") {
+				continue
+			}
+			next = append(next, comp)
+		}
+		state.Components = next
+	}
+
+	return state
 }

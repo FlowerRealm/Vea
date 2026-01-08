@@ -68,7 +68,7 @@
 │   (内存存储)          (事件总线)         (防抖持久化)              │
 │                                              │                   │
 │                                              ▼                   │
-│                                        state.json                │
+│                               <userData>/data/state.json         │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -123,8 +123,8 @@ backend/
 │   │   └── service.go            # GeoIP/GeoSite 管理
 │   ├── adapters/                 # 核心引擎适配器
 │   │   ├── adapter.go            # CoreAdapter 接口
-│   │   ├── xray.go               # Xray 适配器
-│   │   └── singbox.go            # sing-box 适配器
+│   │   ├── singbox.go            # sing-box 适配器
+│   │   └── clash.go              # Clash(mihomo) 适配器
 │
 ├── persist/                      # 持久化层
 │   ├── snapshot_v2.go            # 快照读写 + 防抖保存
@@ -292,7 +292,7 @@ type Service struct {
 func (s *Service) Start(ctx context.Context, cfg domain.ProxyConfig) error {
     // 1. 读取/合并 ProxyConfig（单例运行配置）
     // 2. 获取 FRouter + Nodes 并编译 NodeGroup
-    // 3. 选择引擎 (Xray/sing-box)
+    // 3. 选择引擎 (sing-box/Clash)
     // 4. 构建配置
     // 5. 启动进程
 }
@@ -426,7 +426,7 @@ repos := repository.NewRepositories(memStore, nodeRepo, frouterRepo, configRepo,
 // 5. 创建服务层
 nodeSvc := nodes.NewService(nodeRepo)
 frouterSvc := frouter.NewService(frouterRepo, nodeRepo)
-configSvc := configsvc.NewService(configRepo, nodeSvc)
+configSvc := configsvc.NewService(configRepo, nodeSvc, frouterRepo)
 proxySvc := proxy.NewService(frouterRepo, nodeRepo, componentRepo, settingsRepo)
 // ...
 
@@ -482,7 +482,7 @@ router := api.NewRouter(facade)
 10. [200ms debounce]
        │
        ▼
-11. state.json 写入
+11. state.json 写入（默认路径: <userData>/data/state.json）
 ```
 
 ---
@@ -531,7 +531,7 @@ curl http://localhost:19080/snapshot | jq '.schemaVersion'
 | `Get(id)` | 获取单个 Node |
 | `List()` | 列出所有 Node |
 | `ListByConfigID(configID)` | 按配置ID列出 Node |
-| `ReplaceNodesForConfig(configID, nodes)` | 同步订阅：替换配置下节点列表 |
+| `ReplaceNodesForConfig(configID, nodes)` | 同步订阅：upsert 节点；仅 nodes==nil 时清空旧节点 |
 | `UpdateLatency(id, ms, err)` | 更新 Node 延迟 |
 | `UpdateSpeed(id, mbps, err)` | 更新 Node 速度 |
 

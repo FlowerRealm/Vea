@@ -23,9 +23,6 @@ func TestList_SeedsDefaultComponents(t *testing.T) {
 		t.Fatalf("List returned error: %v", err)
 	}
 
-	if countKind(components, domain.ComponentXray) != 1 {
-		t.Fatalf("expected exactly 1 xray component, got %d", countKind(components, domain.ComponentXray))
-	}
 	if countKind(components, domain.ComponentSingBox) != 1 {
 		t.Fatalf("expected exactly 1 singbox component, got %d", countKind(components, domain.ComponentSingBox))
 	}
@@ -38,9 +35,6 @@ func TestList_SeedsDefaultComponents(t *testing.T) {
 		t.Fatalf("List (second call) returned error: %v", err)
 	}
 
-	if countKind(components2, domain.ComponentXray) != 1 {
-		t.Fatalf("expected exactly 1 xray component after second List, got %d", countKind(components2, domain.ComponentXray))
-	}
 	if countKind(components2, domain.ComponentSingBox) != 1 {
 		t.Fatalf("expected exactly 1 singbox component after second List, got %d", countKind(components2, domain.ComponentSingBox))
 	}
@@ -56,34 +50,31 @@ func TestCreate_CoreComponent_IsIdempotent(t *testing.T) {
 	repo := memory.NewComponentRepo(store)
 	svc := NewService(repo)
 
-	xray1, err := svc.Create(context.Background(), domain.CoreComponent{Kind: domain.ComponentXray})
+	singbox1, err := svc.Create(context.Background(), domain.CoreComponent{Kind: domain.ComponentSingBox})
 	if err != nil {
-		t.Fatalf("Create xray returned error: %v", err)
+		t.Fatalf("Create singbox returned error: %v", err)
 	}
-	if xray1.Kind != domain.ComponentXray {
-		t.Fatalf("expected xray kind, got %q", xray1.Kind)
+	if singbox1.Kind != domain.ComponentSingBox {
+		t.Fatalf("expected singbox kind, got %q", singbox1.Kind)
 	}
-	if xray1.Name != "Xray" {
-		t.Fatalf("expected default xray name %q, got %q", "Xray", xray1.Name)
+	if singbox1.Name != "sing-box" {
+		t.Fatalf("expected default singbox name %q, got %q", "sing-box", singbox1.Name)
 	}
-	if xray1.Meta == nil || xray1.Meta["repo"] != "XTLS/Xray-core" {
-		t.Fatalf("expected default xray meta repo %q, got %#v", "XTLS/Xray-core", xray1.Meta)
+	if singbox1.Meta == nil || singbox1.Meta["repo"] != "SagerNet/sing-box" {
+		t.Fatalf("expected default singbox meta repo %q, got %#v", "SagerNet/sing-box", singbox1.Meta)
 	}
 
-	xray2, err := svc.Create(context.Background(), domain.CoreComponent{Kind: domain.ComponentXray})
+	singbox2, err := svc.Create(context.Background(), domain.CoreComponent{Kind: domain.ComponentSingBox})
 	if err != nil {
-		t.Fatalf("Create xray (second) returned error: %v", err)
+		t.Fatalf("Create singbox (second) returned error: %v", err)
 	}
-	if xray2.ID != xray1.ID {
-		t.Fatalf("expected idempotent xray create to return same ID, got %q vs %q", xray1.ID, xray2.ID)
+	if singbox2.ID != singbox1.ID {
+		t.Fatalf("expected idempotent singbox create to return same ID, got %q vs %q", singbox1.ID, singbox2.ID)
 	}
 
 	components, err := svc.List(context.Background())
 	if err != nil {
 		t.Fatalf("List returned error: %v", err)
-	}
-	if countKind(components, domain.ComponentXray) != 1 {
-		t.Fatalf("expected exactly 1 xray component, got %d", countKind(components, domain.ComponentXray))
 	}
 	if countKind(components, domain.ComponentSingBox) != 1 {
 		t.Fatalf("expected exactly 1 singbox component, got %d", countKind(components, domain.ComponentSingBox))
@@ -138,11 +129,11 @@ func TestUninstall_RemovesInstallDirAndClearsState(t *testing.T) {
 	t.Cleanup(func() { shared.ArtifactsRoot = old })
 
 	shared.ArtifactsRoot = t.TempDir()
-	installDir := filepath.Join(shared.ArtifactsRoot, "core", "xray")
+	installDir := filepath.Join(shared.ArtifactsRoot, "core", "sing-box")
 	if err := os.MkdirAll(installDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(installDir, "xray"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(installDir, "sing-box"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatalf("write binary: %v", err)
 	}
 
@@ -155,26 +146,26 @@ func TestUninstall_RemovesInstallDirAndClearsState(t *testing.T) {
 		t.Fatalf("List returned error: %v", err)
 	}
 
-	var xrayID string
+	var singboxID string
 	for _, comp := range components {
-		if comp.Kind == domain.ComponentXray {
-			xrayID = comp.ID
+		if comp.Kind == domain.ComponentSingBox {
+			singboxID = comp.ID
 			break
 		}
 	}
-	if xrayID == "" {
-		t.Fatalf("expected xray component to exist")
+	if singboxID == "" {
+		t.Fatalf("expected singbox component to exist")
 	}
 
-	before, err := repo.GetByKind(context.Background(), domain.ComponentXray)
+	before, err := repo.GetByKind(context.Background(), domain.ComponentSingBox)
 	if err != nil {
 		t.Fatalf("GetByKind returned error: %v", err)
 	}
 	if before.InstallDir == "" || before.LastInstalledAt.IsZero() {
-		t.Fatalf("expected xray component to be detected as installed before uninstall")
+		t.Fatalf("expected singbox component to be detected as installed before uninstall")
 	}
 
-	updated, err := svc.Uninstall(context.Background(), xrayID)
+	updated, err := svc.Uninstall(context.Background(), singboxID)
 	if err != nil {
 		t.Fatalf("Uninstall returned error: %v", err)
 	}
@@ -189,7 +180,7 @@ func TestUninstall_RemovesInstallDirAndClearsState(t *testing.T) {
 		t.Fatalf("expected install dir to be removed, got err=%v", err)
 	}
 
-	after, err := repo.GetByKind(context.Background(), domain.ComponentXray)
+	after, err := repo.GetByKind(context.Background(), domain.ComponentSingBox)
 	if err != nil {
 		t.Fatalf("GetByKind (after) returned error: %v", err)
 	}

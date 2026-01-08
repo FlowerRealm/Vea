@@ -76,8 +76,8 @@ func (s *Service) Get(ctx context.Context, id string) (domain.CoreComponent, err
 
 // Create 创建组件
 func (s *Service) Create(ctx context.Context, comp domain.CoreComponent) (domain.CoreComponent, error) {
-	// 核心组件（xray/sing-box/clash）使用幂等创建：缺失时补齐默认配置，存在则直接返回
-	if comp.Kind == domain.ComponentXray || comp.Kind == domain.ComponentSingBox || comp.Kind == domain.ComponentClash {
+	// 核心组件（sing-box/clash）使用幂等创建：缺失时补齐默认配置，存在则直接返回
+	if comp.Kind == domain.ComponentSingBox || comp.Kind == domain.ComponentClash {
 		if err := s.EnsureDefaultComponents(ctx); err != nil {
 			return domain.CoreComponent{}, err
 		}
@@ -191,9 +191,6 @@ func (s *Service) detectInstalled(kind domain.CoreComponentKind) *installInfo {
 	var binaries []string
 
 	switch kind {
-	case domain.ComponentXray:
-		subdir = "core/xray"
-		binaries = []string{"xray", "xray.exe"}
 	case domain.ComponentSingBox:
 		subdir = "core/sing-box"
 		binaries = []string{"sing-box", "sing-box.exe"}
@@ -242,8 +239,6 @@ func (s *Service) doInstall(id string) {
 	// 确定组件类型和仓库
 	var kindStr string
 	switch comp.Kind {
-	case domain.ComponentXray:
-		kindStr = "xray"
 	case domain.ComponentSingBox:
 		kindStr = "singbox"
 	case domain.ComponentClash:
@@ -310,11 +305,6 @@ func (s *Service) doInstall(id string) {
 		return
 	}
 
-	// 清理多余文件（Xray 特有）
-	if comp.Kind == domain.ComponentXray {
-		s.cleanupXrayInstall(installDir)
-	}
-
 	// mihomo 的发布包在 Linux/macOS 通常是单文件 gzip，文件名可能带版本/平台后缀；这里把解压产物规整为固定可执行文件名。
 	if comp.Kind == domain.ComponentClash {
 		if err := normalizeClashInstall(installDir); err != nil {
@@ -344,22 +334,6 @@ func (s *Service) doInstall(id string) {
 func (s *Service) EnsureDefaultComponents(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	// 确保 Xray 组件存在
-	if _, err := s.repo.GetByKind(ctx, domain.ComponentXray); err != nil {
-		if !errors.Is(err, repository.ErrComponentNotFound) {
-			return err
-		}
-		if _, err := s.repo.Create(ctx, domain.CoreComponent{
-			Name: "Xray",
-			Kind: domain.ComponentXray,
-			Meta: map[string]string{
-				"repo": "XTLS/Xray-core",
-			},
-		}); err != nil {
-			return err
-		}
-	}
 
 	// 确保 sing-box 组件存在
 	if _, err := s.repo.GetByKind(ctx, domain.ComponentSingBox); err != nil {
@@ -400,8 +374,6 @@ func (s *Service) EnsureDefaultComponents(ctx context.Context) error {
 func (s *Service) resolveInstallDir(comp domain.CoreComponent) string {
 	base := filepath.Join(shared.ArtifactsRoot, "core")
 	switch comp.Kind {
-	case domain.ComponentXray:
-		return filepath.Join(base, "xray")
 	case domain.ComponentSingBox:
 		return filepath.Join(base, "sing-box")
 	case domain.ComponentClash:
@@ -411,45 +383,10 @@ func (s *Service) resolveInstallDir(comp domain.CoreComponent) string {
 	}
 }
 
-// cleanupXrayInstall 清理 Xray 安装目录中的多余文件
-func (s *Service) cleanupXrayInstall(dir string) error {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return err
-	}
-
-	allowed := map[string]struct{}{
-		"xray":                {},
-		"xray.exe":            {},
-		"geoip.dat":           {},
-		"geosite.dat":         {},
-		"config.json":         {},
-		"config-measure.json": {},
-		"license":             {},
-		"license.txt":         {},
-	}
-
-	for _, entry := range entries {
-		name := entry.Name()
-		lower := strings.ToLower(name)
-		if _, ok := allowed[lower]; ok {
-			continue
-		}
-		path := filepath.Join(dir, name)
-		if err := os.RemoveAll(path); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 // setExecutablePermissions 设置二进制文件的执行权限
 func (s *Service) setExecutablePermissions(dir, kind string) {
 	var binaries []string
 	switch kind {
-	case "xray":
-		binaries = []string{"xray", "xray.exe"}
 	case "singbox":
 		binaries = []string{"sing-box", "sing-box.exe"}
 	case "clash":

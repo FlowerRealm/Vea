@@ -1,9 +1,9 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `main.go`: backend entrypoint (default `--addr :19080`, state snapshot at `--state data/state.json`).
+- `main.go`: backend entrypoint (default `--addr :19080`, state snapshot defaults to userData: `--state <userData>/data/state.json`).
 - `backend/`: HTTP API (`backend/api/`), entities (`backend/domain/`), services/adapters (`backend/service/`), repositories (`backend/repository/`), persistence (`backend/persist/`), schedulers (`backend/tasks/`).
-- `backend/service/proxy/engine_select.go`: engine selection (Xray vs sing-box) based on inbound mode / protocol constraints.
+- `backend/service/proxy/engine_select.go`: engine selection (sing-box vs Clash) based on inbound mode / protocol constraints.
 - `backend/domain/entities.go`: domain model of `FRouter`, `Node` (节点), `ProxyConfig`, `ChainProxySettings` and engines.
 - `backend/api/router.go`: HTTP endpoints, including `/frouters`, `/frouters/:id/graph`, `/nodes`, `/proxy/*`, `/tun/*`.
 - `backend/service/nodegroup/`: compiles runtime plans from `ProxyConfig` + `FRouter` + `Nodes` + `ChainProxySettings` (proxy + measurement).
@@ -14,7 +14,7 @@
 - `docs/`: design notes and API documentation.
 - `docs/api/openapi.yaml`: HTTP API spec (frouters, proxy, tun, settings, etc.).
 
-Generated/runtime dirs (gitignored): `data/`, `artifacts/`, `dist/`, `release/`, root `vea`/`vea.exe`.
+Legacy runtime dirs (gitignored): `data/`, `artifacts/` (startup migrates them into userData); build outputs: `dist/`, `release/`, root `vea`/`vea.exe`.
 
 ## Domain Concepts & Terminology
 - `FRouter`：对外的一等操作单元（工具）；通过 `ChainProxySettings` 图引用 `NodeID`；API 入口为 `/frouters`。
@@ -32,7 +32,7 @@ Prereqs: Go 1.22+, Node.js 18+. Electron requires a GUI environment.
 
 Backend-only (useful on headless machines):
 ```bash
-go run . --dev --addr :19080 --state data/state.json
+go run . --dev --addr :19080
 ```
 Ports: fixed to `:19080`.
 
@@ -42,7 +42,7 @@ Ports: fixed to `:19080`.
 - API/domain design: prefer FRouter as the primary unit (`frouters`, `frouterId`); avoid adding new standalone Node CRUD surface unless explicitly required.
 - JS/HTML: follow existing 2-space indentation and the no-semicolon style used in `frontend/`.
 - UI copy: prefer “FRouter” to represent the active unit; avoid re-introducing “当前节点” as a primary concept.
-- Do not commit build outputs (`dist/`, `release/`, `data/`), except `frontend/sdk/dist/`.
+- Do not commit build outputs (`dist/`, `release/`, `data/`, `artifacts/`), except `frontend/sdk/dist/`.
 
 ## Engine & Routing Notes
 - Engine selection is constrained by inbound mode and protocol support (e.g. TUN and some protocols may force sing-box); see `backend/service/proxy/engine_select.go`.
@@ -51,7 +51,6 @@ Ports: fixed to `:19080`.
 ## Testing Guidelines
 - Default: `go test ./...`
 - Quick run: `go test -short ./...` (skips networked `TestE2E_*`).
-- E2E expects Xray under `artifacts/core/xray/` and may download Geo files.
 
 ## Compatibility & Migration Notes
 - This repo does not keep legacy naming/fields for backward compatibility. Breaking changes are allowed and should fail fast at compile time.

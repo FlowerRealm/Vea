@@ -421,3 +421,117 @@ func TestClashAdapter_TUNDefaultsMTU1500OnLinux(t *testing.T) {
 		t.Fatalf("expected tun.mtu to be a number, got %T %v", got, got)
 	}
 }
+
+func TestClashAdapter_TUNEnablesSnifferByDefault(t *testing.T) {
+	frouter := domain.FRouter{
+		ID:   "fr1",
+		Name: "test",
+		ChainProxy: domain.ChainProxySettings{
+			Edges: []domain.ProxyEdge{
+				{
+					ID:       "e1",
+					From:     domain.EdgeNodeLocal,
+					To:       domain.EdgeNodeDirect,
+					Priority: 0,
+					Enabled:  true,
+				},
+			},
+		},
+	}
+
+	cfg := domain.ProxyConfig{
+		InboundMode:     domain.InboundTUN,
+		PreferredEngine: domain.EngineClash,
+		FRouterID:       frouter.ID,
+		TUNSettings: &domain.TUNConfiguration{
+			InterfaceName: "tun0",
+			MTU:           1500,
+			Address:       []string{"198.18.0.1/30"},
+			AutoRoute:     true,
+			Stack:         "mixed",
+			DNSHijack:     true,
+		},
+	}
+
+	plan, err := nodegroup.CompileProxyPlan(domain.EngineClash, cfg, frouter, nil)
+	if err != nil {
+		t.Fatalf("CompileProxyPlan: %v", err)
+	}
+
+	out, err := (&ClashAdapter{}).BuildConfig(plan, GeoFiles{})
+	if err != nil {
+		t.Fatalf("BuildConfig: %v", err)
+	}
+
+	var m map[string]interface{}
+	if err := yaml.Unmarshal(out, &m); err != nil {
+		t.Fatalf("yaml.Unmarshal: %v", err)
+	}
+
+	sniffer, _ := m["sniffer"].(map[string]interface{})
+	if sniffer == nil {
+		t.Fatalf("expected sniffer config in tun mode")
+	}
+	if got, ok := sniffer["enable"].(bool); !ok || !got {
+		t.Fatalf("expected sniffer.enable=true, got %T %v", sniffer["enable"], sniffer["enable"])
+	}
+}
+
+func TestClashAdapter_TUNBlocksQUICOnUDP443(t *testing.T) {
+	frouter := domain.FRouter{
+		ID:   "fr1",
+		Name: "test",
+		ChainProxy: domain.ChainProxySettings{
+			Edges: []domain.ProxyEdge{
+				{
+					ID:       "e1",
+					From:     domain.EdgeNodeLocal,
+					To:       domain.EdgeNodeDirect,
+					Priority: 0,
+					Enabled:  true,
+				},
+			},
+		},
+	}
+
+	cfg := domain.ProxyConfig{
+		InboundMode:     domain.InboundTUN,
+		PreferredEngine: domain.EngineClash,
+		FRouterID:       frouter.ID,
+		TUNSettings: &domain.TUNConfiguration{
+			InterfaceName: "tun0",
+			MTU:           1500,
+			Address:       []string{"198.18.0.1/30"},
+			AutoRoute:     true,
+			Stack:         "mixed",
+			DNSHijack:     true,
+		},
+	}
+
+	plan, err := nodegroup.CompileProxyPlan(domain.EngineClash, cfg, frouter, nil)
+	if err != nil {
+		t.Fatalf("CompileProxyPlan: %v", err)
+	}
+
+	out, err := (&ClashAdapter{}).BuildConfig(plan, GeoFiles{})
+	if err != nil {
+		t.Fatalf("BuildConfig: %v", err)
+	}
+
+	var m map[string]interface{}
+	if err := yaml.Unmarshal(out, &m); err != nil {
+		t.Fatalf("yaml.Unmarshal: %v", err)
+	}
+
+	rules, _ := m["rules"].([]interface{})
+	if len(rules) < 4 {
+		t.Fatalf("expected at least 4 rules in tun mode, got %d", len(rules))
+	}
+	got, ok := rules[3].(string)
+	if !ok {
+		t.Fatalf("expected rules[3] to be string, got %T %v", rules[3], rules[3])
+	}
+	if got != "AND,((NETWORK,UDP),(DST-PORT,443)),REJECT" {
+		t.Fatalf("expected rules[3] to be QUIC block rule, got %q", got)
+	}
+}

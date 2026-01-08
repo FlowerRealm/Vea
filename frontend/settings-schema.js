@@ -42,7 +42,7 @@ const SETTINGS_SCHEMA = {
           key: "proxy.port",
           type: "number",
           label: "代理端口",
-          description: "本地代理监听端口",
+          description: "本地代理监听端口（Mixed：sing-box/mihomo 同端口）",
           default: 31346,
           min: 1024,
           max: 65535
@@ -185,52 +185,6 @@ const SETTINGS_SCHEMA = {
             { value: "linear", label: "Linear (低内存)" }
           ],
           default: "hybrid"
-        }
-      ]
-    },
-    {
-      id: "xray",
-      name: "Xray",
-      icon: "zap",
-      settings: [
-        {
-          key: "xray.muxEnabled",
-          type: "toggle",
-          label: "启用 Mux",
-          description: "减少TCP连接数，提升性能",
-          group: "多路复用 (Mux)",
-          default: false
-        },
-        {
-          key: "xray.muxConcurrency",
-          type: "number",
-          label: "并发数",
-          description: "-1 为自动，建议 8-16",
-          group: "多路复用 (Mux)",
-          default: 8,
-          min: -1,
-          max: 1024
-        },
-        {
-          key: "xray.dnsServers",
-          type: "tags",
-          label: "DNS 服务器",
-          description: "示例: 1.1.1.1,8.8.8.8,223.5.5.5",
-          group: "DNS 配置",
-          default: "1.1.1.1,8.8.8.8"
-        },
-        {
-          key: "xray.domainStrategy",
-          type: "select",
-          label: "域名解析策略",
-          description: "AsIs 性能最佳，IPOnDemand 可避免DNS污染",
-          group: "路由策略",
-          options: [
-            { value: "AsIs", label: "AsIs (不解析，速度最快)" },
-            { value: "IPIfNonMatch", label: "IPIfNonMatch (匹配失败时解析)" },
-            { value: "IPOnDemand", label: "IPOnDemand (按需解析)" }
-          ],
-          default: "AsIs"
         }
       ]
     },

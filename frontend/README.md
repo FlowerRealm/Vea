@@ -94,7 +94,7 @@ go test ./...
 cd frontend/sdk && npm run build
 
 # 3) 后端冒烟（仅后端，不启动 Electron）
-go run . --dev --addr :19080 --state data/state.json
+go run . --dev --addr :19080
 # 另开终端：
 curl http://localhost:19080/health
 ```

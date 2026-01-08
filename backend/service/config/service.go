@@ -35,6 +35,7 @@ var (
 type Service struct {
 	repo        repository.ConfigRepository
 	nodeService *nodes.Service
+	frouterRepo repository.FRouterRepository
 }
 
 type subscriptionParseError struct {
@@ -57,10 +58,11 @@ func (e *subscriptionParseError) Unwrap() error {
 }
 
 // NewService 创建配置服务
-func NewService(repo repository.ConfigRepository, nodeService *nodes.Service) *Service {
+func NewService(repo repository.ConfigRepository, nodeService *nodes.Service, frouterRepo repository.FRouterRepository) *Service {
 	return &Service{
 		repo:        repo,
 		nodeService: nodeService,
+		frouterRepo: frouterRepo,
 	}
 }
 
@@ -83,6 +85,8 @@ func (s *Service) Create(ctx context.Context, cfg domain.Config) (domain.Config,
 		payload, checksum, err := s.downloadConfig(cfg.SourceURL)
 		if err != nil {
 			cfg.LastSyncError = err.Error()
+		} else if strings.TrimSpace(payload) == "" {
+			cfg.LastSyncError = "订阅内容为空"
 		} else {
 			cfg.Payload = payload
 			cfg.Checksum = checksum
@@ -135,6 +139,19 @@ func (s *Service) Sync(ctx context.Context, id string) error {
 			log.Printf("[ConfigSync] failed to update sync status for %s after download error: %v", id, updateErr)
 		}
 		return err
+	}
+
+	// 订阅返回空内容时，保留现有节点与旧 payload，避免数据丢失与 FRouter 引用断裂。
+	// 空订阅通常意味着服务端异常/限流/返回错误页等，不应被当作“清空节点”的指令。
+	if strings.TrimSpace(payload) == "" {
+		emptyErr := &subscriptionParseError{
+			configID: id,
+			message:  "订阅内容为空；未更新节点（如有现有节点将保持不变）",
+		}
+		if updateErr := s.repo.UpdateSyncStatus(ctx, id, cfg.Payload, cfg.Checksum, emptyErr); updateErr != nil {
+			log.Printf("[ConfigSync] failed to update sync status for %s after empty payload: %v", id, updateErr)
+		}
+		return emptyErr
 	}
 
 	// 如果内容没变，只更新同步时间
@@ -197,10 +214,7 @@ func (s *Service) syncNodesFromPayload(ctx context.Context, configID, payload st
 
 	trimmed := strings.TrimSpace(payload)
 	if trimmed == "" {
-		if _, err := s.nodeService.ReplaceNodesForConfig(ctx, configID, nil); err != nil {
-			log.Printf("[ConfigSync] clear nodes failed for %s: %v", configID, err)
-			return err
-		}
+		// 空 payload 不应触发“清空节点”。订阅可能短暂返回空内容，清空会造成不可逆的数据丢失。
 		return nil
 	}
 
@@ -209,20 +223,112 @@ func (s *Service) syncNodesFromPayload(ctx context.Context, configID, payload st
 		log.Printf("[ConfigSync] parse errors for %s: %d", configID, len(errs))
 	}
 
-	if len(nodes) == 0 {
-		// payload 非空但解析不到节点：这通常是订阅格式不支持（如 Clash YAML/HTML 错误页/升级提示）。
-		// 为避免破坏已有配置，这里不清空旧节点。
+	if len(nodes) > 0 {
+		// 分享链接订阅：仅更新节点；如之前生成过 Clash YAML 的订阅 FRouter，清理掉以避免残留。
+		if _, err := s.nodeService.ReplaceNodesForConfig(ctx, configID, nodes); err != nil {
+			log.Printf("[ConfigSync] update nodes failed for %s: %v", configID, err)
+			return err
+		}
+		if s.frouterRepo != nil {
+			frouterID := stableFRouterIDForConfig(configID)
+			if err := s.frouterRepo.Delete(ctx, frouterID); err != nil && !errors.Is(err, repository.ErrFRouterNotFound) {
+				log.Printf("[ConfigSync] clear frouter failed for %s: %v", configID, err)
+				return err
+			}
+		}
+		return nil
+	}
+
+	// ParseMultipleLinks() 解析不到节点时，才尝试 Clash YAML。
+	// 避免对明显不是 Clash YAML 的内容做 YAML 解析（HTML 错误页/升级提示等），减少无意义的二次失败。
+	if !looksLikeClashSubscriptionYAML(trimmed) {
 		return &subscriptionParseError{
 			configID: configID,
-			message:  "订阅内容无法解析为节点（仅支持 vmess/vless/trojan/ss 分享链接）；已保留现有节点",
+			message:  "订阅内容无法解析为节点（支持 vmess/vless/trojan/ss 分享链接与 Clash YAML）；已保留现有节点",
 		}
 	}
 
-	if _, err := s.nodeService.ReplaceNodesForConfig(ctx, configID, nodes); err != nil {
+	// 尝试解析 Clash YAML 订阅（nodes + rules/proxy-groups）并生成订阅 FRouter。
+	clashResult, err := parseClashSubscription(configID, payload)
+	if err != nil {
+		// payload 非空但解析不到节点：这通常是订阅格式不支持（如 HTML 错误页/升级提示）。
+		// 为避免破坏已有配置，这里不清空旧节点。
+		return &subscriptionParseError{
+			configID: configID,
+			message:  "订阅内容无法解析为节点（支持 vmess/vless/trojan/ss 分享链接与 Clash YAML）；已保留现有节点",
+		}
+	}
+	if len(clashResult.Warnings) > 0 {
+		log.Printf("[ConfigSync] clash parse warnings for %s: %d", configID, len(clashResult.Warnings))
+		for i, w := range clashResult.Warnings {
+			if i >= 8 {
+				break
+			}
+			log.Printf("[ConfigSync] clash warning: %s", w)
+		}
+	}
+	if _, err := s.nodeService.ReplaceNodesForConfig(ctx, configID, clashResult.Nodes); err != nil {
 		log.Printf("[ConfigSync] update nodes failed for %s: %v", configID, err)
 		return err
 	}
+	if s.frouterRepo != nil {
+		cfg, getErr := s.repo.Get(ctx, configID)
+		if getErr != nil {
+			log.Printf("[ConfigSync] get config failed for %s when upserting frouter: %v", configID, getErr)
+		}
+		frouterID := stableFRouterIDForConfig(configID)
+		next := domain.FRouter{
+			ID:             frouterID,
+			Name:           "订阅: " + strings.TrimSpace(cfg.Name),
+			SourceConfigID: configID,
+			ChainProxy:     clashResult.Chain,
+		}
+		if strings.TrimSpace(cfg.Name) == "" {
+			next.Name = "订阅 FRouter"
+		}
+
+		existing, getErr := s.frouterRepo.Get(ctx, frouterID)
+		if getErr == nil {
+			next.Tags = existing.Tags
+			next.LastLatencyMS = existing.LastLatencyMS
+			next.LastLatencyAt = existing.LastLatencyAt
+			next.LastLatencyError = existing.LastLatencyError
+			next.LastSpeedMbps = existing.LastSpeedMbps
+			next.LastSpeedAt = existing.LastSpeedAt
+			next.LastSpeedError = existing.LastSpeedError
+			if _, err := s.frouterRepo.Update(ctx, frouterID, next); err != nil {
+				log.Printf("[ConfigSync] update frouter failed for %s: %v", configID, err)
+				return err
+			}
+			return nil
+		}
+		if !errors.Is(getErr, repository.ErrFRouterNotFound) {
+			log.Printf("[ConfigSync] get frouter failed for %s: %v", configID, getErr)
+			return getErr
+		}
+		if _, err := s.frouterRepo.Create(ctx, next); err != nil {
+			log.Printf("[ConfigSync] create frouter failed for %s: %v", configID, err)
+			return err
+		}
+	}
 	return nil
+}
+
+func looksLikeClashSubscriptionYAML(payload string) bool {
+	payload = strings.TrimSpace(payload)
+	if payload == "" {
+		return false
+	}
+	// 只做“很明显”的正向特征匹配，避免误伤：
+	// Clash YAML 常见顶层字段：proxies / proxy-groups / rules。
+	lower := strings.ToLower(payload)
+	keys := []string{"proxies:", "proxy-groups:", "rules:"}
+	for _, k := range keys {
+		if strings.HasPrefix(lower, k) || strings.Contains(lower, "\n"+k) || strings.Contains(lower, "\r\n"+k) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) downloadConfig(sourceURL string) (payload, checksum string, err error) {

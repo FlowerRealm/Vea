@@ -83,7 +83,7 @@ func (r *Router) startProxy(c *gin.Context) {
 }
 
 func (r *Router) stopProxy(c *gin.Context) {
-	if err := r.service.StopProxy(); err != nil {
+	if err := r.service.StopProxyUser(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

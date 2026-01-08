@@ -142,7 +142,7 @@ await client.proxy.start({ frouterId: 'frouter-id' })
 
 // 获取状态
 const status = await client.proxy.status()
-// { running: true, pid: 1234, engine: 'xray', inboundMode: 'mixed', inboundPort: 1080, frouterId: '...' }
+// { running: true, pid: 1234, engine: 'singbox', inboundMode: 'mixed', inboundPort: 1080, frouterId: '...' }
 
 // 停止代理
 await client.proxy.stop()
@@ -153,7 +153,7 @@ await client.proxy.stop()
 ```javascript
 // 列出/安装组件
 const components = await client.components.list()
-await client.components.create({ kind: 'xray' })
+await client.components.create({ kind: 'singbox' })
 await client.components.install('component-id')
 ```
 

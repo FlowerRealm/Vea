@@ -17,11 +17,11 @@ func TestConfigRepoDeleteRemovesNodesAndFRouters(t *testing.T) {
 	frouterRepo := NewFRouterRepo(store)
 	configRepo := NewConfigRepo(store)
 
-	cfg1, err := configRepo.Create(ctx, domain.Config{Name: "cfg1", Format: domain.ConfigFormatXray})
+	cfg1, err := configRepo.Create(ctx, domain.Config{Name: "cfg1", Format: domain.ConfigFormatSubscription})
 	if err != nil {
 		t.Fatalf("create cfg1: %v", err)
 	}
-	cfg2, err := configRepo.Create(ctx, domain.Config{Name: "cfg2", Format: domain.ConfigFormatXray})
+	cfg2, err := configRepo.Create(ctx, domain.Config{Name: "cfg2", Format: domain.ConfigFormatSubscription})
 	if err != nil {
 		t.Fatalf("create cfg2: %v", err)
 	}

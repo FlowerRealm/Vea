@@ -18,8 +18,30 @@ func TestSingBoxRuleSetURL(t *testing.T) {
 		}
 	})
 
+	t.Run("geosite case-insensitive", func(t *testing.T) {
+		got, err := singBoxRuleSetURL("GeoSite-CN")
+		if err != nil {
+			t.Fatalf("expected nil err, got %v", err)
+		}
+		want := "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs"
+		if got != want {
+			t.Fatalf("expected %q, got %q", want, got)
+		}
+	})
+
 	t.Run("geoip", func(t *testing.T) {
 		got, err := singBoxRuleSetURL("geoip-cn")
+		if err != nil {
+			t.Fatalf("expected nil err, got %v", err)
+		}
+		want := "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs"
+		if got != want {
+			t.Fatalf("expected %q, got %q", want, got)
+		}
+	})
+
+	t.Run("geoip case-insensitive", func(t *testing.T) {
+		got, err := singBoxRuleSetURL("geoip-CN")
 		if err != nil {
 			t.Fatalf("expected nil err, got %v", err)
 		}
@@ -45,7 +67,7 @@ func TestEnsureSingBoxRuleSets_DownloadsMissing(t *testing.T) {
 		return []byte("ok"), nil
 	}
 
-	tags := []string{"geosite-cn", "geoip-cn"}
+	tags := []string{"geosite-cn", "geoip-CN"}
 	if err := ensureSingBoxRuleSets(root, tags, download); err != nil {
 		t.Fatalf("ensureSingBoxRuleSets failed: %v", err)
 	}
@@ -64,6 +86,9 @@ func TestEnsureSingBoxRuleSets_DownloadsMissing(t *testing.T) {
 
 	if len(gotURLs) != 2 {
 		t.Fatalf("expected 2 downloads, got %d", len(gotURLs))
+	}
+	if gotURLs[1] != "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs" {
+		t.Fatalf("expected geoip download URL to be normalized, got %q", gotURLs[1])
 	}
 }
 
