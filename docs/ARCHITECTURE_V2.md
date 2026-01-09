@@ -431,7 +431,8 @@ proxySvc := proxy.NewService(frouterRepo, nodeRepo, componentRepo, settingsRepo)
 // ...
 
 // 6. 创建 Facade
-facade := service.NewFacade(nodeSvc, frouterSvc, configSvc, proxySvc, componentSvc, geoSvc, repos)
+themeSvc := themesvc.NewService(themesvc.Options{UserDataRoot: shared.UserDataRoot()})
+facade := service.NewFacade(nodeSvc, frouterSvc, configSvc, proxySvc, componentSvc, geoSvc, themeSvc, repos)
 
 // 7. 设置持久化（事件驱动）
 snapshotter := persist.NewSnapshotterV2(statePath, memStore)

@@ -8,6 +8,7 @@
 ## 关键目录
 - `frontend/`：Electron 入口与 UI
 - `frontend/sdk/`：JS SDK（构建产物已提交）
+- `frontend/theme/<themeId>/`：内置主题包（入口 `index.html`）
 
 ## 变更历史
 - [202601071130_fix-gz-extract-clash-install](../../history/2026-01/202601071130_fix-gz-extract-clash-install/) - 组件面板新增“卸载”按钮；主题按钮 hover 支持 `--accent-hover` 变量（提升一致性与可维护性）
@@ -19,3 +20,4 @@
 - [202601081053_fix-review-followups](../../history/2026-01/202601081053_fix-review-followups/) - 主题页：日志面板与 `updateCoreUI` 附近缩进一致性修复
 - [202601081145_fix-review-report](../../history/2026-01/202601081145_fix-review-report/) - 主题页：订阅面板同步错误字段处理去冗余（去掉多余 `String()` 转换）
 - [202601081339_fix-proxy-port-sync](../../history/2026-01/202601081339_fix-proxy-port-sync/) - 主题页：设置项 `proxy.port` 联动后端 `ProxyConfig.inboundPort`，端口变更自动重启并重应用系统代理；启动时从后端同步实际端口避免误导
+- [202601092026_theme-package](../../history/2026-01/202601092026_theme-package/) - 主题目录化并支持 ZIP 导入/导出；Electron 启动从 userData/themes 加载并在缺失时复制内置主题

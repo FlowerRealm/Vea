@@ -23,6 +23,7 @@
 | 202601081553 | user-data-root | 重构 | ✅已完成 | [2026-01/202601081553_user_data_root](2026-01/202601081553_user_data_root/) |
 | 202601081505 | remove-xray | 变更 | ✅已完成 | [2026-01/202601081505_remove_xray](2026-01/202601081505_remove_xray/) |
 | 202601082055 | fix-clash-tun-sniffer-quic | 修复 | ✅已完成 | [2026-01/202601082055_fix-clash-tun-sniffer-quic](2026-01/202601082055_fix-clash-tun-sniffer-quic/) |
+| 202601092026 | theme-package | 变更 | ✅已完成 | [2026-01/202601092026_theme-package](2026-01/202601092026_theme-package/) |
 
 ## 按月归档
 
@@ -45,3 +46,4 @@
 - [202601081553_user_data_root](2026-01/202601081553_user_data_root/) - 运行期数据与 artifacts 统一写入 userData，并自动迁移清理遗留仓库目录
 - [202601081505_remove_xray](2026-01/202601081505_remove_xray/) - 移除 Xray 支持，仅保留 sing-box/mihomo(Clash)
 - [202601082055_fix-clash-tun-sniffer-quic](2026-01/202601082055_fix-clash-tun-sniffer-quic/) - 代理服务：mihomo(Clash) TUN 默认开启 sniffer，并默认阻断 QUIC（UDP/443）提升可用性
+- [202601092026_theme-package](2026-01/202601092026_theme-package/) - 主题包：主题目录化 + ZIP 导入/导出；Electron 从 userData/themes 加载；主题页提供导入/导出与切换

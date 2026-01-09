@@ -37,6 +37,7 @@ let mainWindow = null
 let tray = null
 let isQuitting = false  // 防止退出时的无限循环
 let cleanupInProgress = false
+let startupThemeEntryPath = null
 
 // ============================================================================
 // 通用 HTTP 请求工具函数
@@ -251,9 +252,11 @@ function createWindow() {
     title: 'Vea Console'
   })
 
-  // 直接加载默认主题（dark.html）
+  // 主题统一从 userData/themes/<id>/index.html 加载
   // 主题切换功能在应用内通过重新加载 HTML 文件实现
-  mainWindow.loadFile(path.join(__dirname, 'theme/dark.html'))
+  const fallback = path.join(__dirname, 'theme', 'dark', 'index.html')
+  const entry = startupThemeEntryPath && fs.existsSync(startupThemeEntryPath) ? startupThemeEntryPath : fallback
+  mainWindow.loadFile(entry)
 
   // F12 打开开发者工具
   mainWindow.webContents.on('before-input-event', (event, input) => {
@@ -273,6 +276,70 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null
   })
+}
+
+// ============================================================================
+// 主题目录初始化与入口解析
+// ============================================================================
+
+function ensureBundledThemes(userDataDir) {
+  const themesRoot = path.join(userDataDir, 'themes')
+  fs.mkdirSync(themesRoot, { recursive: true })
+
+  const bundledRoot = path.join(__dirname, 'theme')
+  const builtinThemes = ['dark', 'light']
+
+  for (const id of builtinThemes) {
+    const destDir = path.join(themesRoot, id)
+    const destIndex = path.join(destDir, 'index.html')
+    if (fs.existsSync(destIndex)) {
+      continue
+    }
+
+    const srcDir = path.join(bundledRoot, id)
+    const srcIndex = path.join(srcDir, 'index.html')
+    if (!fs.existsSync(srcIndex)) {
+      console.warn(`[Theme] bundled theme is missing: ${srcIndex}`)
+      continue
+    }
+
+    try {
+      fs.rmSync(destDir, { recursive: true, force: true })
+    } catch (e) {
+      console.warn(`[Theme] remove existing theme dir failed: ${e.message}`)
+    }
+
+    try {
+      fs.cpSync(srcDir, destDir, { recursive: true })
+      console.log(`[Theme] installed bundled theme: ${id}`)
+    } catch (e) {
+      console.error(`[Theme] copy bundled theme failed (${id}): ${e.message}`)
+    }
+  }
+}
+
+async function loadFrontendThemeSetting() {
+  const result = await apiRequest({ path: '/settings/frontend', timeout: 2000 })
+  if (!result.success || !result.data) {
+    return 'dark'
+  }
+  const theme = result.data && typeof result.data.theme === 'string' ? result.data.theme.trim() : ''
+  return theme || 'dark'
+}
+
+function resolveThemeEntryPath(userDataDir, themeId) {
+  const themesRoot = path.join(userDataDir, 'themes')
+  const candidate = path.join(themesRoot, themeId, 'index.html')
+  if (fs.existsSync(candidate)) {
+    return candidate
+  }
+
+  const fallback = path.join(themesRoot, 'dark', 'index.html')
+  if (fs.existsSync(fallback)) {
+    return fallback
+  }
+
+  return path.join(__dirname, 'theme', 'dark', 'index.html')
 }
 
 /**
@@ -528,6 +595,14 @@ app.whenReady().then(async () => {
 
   // 内核随应用启动（不自动启用系统代理）
   await startKernelViaAPI()
+
+  // 主题初始化：缺少内置主题时从 app resources 复制到 userData/themes
+  const userDataDir = app.getPath('userData')
+  ensureBundledThemes(userDataDir)
+
+  // 启动前读取后端前端设置 theme（默认 dark）
+  const themeId = await loadFrontendThemeSetting()
+  startupThemeEntryPath = resolveThemeEntryPath(userDataDir, themeId)
 
   createWindow()
   createTray()

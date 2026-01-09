@@ -293,7 +293,7 @@ func ExtractArchive(targetDir, archiveType string, data []byte) (string, error) 
 			break
 		}
 
-		target, err := safeJoin(tmpDir, outName)
+		target, err := SafeJoin(tmpDir, outName)
 		if err != nil {
 			installErr = err
 			break
@@ -349,7 +349,7 @@ func extractZipEntry(file *zip.File, baseDir string) error {
 		return nil
 	}
 
-	targetPath, err := safeJoin(baseDir, cleanName)
+	targetPath, err := SafeJoin(baseDir, cleanName)
 	if err != nil {
 		return err
 	}
@@ -407,7 +407,7 @@ func extractTarGz(data []byte, baseDir string) error {
 			continue
 		}
 
-		targetPath, err := safeJoin(baseDir, cleanName)
+		targetPath, err := SafeJoin(baseDir, cleanName)
 		if err != nil {
 			return err
 		}
@@ -433,16 +433,6 @@ func extractTarGz(data []byte, baseDir string) error {
 		}
 	}
 	return nil
-}
-
-func safeJoin(baseDir, rel string) (string, error) {
-	target := filepath.Join(baseDir, rel)
-	baseDirClean := filepath.Clean(baseDir)
-	targetClean := filepath.Clean(target)
-	if !strings.HasPrefix(targetClean, baseDirClean+string(os.PathSeparator)) && targetClean != baseDirClean {
-		return "", fmt.Errorf("invalid path traversal detected: %s", rel)
-	}
-	return targetClean, nil
 }
 
 // WriteAtomic 原子性写入文件

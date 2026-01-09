@@ -29,6 +29,7 @@ import (
 	"vea/backend/service/nodes"
 	"vea/backend/service/proxy"
 	"vea/backend/service/shared"
+	themesvc "vea/backend/service/theme"
 	"vea/backend/tasks"
 
 	"github.com/gin-gonic/gin"
@@ -153,9 +154,10 @@ func run() int {
 	proxySvc := proxy.NewService(frouterRepo, nodeRepo, componentRepo, settingsRepo)
 	componentSvc := component.NewService(componentRepo)
 	geoSvc := geo.NewService(geoRepo)
+	themeSvc := themesvc.NewService(themesvc.Options{UserDataRoot: shared.UserDataRoot()})
 
 	// 6. 创建 Facade（门面服务）
-	facade := service.NewFacade(nodeSvc, frouterSvc, configSvc, proxySvc, componentSvc, geoSvc, repos)
+	facade := service.NewFacade(nodeSvc, frouterSvc, configSvc, proxySvc, componentSvc, geoSvc, themeSvc, repos)
 	facade.SetAppLog(appLogPath, appLogStartedAt)
 
 	// 7. 设置持久化（事件驱动）

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"vea/backend/service/nodes"
 	"vea/backend/service/proxy"
 	"vea/backend/service/shared"
+	themesvc "vea/backend/service/theme"
 
 	"github.com/google/uuid"
 )
@@ -31,6 +33,7 @@ type Facade struct {
 	proxy     *proxy.Service
 	component *component.Service
 	geo       *geo.Service
+	theme     *themesvc.Service
 
 	appLogPath      string
 	appLogStartedAt time.Time
@@ -47,6 +50,7 @@ func NewFacade(
 	proxySvc *proxy.Service,
 	componentSvc *component.Service,
 	geoSvc *geo.Service,
+	themeSvc *themesvc.Service,
 	repos repository.Repositories,
 ) *Facade {
 	return &Facade{
@@ -56,6 +60,7 @@ func NewFacade(
 		proxy:     proxySvc,
 		component: componentSvc,
 		geo:       geoSvc,
+		theme:     themeSvc,
 		repos:     repos,
 	}
 }
@@ -672,4 +677,34 @@ func (f *Facade) RecommendEngine() proxy.EngineRecommendation {
 // GetEngineStatus 获取引擎状态
 func (f *Facade) GetEngineStatus() proxy.EngineStatus {
 	return f.proxy.GetEngineStatus(context.Background())
+}
+
+// ========== Themes 操作 ==========
+
+func (f *Facade) ListThemes() ([]themesvc.ThemeInfo, error) {
+	if f.theme == nil {
+		return nil, errors.New("theme service is not configured")
+	}
+	return f.theme.List(context.Background())
+}
+
+func (f *Facade) ImportThemeZip(path string) (string, error) {
+	if f.theme == nil {
+		return "", errors.New("theme service is not configured")
+	}
+	return f.theme.ImportZip(context.Background(), path)
+}
+
+func (f *Facade) ExportThemeZip(id string, w io.Writer) error {
+	if f.theme == nil {
+		return errors.New("theme service is not configured")
+	}
+	return f.theme.ExportZip(context.Background(), id, w)
+}
+
+func (f *Facade) DeleteTheme(id string) error {
+	if f.theme == nil {
+		return errors.New("theme service is not configured")
+	}
+	return f.theme.Delete(context.Background(), id)
 }

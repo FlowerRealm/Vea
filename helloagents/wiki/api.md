@@ -10,6 +10,7 @@
 - `GET /frouters` / `POST /frouters` / `PUT /frouters/:id` / `DELETE /frouters/:id`
 - `GET /frouters/:id/graph`
 - `GET /nodes`
+- `GET /themes` / `POST /themes/import` / `GET /themes/:id/export` / `DELETE /themes/:id`
 - `GET /components` / `POST /components` / `PUT /components/:id` / `DELETE /components/:id`
 - `POST /components/:id/install` / `POST /components/:id/uninstall`
 - `POST /proxy/start` / `POST /proxy/stop`

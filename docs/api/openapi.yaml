@@ -57,6 +57,8 @@ tags:
     description: IP 地理信息查询
   - name: settings
     description: 系统设置
+  - name: themes
+    description: 主题包管理
 
 paths:
   /health:
@@ -1092,6 +1094,90 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
 
+  /themes:
+    get:
+      tags: [themes]
+      summary: 列出已安装主题
+      description: 扫描 userData/themes 下的主题目录并返回主题列表
+      operationId: listThemes
+      responses:
+        '200':
+          description: 成功返回主题列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThemeListResponse'
+
+  /themes/import:
+    post:
+      tags: [themes]
+      summary: 导入主题 ZIP
+      description: 上传并安装主题 zip（zip 必须包含单顶层目录，且包含 index.html）
+      operationId: importTheme
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: 导入成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThemeImportResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '413':
+          description: 上传文件过大
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /themes/{id}/export:
+    get:
+      tags: [themes]
+      summary: 导出主题 ZIP
+      description: 导出指定主题目录为 zip（zip 内顶层目录为 <id>/）
+      operationId: exportTheme
+      parameters:
+        - $ref: '#/components/parameters/ThemeId'
+      responses:
+        '200':
+          description: 成功返回 zip
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /themes/{id}:
+    delete:
+      tags: [themes]
+      summary: 删除主题
+      description: 删除 userData/themes/<id> 主题目录
+      operationId: deleteTheme
+      parameters:
+        - $ref: '#/components/parameters/ThemeId'
+      responses:
+        '204':
+          description: 删除成功
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /frouters/{id}/graph:
     get:
       tags: [frouters]
@@ -1206,7 +1292,48 @@ components:
       schema:
         type: string
 
+    ThemeId:
+      name: id
+      in: path
+      required: true
+      description: 主题 ID
+      schema:
+        type: string
+
   schemas:
+    ThemeInfo:
+      type: object
+      required: [id, hasIndex]
+      properties:
+        id:
+          type: string
+          description: 主题 ID（目录名）
+        hasIndex:
+          type: boolean
+          description: 是否包含入口文件 index.html
+        updatedAt:
+          type: string
+          format: date-time
+          description: 主题目录更新时间
+
+    ThemeListResponse:
+      type: object
+      required: [themes]
+      properties:
+        themes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ThemeInfo'
+
+    ThemeImportResponse:
+      type: object
+      required: [themeId, installed]
+      properties:
+        themeId:
+          type: string
+        installed:
+          type: boolean
+
     Node:
       type: object
       description: 代理节点定义（独立于 FRouter；通常由配置/订阅同步生成）
