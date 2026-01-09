@@ -36,6 +36,7 @@ type Service struct {
 	repo        repository.ConfigRepository
 	nodeService *nodes.Service
 	frouterRepo repository.FRouterRepository
+	bgCtx       context.Context
 }
 
 type subscriptionParseError struct {
@@ -58,11 +59,15 @@ func (e *subscriptionParseError) Unwrap() error {
 }
 
 // NewService 创建配置服务
-func NewService(repo repository.ConfigRepository, nodeService *nodes.Service, frouterRepo repository.FRouterRepository) *Service {
+func NewService(bgCtx context.Context, repo repository.ConfigRepository, nodeService *nodes.Service, frouterRepo repository.FRouterRepository) *Service {
+	if bgCtx == nil {
+		bgCtx = context.Background()
+	}
 	return &Service{
 		repo:        repo,
 		nodeService: nodeService,
 		frouterRepo: frouterRepo,
+		bgCtx:       bgCtx,
 	}
 }
 
@@ -89,9 +94,16 @@ func (s *Service) Create(ctx context.Context, cfg domain.Config) (domain.Config,
 		createdID := created.ID
 		fallbackPayload := created.Payload
 		go func() {
-			if err := s.Sync(context.Background(), createdID); err != nil {
+			bgCtx := s.bgCtx
+			if bgCtx == nil {
+				bgCtx = context.Background()
+			}
+			if err := s.Sync(bgCtx, createdID); err != nil {
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					return
+				}
 				if strings.TrimSpace(fallbackPayload) != "" {
-					if parseErr := s.syncNodesFromPayload(context.Background(), createdID, fallbackPayload); parseErr != nil {
+					if parseErr := s.syncNodesFromPayload(bgCtx, createdID, fallbackPayload); parseErr != nil {
 						log.Printf("[ConfigCreate] fallback parse failed for %s: %v", createdID, parseErr)
 					}
 				}
@@ -126,7 +138,7 @@ func (s *Service) Sync(ctx context.Context, id string) error {
 		return nil // 没有 SourceURL，无需同步
 	}
 
-	payload, checksum, err := s.downloadConfig(cfg.SourceURL)
+	payload, checksum, err := s.downloadConfig(ctx, cfg.SourceURL)
 	if err != nil {
 		if updateErr := s.repo.UpdateSyncStatus(ctx, id, cfg.Payload, cfg.Checksum, err); updateErr != nil {
 			log.Printf("[ConfigSync] failed to update sync status for %s after download error: %v", id, updateErr)
@@ -191,6 +203,9 @@ func (s *Service) SyncAll(ctx context.Context) {
 			// 检查是否需要同步
 			if time.Since(cfg.LastSyncedAt) >= cfg.AutoUpdateInterval {
 				if err := s.Sync(ctx, cfg.ID); err != nil {
+					if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+						return
+					}
 					log.Printf("[ConfigSync] sync failed for %s: %v", cfg.ID, err)
 				}
 			}
@@ -324,9 +339,12 @@ func looksLikeClashSubscriptionYAML(payload string) bool {
 	return false
 }
 
-func (s *Service) downloadConfig(sourceURL string) (payload, checksum string, err error) {
+func (s *Service) downloadConfig(ctx context.Context, sourceURL string) (payload, checksum string, err error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	// 使用订阅专用 User-Agent
-	req, err := http.NewRequest(http.MethodGet, sourceURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
 	if err != nil {
 		return "", "", err
 	}

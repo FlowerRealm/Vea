@@ -50,20 +50,33 @@ type SpeedMeasurer struct {
 	settings   repository.SettingsRepository
 	geoRepo    repository.GeoRepository
 	adapters   map[domain.CoreEngineKind]adapters.CoreAdapter
+	bgCtx      context.Context
 
 	measureSem chan struct{}
 }
 
+func (m *SpeedMeasurer) context() context.Context {
+	if m == nil || m.bgCtx == nil {
+		return context.Background()
+	}
+	return m.bgCtx
+}
+
 // NewSpeedMeasurer 创建速度测量器
 func NewSpeedMeasurer(
+	bgCtx context.Context,
 	components repository.ComponentRepository,
 	geoRepo repository.GeoRepository,
 	settings repository.SettingsRepository,
 ) *SpeedMeasurer {
+	if bgCtx == nil {
+		bgCtx = context.Background()
+	}
 	return &SpeedMeasurer{
 		components: components,
 		settings:   settings,
 		geoRepo:    geoRepo,
+		bgCtx:      bgCtx,
 		adapters: map[domain.CoreEngineKind]adapters.CoreAdapter{
 			domain.EngineSingBox: &adapters.SingBoxAdapter{},
 			domain.EngineClash:   &adapters.ClashAdapter{},
@@ -79,10 +92,11 @@ func (m *SpeedMeasurer) MeasureSpeed(frouter domain.FRouter, nodes []domain.Node
 		return 0, err
 	}
 	activeNodes := nodegroup.FilterNodesByID(nodes, nodegroup.ActiveNodeIDs(compiled))
+	parent := m.context()
 
 	// 直连（图中不引用任何代理节点）不应该依赖引擎进程：直接在本机网络做测量即可。
 	if len(activeNodes) == 0 {
-		ctx, cancel := context.WithTimeout(context.Background(), speedTestTimeout)
+		ctx, cancel := context.WithTimeout(parent, speedTestTimeout)
 		defer cancel()
 		mbps, err := measureDownloadDirect(ctx, onProgress)
 		if err != nil {
@@ -99,7 +113,7 @@ func (m *SpeedMeasurer) MeasureSpeed(frouter domain.FRouter, nodes []domain.Node
 	defer stop()
 
 	// 执行测速
-	ctx, cancel := context.WithTimeout(context.Background(), speedTestTimeout)
+	ctx, cancel := context.WithTimeout(parent, speedTestTimeout)
 	defer cancel()
 
 	mbps, err := measureDownloadThroughSocks5(ctx, "127.0.0.1", port, onProgress)
@@ -120,6 +134,7 @@ func (m *SpeedMeasurer) MeasureLatency(frouter domain.FRouter, nodes []domain.No
 	if err != nil {
 		return 0, err
 	}
+	parent := m.context()
 
 	switch compiled.Default.Kind {
 	case nodegroup.ActionNode:
@@ -134,7 +149,7 @@ func (m *SpeedMeasurer) MeasureLatency(frouter domain.FRouter, nodes []domain.No
 			return 0, fmt.Errorf("default node not found: %s", compiled.Default.NodeID)
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), latencyTestTimeout)
+		ctx, cancel := context.WithTimeout(parent, latencyTestTimeout)
 		defer cancel()
 
 		latency, err := measureNodeLatencyDirect(ctx, *target)
@@ -148,7 +163,7 @@ func (m *SpeedMeasurer) MeasureLatency(frouter domain.FRouter, nodes []domain.No
 
 	case nodegroup.ActionDirect:
 		// 没有节点可测：保留原有“直连互联网”延迟作为参考值。
-		ctx, cancel := context.WithTimeout(context.Background(), latencyTestTimeout)
+		ctx, cancel := context.WithTimeout(parent, latencyTestTimeout)
 		defer cancel()
 
 		latency, err := measureLatencyDirect(ctx)
@@ -189,7 +204,7 @@ func (m *SpeedMeasurer) acquireMeasureSlot() func() {
 func (m *SpeedMeasurer) startMeasurement(frouter domain.FRouter, nodes []domain.Node) (func(), int, error) {
 	release := m.acquireMeasureSlot()
 
-	ctx := context.Background()
+	ctx := m.context()
 	if m.components == nil {
 		release()
 		return nil, 0, fmt.Errorf("speed measurer missing component repository")

@@ -28,14 +28,20 @@ var (
 type Service struct {
 	repo repository.ComponentRepository
 
+	bgCtx context.Context
+
 	mu         sync.Mutex
 	installing map[string]struct{}
 }
 
 // NewService 创建组件服务
-func NewService(repo repository.ComponentRepository) *Service {
+func NewService(bgCtx context.Context, repo repository.ComponentRepository) *Service {
+	if bgCtx == nil {
+		bgCtx = context.Background()
+	}
 	return &Service{
 		repo:       repo,
+		bgCtx:      bgCtx,
 		installing: make(map[string]struct{}),
 	}
 }
@@ -222,7 +228,7 @@ func (s *Service) detectInstalled(kind domain.CoreComponentKind) *installInfo {
 }
 
 func (s *Service) doInstall(id string) {
-	ctx := context.Background()
+	ctx := s.bgCtx
 
 	defer func() {
 		s.mu.Lock()

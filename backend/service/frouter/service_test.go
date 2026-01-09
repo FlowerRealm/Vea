@@ -48,7 +48,7 @@ func TestService_doProbeSpeed_NoMeasurer_SetsError(t *testing.T) {
 	t.Parallel()
 
 	repo := &recordingRepo{frouter: domain.FRouter{ID: "fr-1"}}
-	svc := NewService(repo, nil)
+	svc := NewService(context.Background(), repo, nil)
 	t.Cleanup(func() { close(svc.stopCh) })
 
 	svc.doProbeSpeed("fr-1")
@@ -66,7 +66,7 @@ func TestService_doProbeLatency_NoMeasurer_SetsError(t *testing.T) {
 	t.Parallel()
 
 	repo := &recordingRepo{frouter: domain.FRouter{ID: "fr-1"}}
-	svc := NewService(repo, nil)
+	svc := NewService(context.Background(), repo, nil)
 	t.Cleanup(func() { close(svc.stopCh) })
 
 	svc.doProbeLatency("fr-1")

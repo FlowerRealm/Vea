@@ -179,7 +179,7 @@ func (s *Service) Start(ctx context.Context, cfg domain.ProxyConfig) error {
 		return cause
 	}
 
-	cfg = s.applyConfigDefaults(cfg)
+	cfg = s.applyConfigDefaults(ctx, cfg)
 
 	// 获取 FRouter 与链式代理设置
 	frouter, err := s.resolveFRouter(ctx, cfg)
@@ -427,9 +427,7 @@ func (s *Service) resolveFRouter(ctx context.Context, cfg domain.ProxyConfig) (d
 	return s.frouters.Get(ctx, cfg.FRouterID)
 }
 
-func (s *Service) applyConfigDefaults(cfg domain.ProxyConfig) domain.ProxyConfig {
-	ctx := context.Background()
-
+func (s *Service) applyConfigDefaults(ctx context.Context, cfg domain.ProxyConfig) domain.ProxyConfig {
 	if cfg.InboundMode == "" {
 		cfg.InboundMode = domain.InboundMixed
 	}

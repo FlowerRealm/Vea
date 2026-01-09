@@ -35,7 +35,7 @@ func TestService_Create_WithSourceURL_SyncsInBackground(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	repo := memory.NewConfigRepo(memory.NewStore(events.NewBus()))
-	svc := NewService(repo, nil, nil)
+	svc := NewService(context.Background(), repo, nil, nil)
 
 	var (
 		created domain.Config
@@ -106,7 +106,7 @@ func TestService_Sync_UnchangedChecksum_OnlyUpdatesLastSyncedAt(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	repo := memory.NewConfigRepo(memory.NewStore(events.NewBus()))
-	svc := NewService(repo, nil, nil)
+	svc := NewService(context.Background(), repo, nil, nil)
 
 	sum := sha256.Sum256([]byte(payload))
 	checksum := hex.EncodeToString(sum[:])
@@ -159,8 +159,8 @@ func TestService_Sync_ParseFailure_DoesNotClearExistingNodes(t *testing.T) {
 	configRepo := memory.NewConfigRepo(store)
 	nodeRepo := memory.NewNodeRepo(store)
 	frouterRepo := memory.NewFRouterRepo(store)
-	nodeSvc := nodes.NewService(nodeRepo)
-	svc := NewService(configRepo, nodeSvc, frouterRepo)
+	nodeSvc := nodes.NewService(context.Background(), nodeRepo)
+	svc := NewService(context.Background(), configRepo, nodeSvc, frouterRepo)
 
 	payload.Store("vless://11111111-1111-1111-1111-111111111111@example.com:443?security=tls#n1")
 	created, err := svc.Create(context.Background(), domain.Config{
@@ -214,8 +214,8 @@ func TestService_Sync_EmptyPayload_DoesNotClearExistingNodes(t *testing.T) {
 	configRepo := memory.NewConfigRepo(store)
 	nodeRepo := memory.NewNodeRepo(store)
 	frouterRepo := memory.NewFRouterRepo(store)
-	nodeSvc := nodes.NewService(nodeRepo)
-	svc := NewService(configRepo, nodeSvc, frouterRepo)
+	nodeSvc := nodes.NewService(context.Background(), nodeRepo)
+	svc := NewService(context.Background(), configRepo, nodeSvc, frouterRepo)
 
 	payload.Store("vless://11111111-1111-1111-1111-111111111111@example.com:443?security=tls#n1")
 	created, err := svc.Create(context.Background(), domain.Config{
@@ -296,8 +296,8 @@ rules:
 	configRepo := memory.NewConfigRepo(store)
 	nodeRepo := memory.NewNodeRepo(store)
 	frouterRepo := memory.NewFRouterRepo(store)
-	nodeSvc := nodes.NewService(nodeRepo)
-	svc := NewService(configRepo, nodeSvc, frouterRepo)
+	nodeSvc := nodes.NewService(context.Background(), nodeRepo)
+	svc := NewService(context.Background(), configRepo, nodeSvc, frouterRepo)
 
 	created, err := svc.Create(context.Background(), domain.Config{
 		Name:      "cfg-1",
@@ -383,8 +383,8 @@ rules:
 	configRepo := memory.NewConfigRepo(store)
 	nodeRepo := memory.NewNodeRepo(store)
 	frouterRepo := memory.NewFRouterRepo(store)
-	nodeSvc := nodes.NewService(nodeRepo)
-	svc := NewService(configRepo, nodeSvc, frouterRepo)
+	nodeSvc := nodes.NewService(context.Background(), nodeRepo)
+	svc := NewService(context.Background(), configRepo, nodeSvc, frouterRepo)
 
 	created, err := svc.Create(context.Background(), domain.Config{
 		Name:      "cfg-compact",
@@ -513,8 +513,8 @@ rules:
 	configRepo := memory.NewConfigRepo(store)
 	nodeRepo := memory.NewNodeRepo(store)
 	frouterRepo := memory.NewFRouterRepo(store)
-	nodeSvc := nodes.NewService(nodeRepo)
-	svc := NewService(configRepo, nodeSvc, frouterRepo)
+	nodeSvc := nodes.NewService(context.Background(), nodeRepo)
+	svc := NewService(context.Background(), configRepo, nodeSvc, frouterRepo)
 
 	created, err := svc.Create(context.Background(), domain.Config{
 		Name:      "cfg-ss-obfs",
