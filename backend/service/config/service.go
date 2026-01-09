@@ -90,14 +90,21 @@ func (s *Service) Create(ctx context.Context, cfg domain.Config) (domain.Config,
 		return domain.Config{}, err
 	}
 
+	// 手动配置（无 SourceURL）需要立即从 payload 解析节点，否则该配置会一直为空。
+	if strings.TrimSpace(created.SourceURL) == "" {
+		if strings.TrimSpace(created.Payload) != "" {
+			if parseErr := s.syncNodesFromPayload(ctx, created.ID, created.Payload); parseErr != nil {
+				log.Printf("[ConfigCreate] parse payload failed for %s: %v", created.ID, parseErr)
+			}
+		}
+		return created, nil
+	}
+
 	if strings.TrimSpace(created.SourceURL) != "" {
 		createdID := created.ID
 		fallbackPayload := created.Payload
 		go func() {
 			bgCtx := s.bgCtx
-			if bgCtx == nil {
-				bgCtx = context.Background()
-			}
 			if err := s.Sync(bgCtx, createdID); err != nil {
 				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 					return

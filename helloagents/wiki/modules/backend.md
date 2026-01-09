@@ -5,7 +5,7 @@
 - 适配多内核：在 `backend/service/adapters/` 生成 sing-box / mihomo 的配置
 - 进程管理：启动/停止内核，收集日志与状态
 - 核心组件管理：安装/卸载 sing-box / mihomo 等核心组件
-- 订阅解析：`backend/service/config` 解析分享链接与 Clash YAML（`proxies` + `proxy-groups` + `rules`），同步 Nodes 并自动生成订阅 FRouter（`sourceConfigId` 关联）
+- 配置/订阅解析：`backend/service/config` 解析分享链接与 Clash YAML（`proxies` + `proxy-groups` + `rules`）；创建时会从 payload 解析 Nodes（即使 `sourceUrl` 为空），订阅型配置可自动生成订阅 FRouter（`sourceConfigId` 关联）
 
 ## 关键目录
 - `backend/api/`：HTTP API
@@ -29,3 +29,4 @@
 - [202601091540_fix-subscription-create-async](../../history/2026-01/202601091540_fix-subscription-create-async/) - 订阅：创建订阅接口立即返回，后台拉取解析并同步节点/FRouter，避免 UI 等待卡顿感
 - [202601091553_fix-ip-geo-proxy](../../history/2026-01/202601091553_fix-ip-geo-proxy/) - 修复首页“当前 IP”在代理运行时仍显示真实出口 IP（Issue #26）
 - [202601091707_fix-tun-polkit-prompts](../../history/2026-01/202601091707_fix-tun-polkit-prompts/) - 代理服务：减少 Linux TUN 模式提权弹窗次数，复用 root helper 避免多次 pkexec
+- [202601092132_fix-ip-geo-context](../../history/2026-01/202601092132_fix-ip-geo-context/) - 修复 IP Geo 探测未贯穿请求 context，支持取消/超时

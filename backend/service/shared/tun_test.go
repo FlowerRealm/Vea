@@ -33,7 +33,7 @@ func TestGetIPGeoWithClient_FallbackOnHTTPStatus(t *testing.T) {
 		{name: "good", url: good.URL, parse: parseIPify},
 	}
 
-	got, err := getIPGeoWithClient(client, providers)
+	got, err := getIPGeoWithClient(context.Background(), client, providers)
 	if err != nil {
 		t.Fatalf("getIPGeoWithClient: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestGetIPGeoWithClient_FallbackOnParseError(t *testing.T) {
 		{name: "good", url: good.URL, parse: parsePing0Geo},
 	}
 
-	got, err := getIPGeoWithClient(client, providers)
+	got, err := getIPGeoWithClient(context.Background(), client, providers)
 	if err != nil {
 		t.Fatalf("getIPGeoWithClient: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestGetIPGeoWithClient_ThroughHTTPProxy(t *testing.T) {
 		{name: "proxy", url: "http://unreachable.invalid/geo", parse: parseIPify},
 	}
 
-	got, err := getIPGeoWithClient(client, providers)
+	got, err := getIPGeoWithClient(context.Background(), client, providers)
 	if err != nil {
 		t.Fatalf("getIPGeoWithClient: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestGetIPGeoWithClient_ThroughSOCKS5_NoAuth(t *testing.T) {
 		{name: "socks5", url: "http://unreachable.invalid/geo", parse: parseIPify},
 	}
 
-	got, err := getIPGeoWithClient(client, providers)
+	got, err := getIPGeoWithClient(context.Background(), client, providers)
 	if err != nil {
 		t.Fatalf("getIPGeoWithClient: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestGetIPGeoWithClient_ThroughSOCKS5_UserPass(t *testing.T) {
 		{name: "socks5", url: "http://unreachable.invalid/geo", parse: parseIPify},
 	}
 
-	got, err := getIPGeoWithClient(client, providers)
+	got, err := getIPGeoWithClient(context.Background(), client, providers)
 	if err != nil {
 		t.Fatalf("getIPGeoWithClient: %v", err)
 	}

@@ -35,6 +35,7 @@
 | 202601091657 | fix-issue-32-tun-status | 修复 | ✅已完成 | [2026-01/202601091657_fix-issue-32-tun-status](2026-01/202601091657_fix-issue-32-tun-status/) |
 | 202601091707 | fix-tun-polkit-prompts | 修复 | ✅已完成 | [2026-01/202601091707_fix-tun-polkit-prompts](2026-01/202601091707_fix-tun-polkit-prompts/) |
 | 202601091715 | fix-app-update-check-no-response | 修复 | ✅已完成 | [2026-01/202601091715_fix-app-update-check-no-response](2026-01/202601091715_fix-app-update-check-no-response/) |
+| 202601092132 | fix-ip-geo-context | 修复 | ✅已完成 | [2026-01/202601092132_fix-ip-geo-context](2026-01/202601092132_fix-ip-geo-context/) |
 
 ## 按月归档
 
@@ -69,3 +70,4 @@
 - [202601091657_fix-issue-32-tun-status](2026-01/202601091657_fix-issue-32-tun-status/) - 修复 TUN 状态显示错误：TUN 卡片主状态基于运行态，能力检查仅用于详情/指引（Issue #32）
 - [202601091707_fix-tun-polkit-prompts](2026-01/202601091707_fix-tun-polkit-prompts/) - 减少 Linux TUN 模式提权弹窗次数（复用 root helper，避免多次 pkexec）
 - [202601091715_fix-app-update-check-no-response](2026-01/202601091715_fix-app-update-check-no-response/) - 主题页：修复“检查应用更新”点击无响应（`showStatus` 作用域问题）
+- [202601092132_fix-ip-geo-context](2026-01/202601092132_fix-ip-geo-context/) - 修复 IP Geo 探测未贯穿请求 context，支持取消/超时

@@ -661,23 +661,25 @@ func (f *Facade) SetupTUN() error {
 }
 
 // GetIPGeo 获取 IP 地理位置
-func (f *Facade) GetIPGeo() (map[string]interface{}, error) {
-	ctx := context.Background()
+func (f *Facade) GetIPGeo(ctx context.Context) (map[string]interface{}, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
 	if f.proxy == nil {
-		return shared.GetIPGeo()
+		return shared.GetIPGeo(ctx)
 	}
 
 	status := f.proxy.Status(ctx)
 	running, _ := status["running"].(bool)
 	if !running {
-		return shared.GetIPGeo()
+		return shared.GetIPGeo(ctx)
 	}
 
 	inboundMode, _ := status["inboundMode"].(string)
 	if inboundMode == string(domain.InboundTUN) {
 		// TUN 模式下由系统路由接管流量；此处无需强制走本地入站端口。
-		return shared.GetIPGeo()
+		return shared.GetIPGeo(ctx)
 	}
 
 	inboundPort, _ := status["inboundPort"].(int)
@@ -741,23 +743,23 @@ func (f *Facade) GetIPGeo() (map[string]interface{}, error) {
 	mode := domain.InboundMode(inboundMode)
 	switch mode {
 	case domain.InboundSOCKS:
-		return shared.GetIPGeoWithHTTPClient(newClientViaSocks5())
+		return shared.GetIPGeoWithHTTPClient(ctx, newClientViaSocks5())
 	case domain.InboundHTTP:
-		return shared.GetIPGeoWithHTTPClient(newClientViaHTTPProxy())
+		return shared.GetIPGeoWithHTTPClient(ctx, newClientViaHTTPProxy())
 	case domain.InboundMixed:
 		// mixed 理论上同时支持 SOCKS/HTTP，但实现可能存在差异；先尝试 SOCKS，
 		// 仅在“明显是 SOCKS 协议/握手层失败”时回退到 HTTP，避免双倍超时。
-		res, err := shared.GetIPGeoWithHTTPClient(newClientViaSocks5())
+		res, err := shared.GetIPGeoWithHTTPClient(ctx, newClientViaSocks5())
 		if err == nil {
 			return res, nil
 		}
 		if strings.Contains(err.Error(), "socks5:") {
-			return shared.GetIPGeoWithHTTPClient(newClientViaHTTPProxy())
+			return shared.GetIPGeoWithHTTPClient(ctx, newClientViaHTTPProxy())
 		}
 		return nil, err
 	default:
 		// 兜底：按 mixed 处理（优先 SOCKS）。
-		res, err := shared.GetIPGeoWithHTTPClient(newClientViaSocks5())
+		res, err := shared.GetIPGeoWithHTTPClient(ctx, newClientViaSocks5())
 		if err == nil {
 			return res, nil
 		}

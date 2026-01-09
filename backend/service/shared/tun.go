@@ -1,6 +1,7 @@
 package shared
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -33,14 +34,14 @@ type ipGeoProvider struct {
 }
 
 // GetIPGeo 获取当前 IP 地理位置信息
-func GetIPGeo() (map[string]interface{}, error) {
-	return GetIPGeoWithHTTPClient(nil)
+func GetIPGeo(ctx context.Context) (map[string]interface{}, error) {
+	return GetIPGeoWithHTTPClient(ctx, nil)
 }
 
 // GetIPGeoWithHTTPClient 使用指定 HTTP Client 获取当前 IP 地理位置信息。
 //
 // 说明：当上层希望“强制走本地入站代理”时，需要传入带自定义 Transport 的 client。
-func GetIPGeoWithHTTPClient(client *http.Client) (map[string]interface{}, error) {
+func GetIPGeoWithHTTPClient(ctx context.Context, client *http.Client) (map[string]interface{}, error) {
 	if client == nil {
 		client = &http.Client{Timeout: 6 * time.Second}
 	}
@@ -50,10 +51,13 @@ func GetIPGeoWithHTTPClient(client *http.Client) (map[string]interface{}, error)
 		{name: "ipinfo", url: "https://ipinfo.io/json", parse: parseIPInfoGeo},
 		{name: "ipify", url: "https://api.ipify.org?format=json", parse: parseIPify},
 	}
-	return getIPGeoWithClient(client, providers)
+	return getIPGeoWithClient(ctx, client, providers)
 }
 
-func getIPGeoWithClient(client *http.Client, providers []ipGeoProvider) (map[string]interface{}, error) {
+func getIPGeoWithClient(ctx context.Context, client *http.Client, providers []ipGeoProvider) (map[string]interface{}, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if client == nil {
 		client = &http.Client{Timeout: 6 * time.Second}
 	}
@@ -67,7 +71,7 @@ func getIPGeoWithClient(client *http.Client, providers []ipGeoProvider) (map[str
 			continue
 		}
 
-		result, err := fetchAndParseIPGeo(client, p)
+		result, err := fetchAndParseIPGeo(ctx, client, p)
 		if err == nil {
 			return result.toMap(), nil
 		}
@@ -80,8 +84,11 @@ func getIPGeoWithClient(client *http.Client, providers []ipGeoProvider) (map[str
 	return nil, lastErr
 }
 
-func fetchAndParseIPGeo(client *http.Client, provider ipGeoProvider) (ipGeoResult, error) {
-	req, err := http.NewRequest(http.MethodGet, provider.url, nil)
+func fetchAndParseIPGeo(ctx context.Context, client *http.Client, provider ipGeoProvider) (ipGeoResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, provider.url, nil)
 	if err != nil {
 		return ipGeoResult{}, err
 	}
