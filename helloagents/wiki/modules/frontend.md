@@ -19,3 +19,4 @@
 - [202601081053_fix-review-followups](../../history/2026-01/202601081053_fix-review-followups/) - 主题页：日志面板与 `updateCoreUI` 附近缩进一致性修复
 - [202601081145_fix-review-report](../../history/2026-01/202601081145_fix-review-report/) - 主题页：订阅面板同步错误字段处理去冗余（去掉多余 `String()` 转换）
 - [202601081339_fix-proxy-port-sync](../../history/2026-01/202601081339_fix-proxy-port-sync/) - 主题页：设置项 `proxy.port` 联动后端 `ProxyConfig.inboundPort`，端口变更自动重启并重应用系统代理；启动时从后端同步实际端口避免误导
+- [202601091503_fix-speed-unit-mbs](../../history/2026-01/202601091503_fix-speed-unit-mbs/) - 主题页/SDK：速度单位显示从 `Mbps` 修正为 `MB/s`（与实际测速计算单位一致）

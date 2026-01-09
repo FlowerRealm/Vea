@@ -17,6 +17,7 @@
 - 运行期数据与 artifacts 统一写入 userData（开发模式同样）；启动时会将仓库/可执行目录旁遗留的 `data/` 与 `artifacts/` 迁移到 userData 并清理源目录。
 
 ### 修复
+- 修复速度单位显示不一致的问题：前端主题/SDK/OpenAPI 将速度单位从 `Mbps` 修正为 `MB/s`（与实际测速计算单位一致）。
 - 修复前端“系统代理端口（proxy.port）”不生效的问题：端口变更会联动更新 `ProxyConfig.inboundPort`；内核运行中修改端口会自动重启并在系统代理启用时重新应用系统代理设置；启动时从后端同步实际端口避免 UI 默认值误导。
 - 修复 Linux 下 mihomo(Clash) TUN 在默认 MTU=9000 时可能出现“看起来全网断开”的问题：当检测到未自定义的默认 TUN 组合时，自动将 MTU 调整为 1500。
 - 修复 mihomo(Clash) TUN 模式在部分环境下因 DoH/QUIC 导致“可启动但访问异常/分流失效”的问题：默认开启 sniffer，并默认拒绝 QUIC（UDP/443）以强制回落到 TCP/HTTPS。
@@ -31,7 +32,8 @@
 - 修复 sing-box rule-set 下载对 geoip/geosite tag 大小写敏感导致的 404：URL 构造做小写归一化（例如 `geoip-CN` → `geoip-cn`）。
 - 修复 `GET /app/logs?since=` 参数校验：当 `since` 非非负整数时返回 400，避免静默回退到默认值造成误解。
 - 修复 sing-box 启动 Shadowsocks+obfs 节点时报错 `plugin not found: obfs`：兼容 Clash/Mihomo 订阅的 `plugin: obfs` 写法并归一化为 `obfs-local`（simple-obfs）。
-- 修复“拉取节点”时订阅波动导致节点被差集删除、进而使引用节点的 FRouter 变成 `invalid frouter` 的问题：订阅同步改为保留历史节点；订阅返回空内容时返回错误并保留现有节点与旧 payload。
+- 修复订阅节点无法自动清理导致节点无限增长的问题：当订阅成功解析出节点时，按最新快照删除旧节点，避免节点越积越多。
+- 修复订阅拉取节点的异常保护：订阅返回空内容时返回错误并保留现有节点与旧 payload（避免数据丢失）。
 - 修复订阅面板配置行操作重复的问题：移除“刷新”按钮，仅保留“拉取节点”。
 - 修复订阅面板同步失败时错误信息过长导致表格行高度被撑爆的问题：错误信息在状态列单行省略显示，完整信息通过悬浮提示查看。
 - 修复 keepalive 在用户手动停止代理后仍可能自动拉起的问题：`POST /proxy/stop` 标记 userStopped 状态，keepalive 轮询尊重该状态。

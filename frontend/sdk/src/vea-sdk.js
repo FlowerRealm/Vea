@@ -449,8 +449,8 @@ function formatLatency(ms) {
 
 function formatSpeed(mbps) {
   if (!mbps || mbps <= 0) return '-'
-  if (mbps >= 10) return `${mbps.toFixed(1)} Mbps`
-  return `${mbps.toFixed(2)} Mbps`
+  if (mbps >= 10) return `${mbps.toFixed(1)} MB/s`
+  return `${mbps.toFixed(2)} MB/s`
 }
 
 function sleep(ms) {

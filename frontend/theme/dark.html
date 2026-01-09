@@ -1973,6 +1973,7 @@
 	              <span class="toggle-slider"></span>
 	            </label>
 	          </div>
+	          <div id="tun-permission-hint" style="display:none; margin-top:8px; font-size:11px; color:var(--warning); line-height:1.4;"></div>
 	        </div>
 	        <div class="metric-card" id="engine-select-card">
 	          <div class="metric-label">
@@ -3934,6 +3935,24 @@
       async function updateTUNSetting(enabled) {
         const prevEnabled = Boolean(tunSettingsCache && tunSettingsCache.enabled);
 
+        // Windows：未以管理员身份运行时，提前提示并阻止启用（避免写入配置后立即失败）
+        if (enabled) {
+          try {
+            const status = await api.get("/tun/check");
+            tunStatusCache = status || tunStatusCache || {};
+            updateTUNUI(tunStatusCache);
+
+            if (status && status.platform === "windows" && !status.configured) {
+              showStatus("Windows 下启用 TUN 需要管理员权限：请右键 Vea → 以管理员身份运行。", "error", 6000);
+              tunSettingsCache = { enabled: prevEnabled };
+              updateTUNToggle(tunSettingsCache);
+              return;
+            }
+          } catch {
+            // ignore: 让后端在启动/报错时给出明确提示
+          }
+        }
+
         try {
           const updated = await api.put("/proxy/config", { inboundMode: enabled ? "tun" : "mixed" });
           tunSettingsCache = { enabled: updated && updated.inboundMode === "tun" };
@@ -4029,6 +4048,32 @@
           tunValue.style.color = "var(--warning)";
           const setupCmd = status.setupCommand || "查看文档";
           tunCard.title = `点击查看配置方法：${setupCmd}`;
+        }
+
+        // Windows 非管理员：在 TUN 区域给出明确提示
+        const winNeedAdmin = !status.error && platform === "windows" && !configured;
+        const winHintText = "Windows 下启用 TUN 需要管理员权限：请右键 Vea → 以管理员身份运行。";
+
+        const homeHint = document.getElementById("tun-permission-hint");
+        if (homeHint) {
+          if (winNeedAdmin) {
+            homeHint.textContent = winHintText;
+            homeHint.style.display = "block";
+          } else {
+            homeHint.textContent = "";
+            homeHint.style.display = "none";
+          }
+        }
+
+        const settingsHint = document.getElementById("tun-permission-hint-settings");
+        if (settingsHint) {
+          if (winNeedAdmin) {
+            settingsHint.textContent = winHintText;
+            settingsHint.style.display = "block";
+          } else {
+            settingsHint.textContent = "";
+            settingsHint.style.display = "none";
+          }
         }
 
         // 更新设置面板中的 TUN 状态
@@ -4291,7 +4336,7 @@
 	          title = n.lastSpeedError;
 	        } else if (n && typeof n.lastSpeedMbps === "number" && n.lastSpeedMbps > 0) {
 	          const fixed = n.lastSpeedMbps >= 10 ? n.lastSpeedMbps.toFixed(1) : n.lastSpeedMbps.toFixed(2);
-	          value = `${fixed} Mbps`;
+	          value = `${fixed} MB/s`;
 	          if (n.lastSpeedMbps > 5) cls = "good";
 	          else if (n.lastSpeedMbps > 1) cls = "fair";
 	          else cls = "poor";
@@ -4505,7 +4550,7 @@
 	              speedClass = "poor";
 	            } else if (typeof frouter.lastSpeedMbps === "number" && frouter.lastSpeedMbps > 0) {
               const fixed = frouter.lastSpeedMbps >= 10 ? frouter.lastSpeedMbps.toFixed(1) : frouter.lastSpeedMbps.toFixed(2);
-              speedValue = `${fixed} Mbps`;
+              speedValue = `${fixed} MB/s`;
               if (frouter.lastSpeedMbps > 5) speedClass = "good";
               else if (frouter.lastSpeedMbps > 1) speedClass = "fair";
               else speedClass = "poor";
@@ -4654,7 +4699,7 @@
         speedEl.title = "";
         if (typeof speedMbps === "number") {
           const fixed = speedMbps >= 10 ? speedMbps.toFixed(1) : speedMbps.toFixed(2);
-          speedEl.textContent = `${fixed} Mbps`;
+          speedEl.textContent = `${fixed} MB/s`;
         } else {
           speedEl.textContent = "--";
         }
@@ -6878,6 +6923,19 @@
             container.innerHTML = settingsRenderer.renderCategory(categoryId);
             settingsRenderer.bindEvents(container);
           }
+        }
+
+        // TUN：配置按钮（renderAllSettings 会重建 DOM）
+        const tunSetupBtn = document.getElementById("tun-setup-btn");
+        if (tunSetupBtn) {
+          tunSetupBtn.addEventListener("click", () => {
+            setupTUN();
+          });
+        }
+
+        // 重新渲染后刷新一次 TUN UI（避免状态面板显示为默认值）
+        if (tunStatusCache) {
+          updateTUNUI(tunStatusCache);
         }
 
         // 特殊处理：主题选择器事件绑定

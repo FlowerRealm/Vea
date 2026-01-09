@@ -555,6 +555,20 @@ class SettingsRenderer {
     const groups = this.manager.getGroupedSettings(categoryId);
     let html = '';
 
+    // TUN 分类额外展示：状态/权限提示（由 /tun/check 驱动更新）
+    if (categoryId === 'tun') {
+      html += `
+        <div class="card form-grid">
+          <h3 style="grid-column:1/-1; font-size:14px; color:var(--text-primary);">TUN 状态</h3>
+          <div style="grid-column:1/-1; font-size:12px; color:var(--text-secondary); line-height:1.6;">
+            <div>配置状态：<span id="tun-config-status">--</span></div>
+            <div id="tun-permission-hint-settings" style="margin-top:6px; display:none; color:var(--warning);"></div>
+          </div>
+          <button id="tun-setup-btn" class="primary mini-btn" style="grid-column:1/-1; display:none;">配置 TUN（Linux）</button>
+        </div>
+      `;
+    }
+
     for (const [groupName, settings] of groups) {
       html += this.renderGroup(groupName, settings);
     }

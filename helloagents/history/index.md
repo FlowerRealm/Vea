@@ -23,6 +23,8 @@
 | 202601081553 | user-data-root | 重构 | ✅已完成 | [2026-01/202601081553_user_data_root](2026-01/202601081553_user_data_root/) |
 | 202601081505 | remove-xray | 变更 | ✅已完成 | [2026-01/202601081505_remove_xray](2026-01/202601081505_remove_xray/) |
 | 202601082055 | fix-clash-tun-sniffer-quic | 修复 | ✅已完成 | [2026-01/202601082055_fix-clash-tun-sniffer-quic](2026-01/202601082055_fix-clash-tun-sniffer-quic/) |
+| 202601091503 | fix-speed-unit-mbs | 修复 | ✅已完成 | [2026-01/202601091503_fix-speed-unit-mbs](2026-01/202601091503_fix-speed-unit-mbs/) |
+| 202601091512 | fix-subscription-node-prune | 修复 | ✅已完成 | [2026-01/202601091512_fix-subscription-node-prune](2026-01/202601091512_fix-subscription-node-prune/) |
 
 ## 按月归档
 
@@ -45,3 +47,5 @@
 - [202601081553_user_data_root](2026-01/202601081553_user_data_root/) - 运行期数据与 artifacts 统一写入 userData，并自动迁移清理遗留仓库目录
 - [202601081505_remove_xray](2026-01/202601081505_remove_xray/) - 移除 Xray 支持，仅保留 sing-box/mihomo(Clash)
 - [202601082055_fix-clash-tun-sniffer-quic](2026-01/202601082055_fix-clash-tun-sniffer-quic/) - 代理服务：mihomo(Clash) TUN 默认开启 sniffer，并默认阻断 QUIC（UDP/443）提升可用性
+- [202601091503_fix-speed-unit-mbs](2026-01/202601091503_fix-speed-unit-mbs/) - 修复速度单位显示：前端主题/SDK/OpenAPI 从 `Mbps` 修正为 `MB/s`
+- [202601091512_fix-subscription-node-prune](2026-01/202601091512_fix-subscription-node-prune/) - 订阅节点：拉取成功后按快照清理旧节点，避免节点累积

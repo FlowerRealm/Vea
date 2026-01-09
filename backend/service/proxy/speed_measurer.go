@@ -72,7 +72,7 @@ func NewSpeedMeasurer(
 	}
 }
 
-// MeasureSpeed 测量 FRouter 速度，返回 Mbps
+// MeasureSpeed 测量 FRouter 速度，返回 MB/s。
 func (m *SpeedMeasurer) MeasureSpeed(frouter domain.FRouter, nodes []domain.Node, onProgress func(speedMbps float64)) (float64, error) {
 	compiled, err := nodegroup.CompileFRouter(frouter, nodes)
 	if err != nil {

@@ -24,3 +24,5 @@
 - [202601081145_fix-review-report](../../history/2026-01/202601081145_fix-review-report/) - 代码审查跟进：Clash 解析单测补齐、重复 proxy 告警、keepalive 尊重用户 stop、TUN 清理日志增强与空订阅提示修正
 - [202601081334_fix-singbox-tun-dns-doh](../../history/2026-01/202601081334_fix-singbox-tun-dns-doh/) - 代理服务：修复 sing-box TUN 模式下默认远程 DNS 使用 53 端口导致的“用一段时间后域名解析卡死”
 - [202601082055_fix-clash-tun-sniffer-quic](../../history/2026-01/202601082055_fix-clash-tun-sniffer-quic/) - 代理服务：mihomo(Clash) TUN 默认开启 sniffer，并默认阻断 QUIC（UDP/443）提升可用性
+- [202601091503_fix-speed-unit-mbs](../../history/2026-01/202601091503_fix-speed-unit-mbs/) - 测速：修正文档/注释的速度单位说明为 `MB/s`（与实际测速计算单位一致）
+- [202601091512_fix-subscription-node-prune](../../history/2026-01/202601091512_fix-subscription-node-prune/) - 订阅节点：拉取成功后按快照清理旧节点，避免节点累积
