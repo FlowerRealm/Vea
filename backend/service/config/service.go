@@ -80,31 +80,24 @@ func (s *Service) Get(ctx context.Context, id string) (domain.Config, error) {
 
 // Create 创建配置
 func (s *Service) Create(ctx context.Context, cfg domain.Config) (domain.Config, error) {
-	// 如果有 SourceURL，先同步
-	if cfg.SourceURL != "" {
-		payload, checksum, err := s.downloadConfig(cfg.SourceURL)
-		if err != nil {
-			cfg.LastSyncError = err.Error()
-		} else if strings.TrimSpace(payload) == "" {
-			cfg.LastSyncError = "订阅内容为空"
-		} else {
-			cfg.Payload = payload
-			cfg.Checksum = checksum
-			cfg.LastSyncedAt = time.Now()
-		}
-	}
-
 	created, err := s.repo.Create(ctx, cfg)
 	if err != nil {
 		return domain.Config{}, err
 	}
 
-	// 解析并同步节点（为避免破坏用户配置，解析失败时不清空旧节点）。
-	if err := s.syncNodesFromPayload(ctx, created.ID, created.Payload); err != nil {
-		// 创建配置时不应因为解析失败就直接失败：记录错误即可。
-		if updateErr := s.repo.UpdateSyncStatus(ctx, created.ID, created.Payload, created.Checksum, err); updateErr != nil {
-			log.Printf("[ConfigCreate] failed to update sync status for %s after parse error: %v", created.ID, updateErr)
-		}
+	if strings.TrimSpace(created.SourceURL) != "" {
+		createdID := created.ID
+		fallbackPayload := created.Payload
+		go func() {
+			if err := s.Sync(context.Background(), createdID); err != nil {
+				if strings.TrimSpace(fallbackPayload) != "" {
+					if parseErr := s.syncNodesFromPayload(context.Background(), createdID, fallbackPayload); parseErr != nil {
+						log.Printf("[ConfigCreate] fallback parse failed for %s: %v", createdID, parseErr)
+					}
+				}
+				log.Printf("[ConfigCreate] initial sync failed for %s: %v", createdID, err)
+			}
+		}()
 	}
 
 	return created, nil

@@ -26,6 +26,9 @@
     "email": "flower_realm@outlook.com"
   },
   "license": "MIT",
+  "dependencies": {
+    "electron-updater": "^6.7.3"
+  },
   "devDependencies": {
     "electron": "^28.3.3",
     "electron-builder": "^24.9.1"

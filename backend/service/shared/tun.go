@@ -34,7 +34,16 @@ type ipGeoProvider struct {
 
 // GetIPGeo 获取当前 IP 地理位置信息
 func GetIPGeo() (map[string]interface{}, error) {
-	client := &http.Client{Timeout: 6 * time.Second}
+	return GetIPGeoWithHTTPClient(nil)
+}
+
+// GetIPGeoWithHTTPClient 使用指定 HTTP Client 获取当前 IP 地理位置信息。
+//
+// 说明：当上层希望“强制走本地入站代理”时，需要传入带自定义 Transport 的 client。
+func GetIPGeoWithHTTPClient(client *http.Client) (map[string]interface{}, error) {
+	if client == nil {
+		client = &http.Client{Timeout: 6 * time.Second}
+	}
 	providers := []ipGeoProvider{
 		{name: "ping0-https", url: "https://ipv4.ping0.cc/geo", parse: parsePing0Geo},
 		{name: "ping0-http", url: "http://ipv4.ping0.cc/geo", parse: parsePing0Geo},

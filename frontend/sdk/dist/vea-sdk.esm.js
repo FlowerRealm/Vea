@@ -407,7 +407,9 @@ function createAPI(baseURL = '') {
 function formatTime(value) {
   if (!value) return '-'
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value)
+  const timestamp = date.getTime();
+  if (Number.isNaN(timestamp)) return String(value)
+  if (timestamp <= 0) return '-'
   return date.toLocaleString()
 }
 

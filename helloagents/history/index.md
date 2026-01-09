@@ -25,6 +25,16 @@
 | 202601082055 | fix-clash-tun-sniffer-quic | 修复 | ✅已完成 | [2026-01/202601082055_fix-clash-tun-sniffer-quic](2026-01/202601082055_fix-clash-tun-sniffer-quic/) |
 | 202601091503 | fix-speed-unit-mbs | 修复 | ✅已完成 | [2026-01/202601091503_fix-speed-unit-mbs](2026-01/202601091503_fix-speed-unit-mbs/) |
 | 202601091512 | fix-subscription-node-prune | 修复 | ✅已完成 | [2026-01/202601091512_fix-subscription-node-prune](2026-01/202601091512_fix-subscription-node-prune/) |
+| 202601091540 | fix-subscription-create-async | 修复 | ✅已完成 | [2026-01/202601091540_fix-subscription-create-async](2026-01/202601091540_fix-subscription-create-async/) |
+| 202601091547 | fix-issue-27-windows-default-rule-templates | 修复 | ✅已完成 | [2026-01/202601091547_fix-issue-27-windows-default-rule-templates](2026-01/202601091547_fix-issue-27-windows-default-rule-templates/) |
+| 202601091549 | fix-slot-ui | 修复 | ✅已完成 | [2026-01/202601091549_fix-slot-ui](2026-01/202601091549_fix-slot-ui/) |
+| 202601091553 | fix-ip-geo-proxy | 修复 | ✅已完成 | [2026-01/202601091553_fix-ip-geo-proxy](2026-01/202601091553_fix-ip-geo-proxy/) |
+| 202601091557 | feat-auto-update | 功能 | ✅已完成 | [2026-01/202601091557_feat-auto-update](2026-01/202601091557_feat-auto-update/) |
+| 202601091550 | fix-issue-28-light-log-autoscroll-toggle | 修复 | ✅已完成 | [2026-01/202601091550_fix-issue-28-light-log-autoscroll-toggle](2026-01/202601091550_fix-issue-28-light-log-autoscroll-toggle/) |
+| 202601091650 | fix-issue-33-frouter-highlight | 修复 | ✅已完成 | [2026-01/202601091650_fix-issue-33-frouter-highlight](2026-01/202601091650_fix-issue-33-frouter-highlight/) |
+| 202601091657 | fix-issue-32-tun-status | 修复 | ✅已完成 | [2026-01/202601091657_fix-issue-32-tun-status](2026-01/202601091657_fix-issue-32-tun-status/) |
+| 202601091707 | fix-tun-polkit-prompts | 修复 | ✅已完成 | [2026-01/202601091707_fix-tun-polkit-prompts](2026-01/202601091707_fix-tun-polkit-prompts/) |
+| 202601091715 | fix-app-update-check-no-response | 修复 | ✅已完成 | [2026-01/202601091715_fix-app-update-check-no-response](2026-01/202601091715_fix-app-update-check-no-response/) |
 
 ## 按月归档
 
@@ -49,3 +59,13 @@
 - [202601082055_fix-clash-tun-sniffer-quic](2026-01/202601082055_fix-clash-tun-sniffer-quic/) - 代理服务：mihomo(Clash) TUN 默认开启 sniffer，并默认阻断 QUIC（UDP/443）提升可用性
 - [202601091503_fix-speed-unit-mbs](2026-01/202601091503_fix-speed-unit-mbs/) - 修复速度单位显示：前端主题/SDK/OpenAPI 从 `Mbps` 修正为 `MB/s`
 - [202601091512_fix-subscription-node-prune](2026-01/202601091512_fix-subscription-node-prune/) - 订阅节点：拉取成功后按快照清理旧节点，避免节点累积
+- [202601091540_fix-subscription-create-async](2026-01/202601091540_fix-subscription-create-async/) - 订阅：创建订阅不再阻塞 UI，改为后台拉取解析并优化未同步状态显示
+- [202601091547_fix-issue-27-windows-default-rule-templates](2026-01/202601091547_fix-issue-27-windows-default-rule-templates/) - 修复 Windows 发布版默认规则模板缺失（Issue #27）
+- [202601091549_fix-slot-ui](2026-01/202601091549_fix-slot-ui/) - 修复槽位功能不可用（Issue #29）
+- [202601091553_fix-ip-geo-proxy](2026-01/202601091553_fix-ip-geo-proxy/) - 修复首页“当前 IP”在代理运行时仍显示真实出口 IP（Issue #26）
+- [202601091550_fix-issue-28-light-log-autoscroll-toggle](2026-01/202601091550_fix-issue-28-light-log-autoscroll-toggle/) - 修复浅色主题日志面板“自动滚动”开关关闭态几乎不可见（Issue #28）
+- [202601091557_feat-auto-update](2026-01/202601091557_feat-auto-update/) - 增加应用内“检查更新”，支持 Windows/macOS 自动下载、安装与重启（Issue #24）
+- [202601091650_fix-issue-33-frouter-highlight](2026-01/202601091650_fix-issue-33-frouter-highlight/) - 浅色主题：FRouter 选中态高亮改为黑色边框（Issue #33）
+- [202601091657_fix-issue-32-tun-status](2026-01/202601091657_fix-issue-32-tun-status/) - 修复 TUN 状态显示错误：TUN 卡片主状态基于运行态，能力检查仅用于详情/指引（Issue #32）
+- [202601091707_fix-tun-polkit-prompts](2026-01/202601091707_fix-tun-polkit-prompts/) - 减少 Linux TUN 模式提权弹窗次数（复用 root helper，避免多次 pkexec）
+- [202601091715_fix-app-update-check-no-response](2026-01/202601091715_fix-app-update-check-no-response/) - 主题页：修复“检查应用更新”点击无响应（`showStatus` 作用域问题）

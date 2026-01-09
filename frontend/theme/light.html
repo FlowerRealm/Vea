@@ -38,22 +38,33 @@
       font-display: swap;
     }
 
-    :root {
-      /* Premium Light (Linear-esque) */
-      --bg-root: #ffffff;
-      --bg-sidebar: #f7f7f8;
-      --bg-card: #ffffff;
-      --bg-card-hover: #fcfcfc;
+	    :root {
+	      /* Premium Light (Linear-esque) */
+	      --bg-root: #ffffff;
+	      --bg-sidebar: #f7f7f8;
+	      --bg-card: #ffffff;
+	      --bg-card-hover: #fcfcfc;
 
-      --border-subtle: #e5e5e5;
-      --border-highlight: #d4d4d4;
+	      --border-subtle: #e5e5e5;
+	      --border-highlight: #d4d4d4;
+	      --border-color: var(--border-highlight);
 
       --text-primary: #171717;
       --text-secondary: #737373;
       --text-tertiary: #a3a3a3;
 
       --accent: #000000;
+      --primary: var(--accent);
+      --primary-color: var(--accent);
+
+      --accent-bg: rgba(0, 0, 0, 0.04);
+      --accent-hover: var(--text-primary);
       --accent-glow: 0 0 20px rgba(0, 0, 0, 0.1);
+
+      --card-bg: var(--bg-card);
+      --bg-secondary: var(--bg-sidebar);
+
+      --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.08);
 
       --success: #16a34a;
       --warning: #d97706;
@@ -823,9 +834,9 @@
     }
 
 	    .node-row.active {
-	      border-color: var(--primary-color);
-	      background: var(--bg-secondary);
-	      box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.35), var(--shadow-md);
+	      border-color: var(--accent);
+	      background: var(--card-bg);
+	      box-shadow: 0 0 0 1px var(--accent), var(--shadow-md);
 	    }
 
     .node-row-main {
@@ -1766,6 +1777,63 @@
       border-top: 1px solid var(--border-subtle);
     }
 
+    /* 槽位管理弹窗 */
+    .slot-manager-hint {
+      font-size: 12px;
+      color: var(--text-tertiary);
+      line-height: 1.4;
+      margin-bottom: 12px;
+    }
+
+    .slot-manager-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .slot-manager-item {
+      padding: 12px;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      background: var(--bg-root);
+    }
+
+    .slot-manager-item-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .slot-manager-item-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .slot-manager-item-id {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-tertiary);
+      flex-shrink: 0;
+    }
+
+    .slot-manager-item-fields {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .slot-manager-item-fields .chain-form-group {
+      flex: 1;
+      min-width: 200px;
+      margin-bottom: 0;
+    }
+
     /* Toggle switch */
     .chain-toggle {
       position: relative;
@@ -2010,6 +2078,7 @@
               <span>当前 FRouter</span>
               <select id="chain-route-select"></select>
             </div>
+            <button id="chain-manage-slots" class="chain-btn">槽位管理</button>
             <button id="chain-add-rule" class="chain-btn primary">+ 添加规则</button>
           </div>
         </div>
@@ -2111,6 +2180,30 @@
           </div>
         </div>
       </div>
+
+      <!-- 槽位管理弹窗 -->
+      <div class="chain-rule-dialog" id="slot-manager-dialog">
+        <div class="chain-rule-dialog-content">
+          <div class="chain-rule-dialog-header">
+            <h4>槽位管理</h4>
+            <button class="chain-rule-dialog-close" id="slot-manager-close">&times;</button>
+          </div>
+
+          <div class="chain-rule-dialog-body">
+            <div class="slot-manager-hint">
+              槽位是占位符，可绑定到实际节点；未绑定时将按“穿透”处理（该槽位会被编译时跳过）。
+            </div>
+            <div id="slot-manager-list" class="slot-manager-list"></div>
+          </div>
+
+          <div class="chain-rule-dialog-footer">
+            <button class="chain-btn" id="slot-manager-add" type="button">+ 添加槽位</button>
+            <div style="flex:1;"></div>
+            <button class="chain-btn" id="slot-manager-cancel" type="button">取消</button>
+            <button class="chain-btn primary" id="slot-manager-save" type="button">确定</button>
+          </div>
+        </div>
+      </div>
     </section>
 
 	    <!-- FRouters -->
@@ -2201,7 +2294,7 @@
 	      </div>
 	    </section>
 
-	    <!-- Components -->
+    <!-- Components -->
 	    <section id="panel3" class="panel">
 	      <div class="panel-header">
 	        <div class="panel-title">
@@ -2209,6 +2302,7 @@
           <p>核心系统依赖和版本。</p>
         </div>
         <div class="panel-actions">
+          <button id="app-check-update-btn">检查应用更新</button>
           <button id="component-refresh">刷新</button>
         </div>
       </div>
@@ -2747,6 +2841,8 @@
           }, delay);
         }
       }
+
+      window.veaShowStatus = showStatus
 
       const SYSTEM_PROXY_DEFAULTS = ["localhost", "127.0.0.0/8", "::1"];
       let systemProxySettings = {
@@ -3613,6 +3709,9 @@
             : "核心：已停止";
         }
 
+        // TUN 卡片的主状态应跟随“运行态”（/proxy/status），而不是能力检查（/tun/check）。
+        updateTUNUI(tunStatusCache || {});
+
         // Update proxy toggle button
         if (!proxyToggle) return;
 
@@ -3628,7 +3727,7 @@
       }
 
       // TUN status management
-      let tunStatusCache = null;
+      var tunStatusCache = null;
 
       async function checkTUNStatus({ notify = false } = {}) {
         try {
@@ -3637,15 +3736,15 @@
           updateTUNUI(tunStatusCache);
           if (notify) {
             const text = status.configured
-              ? `TUN 模式已配置 (${status.platform})`
-              : `TUN 模式未配置 (${status.platform})`;
+              ? `TUN 能力已配置 (${status.platform})`
+              : `TUN 能力未配置 (${status.platform})`;
             showStatus(text, status.configured ? "success" : "info");
           }
         } catch (err) {
           tunStatusCache = { configured: false, error: err.message };
           updateTUNUI(tunStatusCache);
           if (notify) {
-            showStatus(`检查 TUN 状态失败：${err.message}`, "error", 6000);
+            showStatus(`检查 TUN 能力失败：${err.message}`, "error", 6000);
           }
         }
       }
@@ -3918,24 +4017,6 @@
       async function updateTUNSetting(enabled) {
         const prevEnabled = Boolean(tunSettingsCache && tunSettingsCache.enabled);
 
-        // Windows：未以管理员身份运行时，提前提示并阻止启用（避免写入配置后立即失败）
-        if (enabled) {
-          try {
-            const status = await api.get("/tun/check");
-            tunStatusCache = status || tunStatusCache || {};
-            updateTUNUI(tunStatusCache);
-
-            if (status && status.platform === "windows" && !status.configured) {
-              showStatus("Windows 下启用 TUN 需要管理员权限：请右键 Vea → 以管理员身份运行。", "error", 6000);
-              tunSettingsCache = { enabled: prevEnabled };
-              updateTUNToggle(tunSettingsCache);
-              return;
-            }
-          } catch {
-            // ignore: 让后端在启动/报错时给出明确提示
-          }
-        }
-
         try {
           const updated = await api.put("/proxy/config", { inboundMode: enabled ? "tun" : "mixed" });
           tunSettingsCache = { enabled: updated && updated.inboundMode === "tun" };
@@ -4015,26 +4096,48 @@
 
         if (!tunCard || !tunValue) return;
 
-        const configured = Boolean(status.configured);
-        const platform = status.platform || "unknown";
-
-        if (status.error) {
-          tunValue.textContent = "检查失败";
-          tunValue.style.color = "var(--error)";
-          tunCard.title = `错误：${status.error}`;
-        } else if (configured) {
-          tunValue.textContent = "已配置";
-          tunValue.style.color = "var(--success)";
-          tunCard.title = `TUN 模式已在 ${platform} 上配置`;
-        } else {
-          tunValue.textContent = "未配置";
-          tunValue.style.color = "var(--warning)";
-          const setupCmd = status.setupCommand || "查看文档";
-          tunCard.title = `点击查看配置方法：${setupCmd}`;
+        if (!status || typeof status !== "object") {
+          status = {};
         }
 
+        // 主状态：以“运行态”为准（/proxy/status）
+        const busy = Boolean(coreStatus && coreStatus.busy);
+        const coreRunning = Boolean(coreStatus && coreStatus.running);
+        const inboundMode = coreStatus && coreStatus.inboundMode ? String(coreStatus.inboundMode) : "";
+        const isTunMode = inboundMode === "tun";
+
+        if (busy) {
+          tunValue.textContent = "处理中";
+          tunValue.style.color = "var(--warning)";
+        } else if (isTunMode && coreRunning) {
+          tunValue.textContent = "运行中";
+          tunValue.style.color = "var(--success)";
+        } else if (isTunMode && !coreRunning) {
+          tunValue.textContent = "已启用";
+          tunValue.style.color = "var(--warning)";
+        } else {
+          tunValue.textContent = "未启用";
+          tunValue.style.color = "var(--text-secondary)";
+        }
+
+        // tooltip：补充能力检查（/tun/check），但不覆盖主状态
+        const platform = status.platform || "unknown";
+        const configured = Boolean(status.configured);
+        const engineLabel = coreRunning && coreStatus && coreStatus.engine
+          ? `（${componentDisplayName(coreStatus.engine)}）`
+          : "";
+        const runText = busy
+          ? "运行状态：处理中"
+          : isTunMode
+            ? (coreRunning ? `运行状态：运行中${engineLabel}` : "运行状态：已启用（未运行）")
+            : (coreRunning ? `运行状态：未启用（当前 ${inboundMode || "unknown"}）` : "运行状态：未启用");
+        const capText = status.error
+          ? `能力检查失败：${status.error}`
+          : (configured ? `能力：已配置 (${platform})` : `能力：未配置 (${platform})`);
+        tunCard.title = `${runText} | ${capText}`;
+
         // Windows 非管理员：在 TUN 区域给出明确提示
-        const winNeedAdmin = !status.error && platform === "windows" && !configured;
+        const winNeedAdmin = !status.error && platform === "windows" && !configured && !(isTunMode && coreRunning);
         const winHintText = "Windows 下启用 TUN 需要管理员权限：请右键 Vea → 以管理员身份运行。";
 
         const homeHint = document.getElementById("tun-permission-hint");
@@ -4083,7 +4186,25 @@
 
       async function showTUNStatusDialog() {
         showStatus("正在检查 TUN 状态...", "info");
-        await checkTUNStatus({ notify: true });
+        await refreshCoreStatus();
+        await checkTUNStatus();
+
+        const cap = tunStatusCache || {};
+        const platform = cap.platform || "unknown";
+        const capText = cap.error
+          ? `能力检查失败：${cap.error}`
+          : (cap.configured ? `能力：已配置 (${platform})` : `能力：未配置 (${platform})`);
+
+        const busy = Boolean(coreStatus && coreStatus.busy);
+        const running = Boolean(coreStatus && coreStatus.running);
+        const inboundMode = coreStatus && coreStatus.inboundMode ? String(coreStatus.inboundMode) : "";
+        const runText = busy
+          ? "运行状态：处理中"
+          : inboundMode === "tun"
+            ? (running ? "运行状态：运行中" : "运行状态：已启用（未运行）")
+            : (running ? `运行状态：未启用（当前 ${inboundMode || "unknown"}）` : "运行状态：未启用");
+
+        showStatus(`TUN ${runText}；${capText}`, cap.error ? "warn" : "info", 6000);
       }
 
       // 配置 TUN - 直接调用 API
@@ -4586,17 +4707,24 @@
         if (!Array.isArray(configs) || configs.length === 0) {
           tbody.innerHTML = '<tr><td colspan="6" class="empty">暂无配置</td></tr>';
           return;
-        }
-        tbody.innerHTML = configs
-          .map((cfg) => {
-            const syncErr = cfg.lastSyncError || "";
-            const syncState = syncErr
-              ? `<span class="badge error text-truncate" title="${escapeHtml(syncErr)}">失败：${escapeHtml(syncErr)}</span>`
-              : '<span class="badge">正常</span>';
-            const source = cfg.sourceUrl ? `<br /><div class="muted text-truncate" title="${escapeHtml(cfg.sourceUrl)}">${escapeHtml(cfg.sourceUrl)}</div>` : "";
-            return `
-          <tr data-id="${escapeHtml(cfg.id)}">
-	            <td>${escapeHtml(cfg.name)}${source}</td>
+	        }
+	        tbody.innerHTML = configs
+	          .map((cfg) => {
+	            const syncErr = cfg.lastSyncError || "";
+	            const lastSyncedAt = cfg.lastSyncedAt || "";
+	            const parsedLastSyncedAt = new Date(lastSyncedAt);
+	            const lastSyncedAtMs = parsedLastSyncedAt.getTime();
+	            const neverSynced = !lastSyncedAt || Number.isNaN(lastSyncedAtMs) || lastSyncedAtMs <= 0;
+	            let syncState = '<span class="badge">正常</span>';
+	            if (syncErr) {
+	              syncState = `<span class="badge error text-truncate" title="${escapeHtml(syncErr)}">失败：${escapeHtml(syncErr)}</span>`;
+	            } else if (neverSynced) {
+	              syncState = '<span class="badge warn">未同步</span>';
+	            }
+	            const source = cfg.sourceUrl ? `<br /><div class="muted text-truncate" title="${escapeHtml(cfg.sourceUrl)}">${escapeHtml(cfg.sourceUrl)}</div>` : "";
+	            return `
+	          <tr data-id="${escapeHtml(cfg.id)}">
+		            <td>${escapeHtml(cfg.name)}${source}</td>
 	            <td><span class="badge">${escapeHtml(cfg.format)}</span></td>
 	            <td>${formatInterval(cfg.autoUpdateInterval)}</td>
 	            <td>${formatTime(cfg.lastSyncedAt)}</td>
@@ -4949,6 +5077,8 @@
           this.edges = [];
           this.detourEdges = [];
           this.slots = [];
+          this.slotManagerDraft = null;
+          this.positions = {};
           this.nodes = [];
           this.dirty = false;
           this.draggedItem = null;
@@ -4986,6 +5116,7 @@
             this.edges = allEdges.filter(e => (e?.from || '') === 'local');
             this.detourEdges = allEdges.filter(e => (e?.from || '') !== 'local');
             this.slots = Array.isArray(data.slots) ? data.slots : [];
+            this.positions = (data && typeof data.positions === 'object' && data.positions) ? data.positions : {};
             this.sortEdgesByPriority();
             this.render();
             this.dirty = false;
@@ -4995,6 +5126,7 @@
             this.edges = [];
             this.detourEdges = [];
             this.slots = [];
+            this.positions = {};
             this.render();
           }
         }
@@ -5369,6 +5501,28 @@
             if (e.target?.dataset?.action !== 'chain-remove') return;
             e.target.closest('.rule-chain-item')?.remove();
           });
+
+          // 槽位管理
+          this.container.querySelector('#chain-manage-slots')?.addEventListener('click', () => {
+            this.openSlotManager();
+          });
+
+          const slotDialog = this.container.querySelector('#slot-manager-dialog');
+          if (slotDialog) {
+            slotDialog.addEventListener('click', (e) => {
+              if (e.target === slotDialog) this.cancelSlotManager();
+            });
+          }
+          this.container.querySelector('#slot-manager-close')?.addEventListener('click', () => this.cancelSlotManager());
+          this.container.querySelector('#slot-manager-cancel')?.addEventListener('click', () => this.cancelSlotManager());
+          this.container.querySelector('#slot-manager-save')?.addEventListener('click', () => this.applySlotManager());
+          this.container.querySelector('#slot-manager-add')?.addEventListener('click', () => this.addSlotInManager());
+
+          const slotList = this.container.querySelector('#slot-manager-list');
+          if (slotList) {
+            slotList.addEventListener('input', (e) => this.onSlotManagerInput(e));
+            slotList.addEventListener('change', (e) => this.onSlotManagerChange(e));
+          }
         }
 
         // 拖拽排序
@@ -5562,6 +5716,232 @@
           }
         }
 
+        cloneSlots(slots) {
+          const all = Array.isArray(slots) ? slots : [];
+          return all.map((s) => ({
+            id: s?.id != null ? String(s.id) : '',
+            name: s?.name != null ? String(s.name) : '',
+            boundNodeId: s?.boundNodeId != null ? String(s.boundNodeId) : ''
+          }));
+        }
+
+        refreshRuleDialogSlotOptions() {
+          const dialog = this.container.querySelector('#rule-edit-dialog');
+          if (!dialog || !dialog.classList.contains('open')) return;
+
+          const toSelect = this.container.querySelector('#rule-to');
+          if (toSelect) {
+            this.fillRuleToSelect(toSelect, toSelect.value || 'direct');
+          }
+
+          const hopSelects = Array.from(this.container.querySelectorAll('#rule-chain-list .rule-chain-hop'));
+          hopSelects.forEach((sel) => this.fillChainHopSelect(sel, sel?.value || ''));
+        }
+
+        nextNumericSlotID(slots) {
+          const all = Array.isArray(slots) ? slots : [];
+          const used = new Set(
+            all
+              .map(s => (s?.id == null ? '' : String(s.id).trim()))
+              .filter(Boolean)
+          );
+
+          let maxN = 0;
+          for (const id of used) {
+            const m = id.match(/^slot-(\d+)$/);
+            if (!m) continue;
+            const n = parseInt(m[1], 10);
+            if (!Number.isFinite(n)) continue;
+            if (n > maxN) maxN = n;
+          }
+
+          let next = maxN + 1;
+          while (used.has(`slot-${next}`)) next += 1;
+          return `slot-${next}`;
+        }
+
+        openSlotManager() {
+          this.slotManagerDraft = this.cloneSlots(this.slots);
+          this.renderSlotManager();
+          this.container.querySelector('#slot-manager-dialog')?.classList.add('open');
+        }
+
+        closeSlotManager() {
+          this.slotManagerDraft = null;
+          this.container.querySelector('#slot-manager-dialog')?.classList.remove('open');
+        }
+
+        cancelSlotManager() {
+          this.closeSlotManager();
+        }
+
+        addSlotInManager() {
+          if (!Array.isArray(this.slotManagerDraft)) {
+            this.slotManagerDraft = this.cloneSlots(this.slots);
+          }
+
+          const id = this.nextNumericSlotID(this.slotManagerDraft);
+          const suffix = id.slice('slot-'.length);
+          this.slotManagerDraft.push({
+            id,
+            name: `槽位 ${suffix}`,
+            boundNodeId: ''
+          });
+          this.renderSlotManager();
+        }
+
+        onSlotManagerInput(e) {
+          const input = e.target?.closest('input.slot-name-input');
+          if (!input) return;
+          const item = input.closest('.slot-manager-item');
+          if (!item) return;
+
+          const idx = parseInt(item.dataset.slotIndex || '', 10);
+          if (!Number.isFinite(idx)) return;
+          if (!Array.isArray(this.slotManagerDraft) || !this.slotManagerDraft[idx]) return;
+
+          this.slotManagerDraft[idx].name = input.value || '';
+          const id = (this.slotManagerDraft[idx].id || '').toString();
+          const titleEl = item.querySelector('.slot-manager-item-title');
+          if (titleEl) {
+            titleEl.textContent = (input.value || '').trim() || id || '槽位';
+          }
+        }
+
+        onSlotManagerChange(e) {
+          const select = e.target?.closest('select.slot-bound-select');
+          if (!select) return;
+          const item = select.closest('.slot-manager-item');
+          if (!item) return;
+
+          const idx = parseInt(item.dataset.slotIndex || '', 10);
+          if (!Number.isFinite(idx)) return;
+          if (!Array.isArray(this.slotManagerDraft) || !this.slotManagerDraft[idx]) return;
+
+          this.slotManagerDraft[idx].boundNodeId = select.value || '';
+        }
+
+        applySlotManager() {
+          const draft = Array.isArray(this.slotManagerDraft) ? this.slotManagerDraft : [];
+          const nodes = Array.isArray(this.nodes) ? this.nodes : [];
+          const nodeIDs = new Set(nodes.map(n => (n?.id == null ? '' : String(n.id).trim())).filter(Boolean));
+
+          const problems = [];
+          const seen = new Set();
+          for (const s of draft) {
+            const id = (s?.id == null ? '' : String(s.id).trim());
+            if (!id) {
+              problems.push('槽位 ID 不能为空');
+              continue;
+            }
+            if (!id.startsWith('slot-')) {
+              problems.push(`槽位 ${id} 的 ID 必须以 slot- 开头`);
+              continue;
+            }
+            if (seen.has(id)) {
+              problems.push(`槽位 ID 重复: ${id}`);
+              continue;
+            }
+            seen.add(id);
+
+            const bound = (s?.boundNodeId == null ? '' : String(s.boundNodeId).trim());
+            if (bound && !nodeIDs.has(bound)) {
+              problems.push(`槽位 ${id} 绑定的节点不存在: ${bound}`);
+              continue;
+            }
+          }
+
+          if (problems.length > 0) {
+            showStatus(`槽位配置无效：${problems[0]}`, 'error', 5000);
+            return;
+          }
+
+          this.slots = draft.map((s) => ({
+            id: (s?.id == null ? '' : String(s.id).trim()),
+            name: (s?.name == null ? '' : String(s.name).trim()),
+            boundNodeId: (s?.boundNodeId == null ? '' : String(s.boundNodeId).trim())
+          }));
+
+          this.render();
+          this.markDirty();
+          this.refreshRuleDialogSlotOptions();
+          this.closeSlotManager();
+        }
+
+        renderSlotManager() {
+          const list = this.container.querySelector('#slot-manager-list');
+          if (!list) return;
+
+          const slots = Array.isArray(this.slotManagerDraft) ? this.slotManagerDraft : [];
+          if (slots.length === 0) {
+            list.innerHTML = '<div class="chain-rules-empty">暂无槽位，点击“添加槽位”创建</div>';
+            return;
+          }
+
+          const nodes = Array.isArray(this.nodes) ? [...this.nodes] : [];
+          const nodesByID = new Map();
+          nodes.forEach((n) => {
+            const id = n?.id;
+            if (id) nodesByID.set(String(id), n);
+          });
+          const groups = typeof groupNodesBySubscription === 'function' ? groupNodesBySubscription(nodes) : [];
+          const optionHtml = (val, label, selected) =>
+            `<option value="${escapeHtml(val)}"${selected ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+
+          const buildBoundOptions = (bound) => {
+            const current = (bound == null ? '' : String(bound)).trim();
+            let html = '';
+            if (current && !nodesByID.has(current)) {
+              html += optionHtml(current, `未知: ${current}`, true);
+            }
+            html += optionHtml('', '未绑定（穿透）', !current);
+
+            for (const group of groups) {
+              const groupOptions = [];
+              for (const n of (group?.nodes || [])) {
+                const id = n?.id;
+                if (!id) continue;
+                groupOptions.push(optionHtml(String(id), n?.name || id, String(id) === current));
+              }
+              if (groupOptions.length > 0) {
+                html += `<optgroup label="${escapeHtml(group?.label || '节点')}">${groupOptions.join('')}</optgroup>`;
+              }
+            }
+
+            return html;
+          };
+
+          list.innerHTML = slots
+            .map((s, idx) => {
+              const id = s?.id != null ? String(s.id) : '';
+              const name = s?.name != null ? String(s.name) : '';
+              const bound = s?.boundNodeId != null ? String(s.boundNodeId) : '';
+              const title = name.trim() || id.trim() || '槽位';
+
+              return `
+                <div class="slot-manager-item" data-slot-index="${idx}">
+                  <div class="slot-manager-item-header">
+                    <div class="slot-manager-item-title">${escapeHtml(title)}</div>
+                    <div class="slot-manager-item-id">${escapeHtml(id)}</div>
+                  </div>
+                  <div class="slot-manager-item-fields">
+                    <div class="chain-form-group">
+                      <label>名称</label>
+                      <input type="text" class="slot-name-input" value="${escapeHtml(name)}" placeholder="槽位名称">
+                    </div>
+                    <div class="chain-form-group">
+                      <label>绑定节点</label>
+                      <select class="slot-bound-select">
+                        ${buildBoundOptions(bound)}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              `;
+            })
+            .join('');
+        }
+
         // 保存
         async saveGraph() {
           try {
@@ -5572,7 +5952,7 @@
             const data = {
               edges: [...this.edges, ...this.detourEdges],
               slots: this.slots,
-              positions: {}
+              positions: this.positions || {}
             };
 
             await this.api.put(path, data);
@@ -5599,28 +5979,41 @@
         }
 
         // 规则模板
-        initRuleTemplates() {
-          const categorySelect = this.container.querySelector('#rule-template-category');
-          const templateSelect = this.container.querySelector('#rule-template-select');
-          const applyBtn = this.container.querySelector('#rule-template-apply');
+	        initRuleTemplates() {
+	          const categorySelect = this.container.querySelector('#rule-template-category');
+	          const templateSelect = this.container.querySelector('#rule-template-select');
+	          const applyBtn = this.container.querySelector('#rule-template-apply');
 
-          if (!categorySelect || !templateSelect) return;
+	          if (!categorySelect || !templateSelect) return;
 
-          const categories = typeof getTemplateCategories === 'function' ? getTemplateCategories() : [];
-          categorySelect.innerHTML = '<option value="all">全部分类</option>';
-          for (const cat of categories) {
-            const opt = document.createElement('option');
-            opt.value = cat.id;
-            opt.textContent = `${cat.icon} ${cat.name}`;
+	          const templateAPIOk = typeof getTemplateCategories === 'function'
+	            && typeof getTemplatesByCategory === 'function'
+	            && typeof getTemplateById === 'function';
+	
+	          if (!templateAPIOk) {
+	            categorySelect.disabled = true;
+	            templateSelect.disabled = true;
+	            if (applyBtn) applyBtn.disabled = true;
+	            templateSelect.innerHTML = '<option value="">默认模板未加载</option>';
+	            showStatus('默认规则模板未加载（可能是发布包缺少资源）', 'error', 4800);
+	            return;
+	          }
+	
+	          const categories = getTemplateCategories();
+	          categorySelect.innerHTML = '<option value="all">全部分类</option>';
+	          for (const cat of categories) {
+	            const opt = document.createElement('option');
+	            opt.value = cat.id;
+	            opt.textContent = `${cat.icon} ${cat.name}`;
             categorySelect.appendChild(opt);
           }
 
-          const updateTemplateSelect = (categoryId) => {
-            const templates = typeof getTemplatesByCategory === 'function' ? getTemplatesByCategory(categoryId) : [];
-            templateSelect.innerHTML = '<option value="">选择模板...</option>';
-            for (const tmpl of templates) {
-              const opt = document.createElement('option');
-              opt.value = tmpl.id;
+	          const updateTemplateSelect = (categoryId) => {
+	            const templates = getTemplatesByCategory(categoryId);
+	            templateSelect.innerHTML = '<option value="">选择模板...</option>';
+	            for (const tmpl of templates) {
+	              const opt = document.createElement('option');
+	              opt.value = tmpl.id;
               opt.textContent = `${tmpl.icon} ${tmpl.name}`;
               opt.title = tmpl.description;
               templateSelect.appendChild(opt);
@@ -5630,14 +6023,14 @@
           updateTemplateSelect('all');
           categorySelect.addEventListener('change', (e) => updateTemplateSelect(e.target.value));
 
-          const applyTemplate = (templateId) => {
-            if (!templateId) return;
+	          const applyTemplate = (templateId) => {
+	            if (!templateId) return;
 
-            const template = typeof getTemplateById === 'function' ? getTemplateById(templateId) : null;
-            if (!template || !template.rule) {
-              showStatus('模板数据无效', 'error', 2000);
-              return;
-            }
+	            const template = getTemplateById(templateId);
+	            if (!template || !template.rule) {
+	              showStatus('模板数据无效', 'error', 2000);
+	              return;
+	            }
 
             const toSelect = this.container.querySelector('#rule-to');
             if (toSelect && (template.action === 'direct' || template.action === 'block')) {
@@ -5908,7 +6301,7 @@
 	          if (!id) return;
 
 	          const action = button.dataset.action;
-	          try {
+          try {
             if (action === "ping-node") {
               await api.post(`/nodes/${id}/ping`, {});
               showStatus("节点延迟任务已提交", "info");
@@ -5930,7 +6323,7 @@
                 loadNodes();
 	              }
 	            }, 1200);
-	          } catch (err) {
+          } catch (err) {
 	            showStatus(`节点操作失败：${err.message}`, "error", 6000);
 	          }
 	        });
@@ -6717,22 +7110,24 @@
             showStatus("请填写源/订阅链接", "error", 5000);
             return;
           }
-          try {
-            if (isEdit) {
-              await api.put(`/configs/${editingConfig.id}`, payload);
-              showStatus("配置已更新", "success");
-            } else {
-              await api.post("/configs/import", payload);
-              form.reset();
-              showStatus("配置添加成功", "success");
-            }
-            closeConfigModal();
-            await Promise.all([loadConfigs(), loadFRouters(), loadNodes()]);
-          } catch (err) {
-            showStatus(`${isEdit ? "更新" : "添加"}配置失败：${err.message}`, "error", 6000);
-          }
-        });
-      }
+	          try {
+	            if (isEdit) {
+	              await api.put(`/configs/${editingConfig.id}`, payload);
+	              showStatus("配置已更新", "success");
+	            } else {
+	              await api.post("/configs/import", payload);
+	              form.reset();
+	              showStatus("订阅已添加，正在后台拉取节点…", "success", 4200);
+	            }
+	            closeConfigModal();
+	            await Promise.all([loadConfigs(), loadFRouters(), loadNodes()]);
+	            setTimeout(() => Promise.all([loadConfigs(), loadFRouters(), loadNodes()]).catch(console.error), 1200);
+	            setTimeout(() => Promise.all([loadConfigs(), loadFRouters(), loadNodes()]).catch(console.error), 3200);
+	          } catch (err) {
+	            showStatus(`${isEdit ? "更新" : "添加"}配置失败：${err.message}`, "error", 6000);
+	          }
+	        });
+	      }
 
       function getSelectedFRouterIds() {
         if (!nodeGrid) return [];
@@ -7188,6 +7583,11 @@
       ensureFRoutersPolling();
     })();
 
+    const showStatus = (...args) => {
+      const fn = window.veaShowStatus
+      if (typeof fn === 'function') return fn(...args)
+    }
+
     // 窗口控制按钮事件
     if (window.electronAPI) {
       document.getElementById('minimize-btn').addEventListener('click', () => {
@@ -7201,6 +7601,81 @@
       document.getElementById('close-btn').addEventListener('click', () => {
         window.electronAPI.closeWindow();
       });
+
+      // 应用更新（手动检查）
+      const checkUpdateBtn = document.getElementById('app-check-update-btn')
+      if (checkUpdateBtn && typeof window.electronAPI.checkForUpdates === 'function') {
+        let lastProgressInt = null
+
+        if (typeof window.electronAPI.onUpdateEvent === 'function') {
+          window.electronAPI.onUpdateEvent((payload) => {
+            if (!payload || !payload.type) return
+
+            if (payload.type === 'checking-for-update') {
+              showStatus('正在从 GitHub Releases 检查应用更新（稳定版）...', 'info', 3500)
+              return
+            }
+
+            if (payload.type === 'update-not-available') {
+              const v = payload.info && payload.info.version ? payload.info.version : ''
+              showStatus(v ? `已是最新版本（${v}）` : (payload.message || '已是最新版本'), 'success', 3500)
+              checkUpdateBtn.disabled = false
+              lastProgressInt = null
+              return
+            }
+
+            if (payload.type === 'update-available') {
+              const v = payload.info && payload.info.version ? payload.info.version : ''
+              showStatus(v ? `发现应用新版本 ${v}，正在下载...` : (payload.message || '发现应用新版本，正在下载...'), 'info', 5000)
+              return
+            }
+
+            if (payload.type === 'download-progress' && payload.progress && typeof payload.progress.percent === 'number') {
+              const percent = Math.max(0, Math.min(100, payload.progress.percent))
+              const percentInt = Math.floor(percent)
+              if (lastProgressInt !== percentInt) {
+                lastProgressInt = percentInt
+                showStatus(`正在下载应用更新：${percentInt}%`, 'info', 1500)
+              }
+              return
+            }
+
+            if (payload.type === 'update-downloaded') {
+              const v = payload.info && payload.info.version ? payload.info.version : ''
+              showStatus(v ? `应用更新 ${v} 已下载，正在退出并安装...` : (payload.message || '应用更新已下载，正在退出并安装...'), 'success', 5000)
+              return
+            }
+
+            if (payload.type === 'error') {
+              const msg = payload.message ? `应用更新失败：${payload.message}` : '应用更新失败'
+              showStatus(msg, 'error', 6000)
+              checkUpdateBtn.disabled = false
+              lastProgressInt = null
+            }
+          })
+        }
+
+        checkUpdateBtn.addEventListener('click', async () => {
+          checkUpdateBtn.disabled = true
+          try {
+            showStatus('正在检查应用更新（稳定版）...', 'info', 3500)
+            const result = await window.electronAPI.checkForUpdates()
+            if (result && result.supported === false) {
+              const msg = result.message ? `无法自动更新：${result.message}` : '无法自动更新：当前环境不支持应用内自动更新'
+              showStatus(msg, 'info', 6500)
+              checkUpdateBtn.disabled = false
+              return
+            }
+            if (result && result.started === false && result.message) {
+              showStatus(result.message, 'info', 4000)
+              checkUpdateBtn.disabled = false
+            }
+          } catch (err) {
+            showStatus(`应用更新检查失败：${err.message}`, 'error', 6500)
+            checkUpdateBtn.disabled = false
+          }
+        })
+      }
     }
 
     // Theme settings - Switch between HTML files
