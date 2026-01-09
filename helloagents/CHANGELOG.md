@@ -52,6 +52,8 @@
 - 修复浅色主题日志面板“自动滚动”开关关闭态几乎不可见的问题：补齐 `--border-color` 变量（Issue #28）。
 - 修复槽位功能不可用（Issue #29）：主题页在 FRouter 路由规则面板新增“槽位管理”，支持新增/重命名/绑定节点；保存图配置时保留 `positions`，避免意外清空布局数据。
 - 修复主题页“检查应用更新”点击无响应的问题：修复 `showStatus` 作用域导致的静默异常，确保可触发 IPC 并在状态栏给出反馈。
+- 修复主题页订阅导入后依赖固定 `setTimeout` 刷新的竞态问题：改为轮询配置 `lastSyncedAt` 变化，并在超时/失败时给出提示。
+- 加固 Linux root helper 对 `artifactsRoot` 的推导与校验：`socketPath` 必须符合 `<ArtifactsRoot>/runtime/resolvectl-helper.sock`，并拒绝将根路径解析为 `/`，避免 capabilities 操作范围扩大。
 - 清理订阅创建后台同步协程的冗余 bgCtx nil check：构造器已保证 bgCtx 非 nil。
 
 ## [0.0.1] - 2026-01-05

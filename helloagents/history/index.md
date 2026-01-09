@@ -36,6 +36,7 @@
 | 202601091707 | fix-tun-polkit-prompts | 修复 | ✅已完成 | [2026-01/202601091707_fix-tun-polkit-prompts](2026-01/202601091707_fix-tun-polkit-prompts/) |
 | 202601091715 | fix-app-update-check-no-response | 修复 | ✅已完成 | [2026-01/202601091715_fix-app-update-check-no-response](2026-01/202601091715_fix-app-update-check-no-response/) |
 | 202601092132 | fix-ip-geo-context | 修复 | ✅已完成 | [2026-01/202601092132_fix-ip-geo-context](2026-01/202601092132_fix-ip-geo-context/) |
+| 202601100554 | pr-review-hardening | 修复 | ✅已完成 | [2026-01/202601100554_pr-review-hardening](2026-01/202601100554_pr-review-hardening/) |
 
 ## 按月归档
 
@@ -71,3 +72,4 @@
 - [202601091707_fix-tun-polkit-prompts](2026-01/202601091707_fix-tun-polkit-prompts/) - 减少 Linux TUN 模式提权弹窗次数（复用 root helper，避免多次 pkexec）
 - [202601091715_fix-app-update-check-no-response](2026-01/202601091715_fix-app-update-check-no-response/) - 主题页：修复“检查应用更新”点击无响应（`showStatus` 作用域问题）
 - [202601092132_fix-ip-geo-context](2026-01/202601092132_fix-ip-geo-context/) - 修复 IP Geo 探测未贯穿请求 context，支持取消/超时
+- [202601100554_pr-review-hardening](2026-01/202601100554_pr-review-hardening/) - 代码审查跟进：root helper artifactsRoot 校验加固；主题页 `showStatus` 不再全局暴露；订阅导入刷新改为轮询 `lastSyncedAt`

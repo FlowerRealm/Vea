@@ -24,6 +24,37 @@ import (
 
 var rootHelperArtifactsRoot string
 
+func deriveArtifactsRootFromSocketPath(socketPath string) (string, error) {
+	p := strings.TrimSpace(socketPath)
+	if p == "" {
+		return "", errors.New("socketPath 为空")
+	}
+	p = filepath.Clean(p)
+	if !filepath.IsAbs(p) {
+		return "", fmt.Errorf("socketPath 必须是绝对路径: %q", p)
+	}
+
+	if filepath.Base(p) != "resolvectl-helper.sock" {
+		return "", fmt.Errorf("socketPath 不符合预期: %q", p)
+	}
+	runtimeDir := filepath.Dir(p)
+	if filepath.Base(runtimeDir) != "runtime" {
+		return "", fmt.Errorf("socketPath 不符合预期: %q", p)
+	}
+
+	root := filepath.Clean(filepath.Dir(runtimeDir))
+	if root == "." || root == string(os.PathSeparator) {
+		return "", fmt.Errorf("artifactsRoot 不安全: %q", root)
+	}
+
+	expected := filepath.Join(root, "runtime", "resolvectl-helper.sock")
+	if filepath.Clean(expected) != p {
+		return "", fmt.Errorf("socketPath 不符合预期: %q", p)
+	}
+
+	return root, nil
+}
+
 func runResolvectlHelper() {
 	fs := flag.NewFlagSet("resolvectl-helper", flag.ContinueOnError)
 	socketPath := fs.String("socket", "", "unix socket path")
@@ -46,7 +77,11 @@ func runResolvectlHelper() {
 	// 从 socketPath 推导 ArtifactsRoot：
 	// <ArtifactsRoot>/runtime/resolvectl-helper.sock -> <ArtifactsRoot>
 	// 用于限制 root helper 的可操作范围（避免对任意路径执行特权动作）。
-	rootHelperArtifactsRoot = filepath.Dir(filepath.Dir(*socketPath))
+	artifactsRoot, err := deriveArtifactsRootFromSocketPath(*socketPath)
+	if err != nil {
+		log.Fatalf("invalid socketPath: %v", err)
+	}
+	rootHelperArtifactsRoot = artifactsRoot
 
 	if err := os.MkdirAll(filepath.Dir(*socketPath), 0o755); err != nil {
 		log.Fatalf("mkdir socket dir: %v", err)
@@ -221,6 +256,9 @@ func runTUNSetup(binaryPath string) shared.RootHelperResponse {
 	}
 	if p, err := filepath.Abs(realRoot); err == nil && p != "" {
 		realRoot = p
+	}
+	if realRoot == string(os.PathSeparator) {
+		return shared.RootHelperResponse{ExitCode: 1, Error: "artifactsRoot 不安全（解析为 /，拒绝执行）"}
 	}
 
 	realBin := binaryPath

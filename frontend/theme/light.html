@@ -2811,42 +2811,42 @@
   <!-- Rule Templates (保留) -->
   <script src="../chain-editor/rule-templates.js"></script>
   <script type="module">
-    import { createAPI, utils } from '../sdk/dist/vea-sdk.esm.js';
-    const { formatTime, formatBytes, formatInterval, escapeHtml, parseNumber, parseList, sleep } = utils;
+	    import { createAPI, utils } from '../sdk/dist/vea-sdk.esm.js';
+	    const { formatTime, formatBytes, formatInterval, escapeHtml, parseNumber, parseList, sleep } = utils;
 
-    (function () {
-      const menu = document.getElementById("menu");
-      const panels = document.querySelectorAll(".panel");
-      const statusBar = document.getElementById("status");
-      let currentPanel = "panel-home";
-      let statusTimer = null;
+	    const statusBar = document.getElementById("status");
+	    let statusTimer = null;
 
-      const api = createAPI('http://127.0.0.1:19080');
+	    function showStatus(message, type = "info", delay = 3200) {
+	      if (!statusBar) return;
+	      if (!message) {
+	        statusBar.classList.remove("visible", "success", "error", "info");
+	        statusBar.textContent = "";
+	        return;
+	      }
+	      statusBar.textContent = message;
+	      statusBar.classList.remove("success", "error", "info");
+	      statusBar.classList.add("visible", type);
+	      if (statusTimer) {
+	        clearTimeout(statusTimer);
+	      }
+	      if (delay > 0) {
+	        statusTimer = setTimeout(() => {
+	          statusBar.classList.remove("visible");
+	        }, delay);
+	      }
+	    }
 
-      function showStatus(message, type = "info", delay = 3200) {
-        if (!message) {
-          statusBar.classList.remove("visible", "success", "error", "info");
-          statusBar.textContent = "";
-          return;
-        }
-        statusBar.textContent = message;
-        statusBar.classList.remove("success", "error", "info");
-        statusBar.classList.add("visible", type);
-        if (statusTimer) {
-          clearTimeout(statusTimer);
-        }
-        if (delay > 0) {
-          statusTimer = setTimeout(() => {
-            statusBar.classList.remove("visible");
-          }, delay);
-        }
-      }
+	    (function () {
+	      const menu = document.getElementById("menu");
+	      const panels = document.querySelectorAll(".panel");
+	      let currentPanel = "panel-home";
 
-      window.veaShowStatus = showStatus
+	      const api = createAPI('http://127.0.0.1:19080');
 
-      const SYSTEM_PROXY_DEFAULTS = ["localhost", "127.0.0.0/8", "::1"];
-      let systemProxySettings = {
-        enabled: false,
+	      const SYSTEM_PROXY_DEFAULTS = ["localhost", "127.0.0.0/8", "::1"];
+	      let systemProxySettings = {
+	        enabled: false,
         ignoreHosts: [...SYSTEM_PROXY_DEFAULTS],
       };
       let frouterTags = [];
@@ -4688,25 +4688,49 @@
           .join("");
       }
 
-      async function loadConfigs({ notify = false } = {}) {
-        try {
-          const configs = await api.get("/configs");
-          configsCache = Array.isArray(configs) ? configs : [];
-          renderConfigs(configsCache);
-          renderOrUpdateNodesPanel(nodesCache);
-          if (notify) {
-            showStatus("配置列表已刷新", "success");
-          }
-        } catch (err) {
-          showStatus(`加载配置失败：${err.message}`, "error", 6000);
-        }
-      }
+	      async function loadConfigs({ notify = false } = {}) {
+	        try {
+	          const configs = await api.get("/configs");
+	          configsCache = Array.isArray(configs) ? configs : [];
+	          renderConfigs(configsCache);
+	          renderOrUpdateNodesPanel(nodesCache);
+	          if (notify) {
+	            showStatus("配置列表已刷新", "success");
+	          }
+	        } catch (err) {
+	          showStatus(`加载配置失败：${err.message}`, "error", 6000);
+	        }
+	      }
 
-      function renderConfigs(configs) {
-        const tbody = document.querySelector("#config-table tbody");
-        if (!Array.isArray(configs) || configs.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="6" class="empty">暂无配置</td></tr>';
-          return;
+	      async function waitForConfigSync(configId, baselineLastSyncedAt, { timeoutMs = 20000, intervalMs = 700 } = {}) {
+	        if (!configId) return null;
+	        const baselineMs = Date.parse(baselineLastSyncedAt || "") || 0;
+	        const start = Date.now();
+	        while (Date.now() - start < timeoutMs) {
+	          await sleep(intervalMs);
+	          let configs;
+	          try {
+	            configs = await api.get("/configs");
+	          } catch (err) {
+	            continue;
+	          }
+	          const cfg = Array.isArray(configs)
+	            ? configs.find((item) => item && item.id === configId)
+	            : null;
+	          if (!cfg) return null;
+	          const syncedMs = Date.parse(cfg.lastSyncedAt || "") || 0;
+	          if (syncedMs > baselineMs) {
+	            return cfg;
+	          }
+	        }
+	        return null;
+	      }
+
+	      function renderConfigs(configs) {
+	        const tbody = document.querySelector("#config-table tbody");
+	        if (!Array.isArray(configs) || configs.length === 0) {
+	          tbody.innerHTML = '<tr><td colspan="6" class="empty">暂无配置</td></tr>';
+	          return;
 	        }
 	        tbody.innerHTML = configs
 	          .map((cfg) => {
@@ -7110,23 +7134,31 @@
             showStatus("请填写源/订阅链接", "error", 5000);
             return;
           }
-	          try {
-	            if (isEdit) {
-	              await api.put(`/configs/${editingConfig.id}`, payload);
-	              showStatus("配置已更新", "success");
-	            } else {
-	              await api.post("/configs/import", payload);
-	              form.reset();
-	              showStatus("订阅已添加，正在后台拉取节点…", "success", 4200);
-	            }
-	            closeConfigModal();
-	            await Promise.all([loadConfigs(), loadFRouters(), loadNodes()]);
-	            setTimeout(() => Promise.all([loadConfigs(), loadFRouters(), loadNodes()]).catch(console.error), 1200);
-	            setTimeout(() => Promise.all([loadConfigs(), loadFRouters(), loadNodes()]).catch(console.error), 3200);
-	          } catch (err) {
-	            showStatus(`${isEdit ? "更新" : "添加"}配置失败：${err.message}`, "error", 6000);
-	          }
-	        });
+		          try {
+		            let createdConfig = null;
+		            if (isEdit) {
+		              await api.put(`/configs/${editingConfig.id}`, payload);
+		              showStatus("配置已更新", "success");
+		            } else {
+		              createdConfig = await api.post("/configs/import", payload);
+		              form.reset();
+		              showStatus("订阅已添加，正在后台拉取节点…", "success", 4200);
+		            }
+		            closeConfigModal();
+		            await Promise.all([loadConfigs(), loadFRouters(), loadNodes()]);
+		            if (!isEdit && createdConfig && createdConfig.id) {
+		              const synced = await waitForConfigSync(createdConfig.id, createdConfig.lastSyncedAt);
+		              if (!synced) {
+		                showStatus("后台同步耗时较长，可稍后点击“拉取节点”刷新", "info", 4500);
+		              } else if (synced.lastSyncError) {
+		                showStatus(`订阅同步失败：${synced.lastSyncError}`, "error", 6000);
+		              }
+		              await Promise.all([loadConfigs(), loadFRouters(), loadNodes()]);
+		            }
+		          } catch (err) {
+		            showStatus(`${isEdit ? "更新" : "添加"}配置失败：${err.message}`, "error", 6000);
+		          }
+		        });
 	      }
 
       function getSelectedFRouterIds() {
@@ -7581,15 +7613,10 @@
       loadNodes();
       loaders[currentPanel]?.();
       ensureFRoutersPolling();
-    })();
+	    })();
 
-    const showStatus = (...args) => {
-      const fn = window.veaShowStatus
-      if (typeof fn === 'function') return fn(...args)
-    }
-
-    // 窗口控制按钮事件
-    if (window.electronAPI) {
+	    // 窗口控制按钮事件
+	    if (window.electronAPI) {
       document.getElementById('minimize-btn').addEventListener('click', () => {
         window.electronAPI.minimizeWindow();
       });

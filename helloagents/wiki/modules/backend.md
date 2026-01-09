@@ -30,3 +30,4 @@
 - [202601091553_fix-ip-geo-proxy](../../history/2026-01/202601091553_fix-ip-geo-proxy/) - 修复首页“当前 IP”在代理运行时仍显示真实出口 IP（Issue #26）
 - [202601091707_fix-tun-polkit-prompts](../../history/2026-01/202601091707_fix-tun-polkit-prompts/) - 代理服务：减少 Linux TUN 模式提权弹窗次数，复用 root helper 避免多次 pkexec
 - [202601092132_fix-ip-geo-context](../../history/2026-01/202601092132_fix-ip-geo-context/) - 修复 IP Geo 探测未贯穿请求 context，支持取消/超时
+- [202601100554_pr-review-hardening](../../history/2026-01/202601100554_pr-review-hardening/) - root helper：校验 socketPath 结构并拒绝将 artifactsRoot 解析为 `/`，避免 capabilities 操作范围扩大

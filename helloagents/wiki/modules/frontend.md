@@ -29,3 +29,4 @@
 - [202601091715_fix-app-update-check-no-response](../../history/2026-01/202601091715_fix-app-update-check-no-response/) - 主题页：修复“检查应用更新”点击无响应（`showStatus` 作用域问题）
 - [202601091650_fix-issue-33-frouter-highlight](../../history/2026-01/202601091650_fix-issue-33-frouter-highlight/) - 浅色主题：FRouter 选中态高亮改为黑色边框（Issue #33）
 - [202601091657_fix-issue-32-tun-status](../../history/2026-01/202601091657_fix-issue-32-tun-status/) - 主题页：TUN 卡片主状态改为运行态展示，能力检查仅用于详情/指引（Issue #32）
+- [202601100554_pr-review-hardening](../../history/2026-01/202601100554_pr-review-hardening/) - 主题页：`showStatus` 改为模块内共享（不挂 window）；订阅导入后刷新改为轮询 `lastSyncedAt`，避免固定延时竞态
