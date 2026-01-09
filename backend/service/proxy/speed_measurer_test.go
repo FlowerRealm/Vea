@@ -26,14 +26,14 @@ func TestInstalledEnginesFromComponents_DetectsByKind(t *testing.T) {
 
 	engines := installedEnginesFromComponents([]domain.CoreComponent{
 		{
-			Name:            "Xray",
-			Kind:            domain.ComponentXray,
-			InstallDir:      "/tmp/xray",
+			Name:            "sing-box",
+			Kind:            domain.ComponentSingBox,
+			InstallDir:      "/tmp/sing-box",
 			LastInstalledAt: time.Now(),
 		},
 	})
-	if _, ok := engines[domain.EngineXray]; !ok {
-		t.Fatalf("expected xray to be detected as installed")
+	if _, ok := engines[domain.EngineSingBox]; !ok {
+		t.Fatalf("expected sing-box to be detected as installed")
 	}
 }
 
@@ -41,9 +41,9 @@ func TestEngineFromComponent_UnknownKind(t *testing.T) {
 	t.Parallel()
 
 	engine, ok := engineFromComponent(domain.CoreComponent{
-		Name:       "Xray",
+		Name:       "unknown",
 		Kind:       "",
-		InstallDir: "/tmp/xray",
+		InstallDir: "/tmp/unknown",
 	})
 	if ok || engine != "" {
 		t.Fatalf("expected no engine for unknown kind, got engine=%q ok=%v", engine, ok)

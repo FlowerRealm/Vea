@@ -83,7 +83,7 @@ func (r *Router) startProxy(c *gin.Context) {
 }
 
 func (r *Router) stopProxy(c *gin.Context) {
-	if err := r.service.StopProxy(); err != nil {
+	if err := r.service.StopProxyUser(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -109,7 +109,7 @@ func (r *Router) checkTUNCapabilities(c *gin.Context) {
 	switch runtime.GOOS {
 	case "linux":
 		response["setupCommand"] = "sudo ./vea setup-tun"
-		response["description"] = "Creates vea-tun user and sets capabilities for sing-box (cap_net_admin,cap_net_bind_service,cap_net_raw)"
+		response["description"] = "Creates vea-tun user and sets capabilities for core binary (cap_net_admin,cap_net_bind_service,cap_net_raw)"
 	case "windows":
 		response["setupCommand"] = "Run Vea as Administrator"
 		response["description"] = "TUN mode requires administrator privileges on Windows"

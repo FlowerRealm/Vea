@@ -4,21 +4,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"os"
 	"strings"
 	"time"
 
 	"vea/backend/domain"
 	"vea/backend/persist"
 	"vea/backend/repository"
+	"vea/backend/service/applog"
 	"vea/backend/service/component"
 	configsvc "vea/backend/service/config"
 	"vea/backend/service/frouter"
 	"vea/backend/service/geo"
-	"vea/backend/service/node"
 	"vea/backend/service/nodes"
 	"vea/backend/service/proxy"
 	"vea/backend/service/shared"
+
+	"github.com/google/uuid"
 )
 
 // Facade 服务门面（API 聚合层）
@@ -29,6 +31,9 @@ type Facade struct {
 	proxy     *proxy.Service
 	component *component.Service
 	geo       *geo.Service
+
+	appLogPath      string
+	appLogStartedAt time.Time
 
 	// Repositories 用于直接访问（settings/rules 等）
 	repos repository.Repositories
@@ -53,6 +58,11 @@ func NewFacade(
 		geo:       geoSvc,
 		repos:     repos,
 	}
+}
+
+func (f *Facade) SetAppLog(path string, startedAt time.Time) {
+	f.appLogPath = path
+	f.appLogStartedAt = startedAt
 }
 
 // Errors 返回所有错误类型（用于 API 层错误处理）
@@ -114,6 +124,59 @@ func (f *Facade) Snapshot() (domain.ServiceState, error) {
 		FrontendSettings: frontendSettings,
 		GeneratedAt:      time.Now(),
 	}, nil
+}
+
+func (f *Facade) EnsureDefaultFRouter(ctx context.Context) error {
+	frouters, err := f.frouter.List(ctx)
+	if err != nil {
+		return err
+	}
+	var picked domain.FRouter
+	if len(frouters) == 0 {
+		created, err := f.frouter.Create(ctx, domain.FRouter{
+			Name: "默认 FRouter",
+			ChainProxy: domain.ChainProxySettings{
+				Slots: []domain.SlotNode{
+					{ID: "slot-1", Name: "配置槽"},
+				},
+				Edges: []domain.ProxyEdge{
+					{
+						ID:       uuid.NewString(),
+						From:     domain.EdgeNodeLocal,
+						To:       domain.EdgeNodeDirect,
+						Priority: 0,
+						Enabled:  true,
+					},
+				},
+			},
+		})
+		if err != nil {
+			return err
+		}
+		picked = created
+	} else {
+		picked = frouters[0]
+		for i := range frouters {
+			if frouters[i].CreatedAt.Before(picked.CreatedAt) {
+				picked = frouters[i]
+			}
+		}
+	}
+
+	cfg, err := f.repos.Settings().GetProxyConfig(ctx)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(cfg.FRouterID) != "" {
+		if _, err := f.frouter.Get(ctx, cfg.FRouterID); err == nil {
+			return nil
+		}
+	}
+
+	cfg.FRouterID = picked.ID
+	cfg.UpdatedAt = time.Now()
+	_, err = f.repos.Settings().UpdateProxyConfig(ctx, cfg)
+	return err
 }
 
 // ========== FRouter 操作 ==========
@@ -242,52 +305,19 @@ func (f *Facade) SyncConfigNodes(configID string) ([]domain.Node, error) {
 		if err := f.config.Sync(ctx, configID); err != nil {
 			return nil, err
 		}
-		cfg, err = f.config.Get(ctx, configID)
-		if err != nil {
-			return nil, err
-		}
 	}
 
-	payloadTrimmed := strings.TrimSpace(cfg.Payload)
-	nodesFromConfig, parseErrs := node.ParseMultipleLinks(cfg.Payload)
-	if len(parseErrs) > 0 {
-		log.Printf("[SyncConfigNodes] parse errors for %s: %d", configID, len(parseErrs))
-	}
-	if len(nodesFromConfig) == 0 {
-		// payload 非空但解析不到节点：这是订阅异常/格式不支持的强信号。
-		// 为避免把已有节点清空导致 FRouter 变“未知”，这里直接报错并保留现有节点。
-		if payloadTrimmed != "" {
-			parseErr := fmt.Errorf("%w: 订阅内容无法解析为节点（仅支持 vmess/vless/trojan/ss 分享链接）；已保留现有节点", repository.ErrInvalidData)
-			cfg.LastSyncError = parseErr.Error()
-			if _, updateErr := f.config.Update(ctx, configID, cfg); updateErr != nil {
-				log.Printf("[SyncConfigNodes] failed to update config %s with parse error: %v", configID, updateErr)
-			}
-			return nil, parseErr
-		}
-
-		existing, err := f.nodes.List(ctx)
-		if err != nil {
-			return nil, err
-		}
-		out := make([]domain.Node, 0, len(existing))
-		for _, n := range existing {
-			if n.SourceConfigID == configID {
-				out = append(out, n)
-			}
-		}
-		return out, nil
-	}
-	updated, err := f.nodes.ReplaceNodesForConfig(ctx, configID, nodesFromConfig)
+	existing, err := f.nodes.List(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if cfg.LastSyncError != "" {
-		cfg.LastSyncError = ""
-		if _, updateErr := f.config.Update(ctx, configID, cfg); updateErr != nil {
-			log.Printf("[SyncConfigNodes] failed to clear lastSyncError for config %s: %v", configID, updateErr)
+	out := make([]domain.Node, 0, len(existing))
+	for _, n := range existing {
+		if n.SourceConfigID == configID {
+			out = append(out, n)
 		}
 	}
-	return updated, nil
+	return out, nil
 }
 
 // ========== Proxy 操作 ==========
@@ -309,9 +339,24 @@ func (f *Facade) MarkProxyRestartFailed(err error) {
 
 // StopProxy 停止代理
 func (f *Facade) StopProxy() error {
+	return f.stopProxy(false)
+}
+
+// StopProxyUser 停止代理（用户显式触发），用于让 keepalive 不会在用户停止后自动拉起。
+func (f *Facade) StopProxyUser() error {
+	return f.stopProxy(true)
+}
+
+func (f *Facade) stopProxy(markUserStopped bool) error {
 	ctx := context.Background()
-	if err := f.proxy.Stop(ctx); err != nil {
-		return err
+	if markUserStopped {
+		if err := f.proxy.StopUser(ctx); err != nil {
+			return err
+		}
+	} else {
+		if err := f.proxy.Stop(ctx); err != nil {
+			return err
+		}
 	}
 
 	// 停止内核后继续保持系统代理是灾难：用户网络直接断。
@@ -351,6 +396,10 @@ func (f *Facade) GetKernelLogs(since int64) proxy.KernelLogSnapshot {
 	return f.proxy.KernelLogsSince(since)
 }
 
+func (f *Facade) GetAppLogs(since int64) applog.AppLogSnapshot {
+	return applog.LogsSince(f.appLogPath, since, os.Getpid(), f.appLogStartedAt)
+}
+
 func (f *Facade) ensureCoreEngineInstalled(ctx context.Context, engine domain.CoreEngineKind) error {
 	if f.component == nil {
 		return errors.New("component service is not configured")
@@ -358,10 +407,10 @@ func (f *Facade) ensureCoreEngineInstalled(ctx context.Context, engine domain.Co
 
 	var kind domain.CoreComponentKind
 	switch engine {
-	case domain.EngineXray:
-		kind = domain.ComponentXray
 	case domain.EngineSingBox:
 		kind = domain.ComponentSingBox
+	case domain.EngineClash:
+		kind = domain.ComponentClash
 	default:
 		return fmt.Errorf("unknown engine: %s", engine)
 	}
@@ -422,6 +471,36 @@ func (f *Facade) DeleteComponent(id string) error {
 	return f.component.Delete(context.Background(), id)
 }
 
+// UninstallComponent 卸载组件：删除本地安装文件并清除安装信息。
+func (f *Facade) UninstallComponent(id string) (domain.CoreComponent, error) {
+	ctx := context.Background()
+
+	comp, err := f.component.Get(ctx, id)
+	if err != nil {
+		return domain.CoreComponent{}, err
+	}
+
+	// 卸载正在使用的引擎会直接把用户网络打断；这里强制要求先停代理。
+	status := f.proxy.Status(ctx)
+	running, _ := status["running"].(bool)
+	engine, _ := status["engine"].(string)
+	if running && engine != "" {
+		var target string
+		switch comp.Kind {
+		case domain.ComponentSingBox:
+			target = string(domain.EngineSingBox)
+		case domain.ComponentClash:
+			target = string(domain.EngineClash)
+		}
+
+		if target != "" && engine == target {
+			return domain.CoreComponent{}, fmt.Errorf("%w: proxy is running, stop it before uninstalling %s", repository.ErrInvalidData, target)
+		}
+	}
+
+	return f.component.Uninstall(ctx, id)
+}
+
 // InstallComponentAsync 异步安装组件
 func (f *Facade) InstallComponentAsync(id string) (domain.CoreComponent, error) {
 	return f.component.Install(context.Background(), id)
@@ -475,7 +554,6 @@ func (f *Facade) UpdateSystemProxySettings(settings domain.SystemProxySettings) 
 			return domain.SystemProxySettings{}, "", fmt.Errorf("proxy not running")
 		}
 
-		engine, _ := status["engine"].(string)
 		inboundMode, _ := status["inboundMode"].(string)
 		inboundPort, _ := status["inboundPort"].(int)
 		if inboundPort <= 0 {
@@ -496,16 +574,9 @@ func (f *Facade) UpdateSystemProxySettings(settings domain.SystemProxySettings) 
 		case string(domain.InboundMixed):
 			httpPort, httpsPort = inboundPort, inboundPort
 			socksPort = inboundPort
-			if engine == string(domain.EngineXray) {
-				// Xray mixed = HTTP(port) + SOCKS(port+1)
-				socksPort = inboundPort + 1
-			}
 		default:
 			// 兜底：按 mixed 处理
 			httpPort, httpsPort, socksPort = inboundPort, inboundPort, inboundPort
-			if engine == string(domain.EngineXray) {
-				socksPort = inboundPort + 1
-			}
 		}
 
 		message, err := shared.ApplySystemProxy(shared.SystemProxyConfig{

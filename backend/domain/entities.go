@@ -89,7 +89,10 @@ type NodeTLS struct {
 type ConfigFormat string
 
 const (
-	ConfigFormatXray ConfigFormat = "xray-json"
+	// ConfigFormatSubscription 订阅/配置源（分享链接与 Clash YAML）。
+	//
+	// 注意：Vea 不再区分“特定内核 JSON”等具体格式；解析逻辑以实际 payload 内容为准。
+	ConfigFormatSubscription ConfigFormat = "subscription"
 )
 
 type Config struct {
@@ -132,8 +135,8 @@ type GeoResource struct {
 type CoreComponentKind string
 
 const (
-	ComponentXray    CoreComponentKind = "xray"
 	ComponentSingBox CoreComponentKind = "singbox"
+	ComponentClash   CoreComponentKind = "clash"
 	ComponentGeo     CoreComponentKind = "geo"
 	ComponentGeneric CoreComponentKind = "generic"
 )
@@ -273,8 +276,8 @@ const (
 type CoreEngineKind string
 
 const (
-	EngineXray    CoreEngineKind = "xray"
 	EngineSingBox CoreEngineKind = "singbox"
+	EngineClash   CoreEngineKind = "clash"
 	EngineAuto    CoreEngineKind = "auto"
 )
 
@@ -289,7 +292,6 @@ type ProxyConfig struct {
 	DNSConfig         *DNSConfiguration             `json:"dnsConfig,omitempty"`
 	LogConfig         *LogConfiguration             `json:"logConfig,omitempty"`
 	PerformanceConfig *PerformanceConfiguration     `json:"performanceConfig,omitempty"`
-	XrayConfig        *XrayConfiguration            `json:"xrayConfig,omitempty"`
 	PreferredEngine   CoreEngineKind                `json:"preferredEngine"`
 	FRouterID         string                        `json:"frouterId"`
 	UpdatedAt         time.Time                     `json:"updatedAt"`
@@ -344,14 +346,6 @@ type PerformanceConfiguration struct {
 	SniffOverride  bool   `json:"sniffOverride"`  // 全局嗅探覆盖
 	DomainStrategy string `json:"domainStrategy"` // prefer_ipv4, prefer_ipv6, ipv4_only, ipv6_only
 	DomainMatcher  string `json:"domainMatcher"`  // hybrid, linear (性能 vs 内存)
-}
-
-// XrayConfiguration Xray 特定配置
-type XrayConfiguration struct {
-	MuxEnabled     bool     `json:"muxEnabled"`     // 启用多路复用
-	MuxConcurrency int      `json:"muxConcurrency"` // 并发连接数（-1 为自动）
-	DNSServers     []string `json:"dnsServers"`     // DNS 服务器列表
-	DomainStrategy string   `json:"domainStrategy"` // AsIs, IPIfNonMatch, IPOnDemand
 }
 
 // ResolvedServiceConfiguration systemd-resolved 集成服务配置

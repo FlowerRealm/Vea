@@ -185,29 +185,13 @@ function startVeaService() {
     console.log(`chmod failed (may be read-only): ${e.message}`)
   }
 
-  // 确定数据目录（使用绝对路径，避免工作目录变化导致读写失败）
-  const dataDir = isDev
-    ? path.join(__dirname, '../data')  // 开发模式：项目根目录/data
-    : path.join(app.getPath('userData'), 'data')  // 生产模式：用户数据目录/data
+  // 确定数据目录（开发/生产统一使用 userData，避免写入仓库/安装目录）
+  const userDataDir = app.getPath('userData')
+  const dataDir = path.join(userDataDir, 'data')
   const statePath = path.join(dataDir, 'state.json')
 
   // artifacts 必须是可写目录：用于组件/Geo/rule-set/运行期配置（不要写进安装目录或 resources 目录）。
-  // 统一放到 userData 下，避免 sudo/提权导致的所有者混乱。
-  const artifactsDir = path.join(app.getPath('userData'), 'artifacts')
-
-  // 确保数据目录存在
-  try {
-    fs.mkdirSync(dataDir, { recursive: true })
-  } catch (e) {
-    console.log(`mkdir dataDir failed: ${e.message}`)
-  }
-
-  // 确保 artifacts 目录存在
-  try {
-    fs.mkdirSync(artifactsDir, { recursive: true })
-  } catch (e) {
-    console.log(`mkdir artifactsDir failed: ${e.message}`)
-  }
+  const artifactsDir = path.join(userDataDir, 'artifacts')
 
   const args = ['--addr', `:${VEA_PORT}`, '--state', statePath]
   if (isDev) {
@@ -222,7 +206,7 @@ function startVeaService() {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: {
       ...process.env,
-      VEA_ARTIFACTS_ROOT: artifactsDir,
+      VEA_USER_DATA_DIR: userDataDir,
     },
   })
 

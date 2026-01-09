@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -75,8 +76,8 @@ func (s *Service) Get(ctx context.Context, id string) (domain.CoreComponent, err
 
 // Create 创建组件
 func (s *Service) Create(ctx context.Context, comp domain.CoreComponent) (domain.CoreComponent, error) {
-	// 核心组件（xray/sing-box）使用幂等创建：缺失时补齐默认配置，存在则直接返回
-	if comp.Kind == domain.ComponentXray || comp.Kind == domain.ComponentSingBox {
+	// 核心组件（sing-box/clash）使用幂等创建：缺失时补齐默认配置，存在则直接返回
+	if comp.Kind == domain.ComponentSingBox || comp.Kind == domain.ComponentClash {
 		if err := s.EnsureDefaultComponents(ctx); err != nil {
 			return domain.CoreComponent{}, err
 		}
@@ -93,6 +94,68 @@ func (s *Service) Update(ctx context.Context, id string, comp domain.CoreCompone
 // Delete 删除组件
 func (s *Service) Delete(ctx context.Context, id string) error {
 	return s.repo.Delete(ctx, id)
+}
+
+// Uninstall 卸载组件：删除本地安装文件并清除安装信息。
+//
+// 注意：默认仅允许卸载位于 artifacts 目录下的安装路径，避免误删任意目录。
+func (s *Service) Uninstall(ctx context.Context, id string) (domain.CoreComponent, error) {
+	s.mu.Lock()
+	if _, ok := s.installing[id]; ok {
+		s.mu.Unlock()
+		return domain.CoreComponent{}, fmt.Errorf("%w: %w", repository.ErrInvalidData, ErrInstallInProgress)
+	}
+	s.mu.Unlock()
+
+	comp, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return domain.CoreComponent{}, err
+	}
+
+	installDir := strings.TrimSpace(comp.InstallDir)
+	if installDir == "" {
+		if info := s.detectInstalled(comp.Kind); info != nil {
+			installDir = strings.TrimSpace(info.dir)
+		}
+	}
+
+	if installDir != "" {
+		installDir = filepath.Clean(installDir)
+
+		var rootMatched string
+		for _, root := range shared.ArtifactsSearchRoots() {
+			root = filepath.Clean(strings.TrimSpace(root))
+			if root == "" {
+				continue
+			}
+			rel, relErr := filepath.Rel(root, installDir)
+			if relErr != nil {
+				continue
+			}
+			rel = filepath.Clean(rel)
+			if rel == "." || rel == "" {
+				continue
+			}
+			if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				continue
+			}
+			rootMatched = root
+			break
+		}
+
+		if rootMatched == "" {
+			return domain.CoreComponent{}, fmt.Errorf("%w: uninstall path is outside artifacts root", repository.ErrInvalidData)
+		}
+
+		if err := os.RemoveAll(installDir); err != nil {
+			return domain.CoreComponent{}, err
+		}
+	}
+
+	if err := s.repo.ClearInstalled(ctx, id); err != nil {
+		return domain.CoreComponent{}, err
+	}
+	return s.repo.Get(ctx, id)
 }
 
 // ========== 安装操作 ==========
@@ -124,22 +187,23 @@ type installInfo struct {
 }
 
 func (s *Service) detectInstalled(kind domain.CoreComponentKind) *installInfo {
-	var subdir, binary string
+	var subdir string
+	var binaries []string
 
 	switch kind {
-	case domain.ComponentXray:
-		subdir = "core/xray"
-		binary = "xray"
 	case domain.ComponentSingBox:
 		subdir = "core/sing-box"
-		binary = "sing-box"
+		binaries = []string{"sing-box", "sing-box.exe"}
+	case domain.ComponentClash:
+		subdir = "core/clash"
+		binaries = []string{"mihomo", "mihomo.exe", "clash", "clash.exe"}
 	default:
 		return nil
 	}
 
 	for _, root := range shared.ArtifactsSearchRoots() {
 		dir := filepath.Join(root, subdir)
-		binaryPath, err := shared.FindBinaryInDir(dir, []string{binary, binary + ".exe"})
+		binaryPath, err := shared.FindBinaryInDir(dir, binaries)
 		if err != nil {
 			continue
 		}
@@ -175,10 +239,10 @@ func (s *Service) doInstall(id string) {
 	// 确定组件类型和仓库
 	var kindStr string
 	switch comp.Kind {
-	case domain.ComponentXray:
-		kindStr = "xray"
 	case domain.ComponentSingBox:
 		kindStr = "singbox"
+	case domain.ComponentClash:
+		kindStr = "clash"
 	default:
 		s.repo.UpdateInstallStatus(ctx, id, domain.InstallStatusError, 0, "Unknown component kind")
 		return
@@ -241,9 +305,12 @@ func (s *Service) doInstall(id string) {
 		return
 	}
 
-	// 清理多余文件（Xray 特有）
-	if comp.Kind == domain.ComponentXray {
-		s.cleanupXrayInstall(installDir)
+	// mihomo 的发布包在 Linux/macOS 通常是单文件 gzip，文件名可能带版本/平台后缀；这里把解压产物规整为固定可执行文件名。
+	if comp.Kind == domain.ComponentClash {
+		if err := normalizeClashInstall(installDir); err != nil {
+			s.repo.UpdateInstallStatus(ctx, id, domain.InstallStatusError, 0, "安装后处理失败: "+err.Error())
+			return
+		}
 	}
 
 	// 设置二进制文件执行权限
@@ -268,22 +335,6 @@ func (s *Service) EnsureDefaultComponents(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// 确保 Xray 组件存在
-	if _, err := s.repo.GetByKind(ctx, domain.ComponentXray); err != nil {
-		if !errors.Is(err, repository.ErrComponentNotFound) {
-			return err
-		}
-		if _, err := s.repo.Create(ctx, domain.CoreComponent{
-			Name: "Xray",
-			Kind: domain.ComponentXray,
-			Meta: map[string]string{
-				"repo": "XTLS/Xray-core",
-			},
-		}); err != nil {
-			return err
-		}
-	}
-
 	// 确保 sing-box 组件存在
 	if _, err := s.repo.GetByKind(ctx, domain.ComponentSingBox); err != nil {
 		if !errors.Is(err, repository.ErrComponentNotFound) {
@@ -300,48 +351,18 @@ func (s *Service) EnsureDefaultComponents(ctx context.Context) error {
 		}
 	}
 
-	return nil
-}
-
-// resolveInstallDir 确定组件的安装目录
-func (s *Service) resolveInstallDir(comp domain.CoreComponent) string {
-	base := filepath.Join(shared.ArtifactsRoot, "core")
-	switch comp.Kind {
-	case domain.ComponentXray:
-		return filepath.Join(base, "xray")
-	case domain.ComponentSingBox:
-		return filepath.Join(base, "sing-box")
-	default:
-		return filepath.Join(base, comp.Name)
-	}
-}
-
-// cleanupXrayInstall 清理 Xray 安装目录中的多余文件
-func (s *Service) cleanupXrayInstall(dir string) error {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return err
-	}
-
-	allowed := map[string]struct{}{
-		"xray":                {},
-		"xray.exe":            {},
-		"geoip.dat":           {},
-		"geosite.dat":         {},
-		"config.json":         {},
-		"config-measure.json": {},
-		"license":             {},
-		"license.txt":         {},
-	}
-
-	for _, entry := range entries {
-		name := entry.Name()
-		lower := strings.ToLower(name)
-		if _, ok := allowed[lower]; ok {
-			continue
+	// 确保 clash(mihomo) 组件存在
+	if _, err := s.repo.GetByKind(ctx, domain.ComponentClash); err != nil {
+		if !errors.Is(err, repository.ErrComponentNotFound) {
+			return err
 		}
-		path := filepath.Join(dir, name)
-		if err := os.RemoveAll(path); err != nil {
+		if _, err := s.repo.Create(ctx, domain.CoreComponent{
+			Name: "clash",
+			Kind: domain.ComponentClash,
+			Meta: map[string]string{
+				"repo": "MetaCubeX/mihomo",
+			},
+		}); err != nil {
 			return err
 		}
 	}
@@ -349,14 +370,27 @@ func (s *Service) cleanupXrayInstall(dir string) error {
 	return nil
 }
 
+// resolveInstallDir 确定组件的安装目录
+func (s *Service) resolveInstallDir(comp domain.CoreComponent) string {
+	base := filepath.Join(shared.ArtifactsRoot, "core")
+	switch comp.Kind {
+	case domain.ComponentSingBox:
+		return filepath.Join(base, "sing-box")
+	case domain.ComponentClash:
+		return filepath.Join(base, "clash")
+	default:
+		return filepath.Join(base, comp.Name)
+	}
+}
+
 // setExecutablePermissions 设置二进制文件的执行权限
 func (s *Service) setExecutablePermissions(dir, kind string) {
 	var binaries []string
 	switch kind {
-	case "xray":
-		binaries = []string{"xray", "xray.exe"}
 	case "singbox":
 		binaries = []string{"sing-box", "sing-box.exe"}
+	case "clash":
+		binaries = []string{"mihomo", "mihomo.exe", "clash", "clash.exe"}
 	}
 
 	for _, bin := range binaries {
@@ -379,4 +413,92 @@ func (s *Service) setExecutablePermissions(dir, kind string) {
 			}
 		}
 	}
+}
+
+func normalizeClashInstall(dir string) error {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return errors.New("install dir is empty")
+	}
+
+	targetName := "mihomo"
+	if runtime.GOOS == "windows" {
+		targetName = "mihomo.exe"
+	}
+	targetPath := filepath.Join(dir, targetName)
+	if _, err := os.Stat(targetPath); err == nil {
+		return nil
+	}
+
+	// 兜底：zip 解压后可能带版本/平台后缀，这里做一次 best-effort 归一化，确保后续能找到二进制。
+	isCandidate := func(name string) bool {
+		lower := strings.ToLower(strings.TrimSpace(name))
+		if lower == "" {
+			return false
+		}
+		if runtime.GOOS == "windows" && !strings.HasSuffix(lower, ".exe") {
+			return false
+		}
+		return strings.HasPrefix(lower, "mihomo") || strings.HasPrefix(lower, "clash")
+	}
+
+	var tryRenameErr error
+	tryRename := func(path string) bool {
+		if path == "" {
+			return false
+		}
+
+		if err := os.Rename(path, targetPath); err != nil {
+			tryRenameErr = fmt.Errorf("rename %s -> %s: %w", path, targetPath, err)
+			return false
+		}
+		if runtime.GOOS != "windows" {
+			if err := os.Chmod(targetPath, 0o755); err != nil {
+				tryRenameErr = fmt.Errorf("chmod %s: %w", targetPath, err)
+				// best-effort rollback to avoid leaving an unusable binary at targetPath
+				_ = os.Rename(targetPath, path)
+				return false
+			}
+		}
+		return true
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			if isCandidate(entry.Name()) {
+				if tryRename(filepath.Join(dir, entry.Name())) {
+					return nil
+				}
+			}
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			sub := filepath.Join(dir, entry.Name())
+			subEntries, subErr := os.ReadDir(sub)
+			if subErr != nil {
+				continue
+			}
+			for _, subEntry := range subEntries {
+				if subEntry.IsDir() {
+					continue
+				}
+				if isCandidate(subEntry.Name()) {
+					if tryRename(filepath.Join(sub, subEntry.Name())) {
+						return nil
+					}
+				}
+			}
+		}
+	}
+
+	if tryRenameErr != nil {
+		return fmt.Errorf("failed to normalize clash binary in %s: %w", dir, tryRenameErr)
+	}
+	return fmt.Errorf("clash binary not found after extraction in %s", dir)
 }

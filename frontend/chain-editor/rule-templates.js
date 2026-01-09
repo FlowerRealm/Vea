@@ -1,6 +1,6 @@
 /**
  * Chain Editor 规则模板
- * 这些模板在 Xray 和 sing-box 中都能工作（使用统一的 geosite/geoip 格式）
+ * 这些模板使用统一的 geosite/geoip 语法（由后端适配到实际内核规则）
  */
 
 const RULE_TEMPLATES = {
@@ -24,7 +24,7 @@ const RULE_TEMPLATES = {
       icon: '🇨🇳',
       action: 'direct', // direct | proxy | block
       rule: {
-        // 使用 geosite/geoip 格式，xray 和 singbox 都支持
+        // 使用 geosite/geoip 格式
         domains: ['geosite:cn'],
         ips: ['geoip:cn']
       }

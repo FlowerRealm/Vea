@@ -114,6 +114,7 @@ func ensureSingBoxRuleSets(artifactsRoot string, tags []string, download func(ur
 }
 
 func singBoxRuleSetURL(tag string) (string, error) {
+	tag = strings.ToLower(strings.TrimSpace(tag))
 	switch {
 	case strings.HasPrefix(tag, "geosite-"):
 		return "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/" + tag + ".srs", nil

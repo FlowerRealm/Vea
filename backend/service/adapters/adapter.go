@@ -41,7 +41,7 @@ type ProcessConfig struct {
 }
 
 // CoreAdapter 内核适配器接口
-// 每个代理内核（Xray、sing-box）都需要实现这个接口
+// 每个代理内核（sing-box、Clash）都需要实现这个接口
 type CoreAdapter interface {
 	// Kind 返回内核类型
 	Kind() domain.CoreEngineKind

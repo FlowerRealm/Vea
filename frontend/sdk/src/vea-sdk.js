@@ -1,7 +1,7 @@
 /**
  * Vea SDK v1.0.0
  *
- * Xray 代理管理 JavaScript SDK
+ * Vea 后端 HTTP API JavaScript SDK
  *
  * @license MIT
  * @author Vea Team
@@ -311,6 +311,10 @@ class ComponentsAPI {
 
   async install(id) {
     return this.client.post(`/components/${id}/install`)
+  }
+
+  async uninstall(id) {
+    return this.client.post(`/components/${id}/uninstall`)
   }
 }
 

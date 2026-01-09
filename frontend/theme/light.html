@@ -140,8 +140,24 @@
       background: var(--text-secondary);
     }
 
-    .window-ctrl.close:hover {
-      background: var(--error);
+    /* macOS-style window control colors */
+    #close-btn {
+      background: #ff5f57;
+    }
+    #minimize-btn {
+      background: #febc2e;
+    }
+    #maximize-btn {
+      background: #28c840;
+    }
+    #close-btn:hover {
+      background: #ff7b74;
+    }
+    #minimize-btn:hover {
+      background: #ffd06a;
+    }
+    #maximize-btn:hover {
+      background: #4fe06a;
     }
 
     /* === Sidebar === */
@@ -486,6 +502,11 @@
 
     #panel-logs .panel-header {
       margin-bottom: 24px;
+    }
+
+    #panel-logs .log-tabs {
+      flex: 0 0 auto;
+      margin-bottom: 16px;
     }
 
     #panel-logs .log-card {
@@ -1918,27 +1939,41 @@
           </div>
           <div class="metric-value" id="home-node-speed">--</div>
         </div>
-        <div class="metric-card" id="tun-status-card">
-          <div class="metric-label">
-            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
-              <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-            </svg>
-            TUN 模式
-          </div>
-          <div style="display:flex; align-items:center; gap:12px;">
-            <div class="metric-value" id="tun-status-value" style="cursor:pointer;" title="点击查看详情">--</div>
-            <label class="toggle-switch" title="启用/禁用 TUN 模式">
-              <input type="checkbox" id="tun-toggle">
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-        </div>
-        <div class="metric-card" id="ip-geo-card" style="grid-column: span 2;">
-          <div class="metric-label">
-            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="2" y1="12" x2="22" y2="12"></line>
+	        <div class="metric-card" id="tun-status-card">
+	          <div class="metric-label">
+	            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
+	              <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+	              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+	            </svg>
+	            TUN 模式
+	          </div>
+	          <div style="display:flex; align-items:center; gap:12px;">
+	            <div class="metric-value" id="tun-status-value" style="cursor:pointer;" title="点击查看详情">--</div>
+	            <label class="toggle-switch" title="启用/禁用 TUN 模式">
+	              <input type="checkbox" id="tun-toggle">
+	              <span class="toggle-slider"></span>
+	            </label>
+	          </div>
+	        </div>
+	        <div class="metric-card" id="engine-select-card">
+	          <div class="metric-label">
+	            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
+	              <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
+	              <rect x="9" y="9" width="6" height="6"></rect>
+	            </svg>
+	            内核偏好
+	          </div>
+	          <select id="engine-select" title="选择内核偏好（需要时会重启内核）">
+	            <option value="auto" data-label="自动">自动</option>
+	            <option value="singbox" data-label="sing-box">sing-box</option>
+	            <option value="clash" data-label="Clash">Clash</option>
+	          </select>
+	        </div>
+	        <div class="metric-card" id="ip-geo-card" style="grid-column: span 2;">
+	          <div class="metric-label">
+	            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
+	              <circle cx="12" cy="12" r="10"></circle>
+	              <line x1="2" y1="12" x2="22" y2="12"></line>
               <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">
               </path>
             </svg>
@@ -2085,7 +2120,7 @@
 	          <p>管理和监控你的 FRouter 配置。</p>
 	        </div>
 	        <div class="panel-actions">
-          <span id="xray-state" style="font-size:12px; color:var(--text-secondary); margin-right:16px;">核心：
+          <span id="core-state" style="font-size:12px; color:var(--text-secondary); margin-right:16px;">核心：
             未知</span>
 	          <button id="node-refresh">刷新 FRouter</button>
 	        </div>
@@ -2199,11 +2234,16 @@
       <div class="panel-header">
         <div class="panel-title">
           <h2>日志</h2>
-          <p>内核（Xray / sing-box）运行日志（独立于终端输出）。</p>
+          <p>内核（sing-box / Clash）与应用（后端）运行日志（独立于终端输出）。</p>
         </div>
       </div>
 
-      <div class="card log-card">
+      <div class="node-tabs log-tabs" id="log-tabs">
+        <div class="node-tab active" data-log-tab="kernel">系统日志</div>
+        <div class="node-tab" data-log-tab="app">应用日志</div>
+      </div>
+
+      <div class="card log-card" id="kernel-log-card">
         <div class="log-toolbar">
           <div class="log-meta" id="kernel-log-meta">-</div>
           <div class="log-actions">
@@ -2222,6 +2262,26 @@
           <pre id="kernel-log-content"></pre>
         </div>
       </div>
+
+      <div class="card log-card" id="app-log-card" style="display:none;">
+        <div class="log-toolbar">
+          <div class="log-meta" id="app-log-meta">-</div>
+          <div class="log-actions">
+            <button class="mini-btn" id="app-log-refresh">刷新</button>
+            <button class="mini-btn" id="app-log-copy">复制</button>
+            <div class="log-autoscroll">
+              <span class="log-label">自动滚动</span>
+              <label class="chain-toggle">
+                <input type="checkbox" id="app-log-autoscroll" checked>
+                <span class="chain-toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="log-container" id="app-log-container">
+          <pre id="app-log-content"></pre>
+        </div>
+      </div>
     </section>
 
     <!-- Settings -->
@@ -2229,7 +2289,7 @@
       <div class="panel-header">
         <div class="panel-title">
           <h2>设置</h2>
-          <p>Application preferences and configurations.</p>
+          <p>应用偏好与配置。</p>
         </div>
         <div class="panel-actions">
           <button id="settings-import-btn">导入设置</button>
@@ -2273,12 +2333,6 @@
             </svg>
             sing-box
           </button>
-          <button class="settings-nav-item" data-settings-tab="xray">
-            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
-              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-            </svg>
-            Xray
-          </button>
           <button class="settings-nav-item" data-settings-tab="advanced">
             <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
               <circle cx="12" cy="12" r="3"></circle>
@@ -2304,9 +2358,6 @@
 
           <!-- sing-box 设置 -->
           <div class="settings-content" id="settings-singbox" style="display:none;"></div>
-
-          <!-- Xray 设置 -->
-          <div class="settings-content" id="settings-xray" style="display:none;"></div>
 
           <!-- 高级设置 -->
           <div class="settings-content" id="settings-advanced" style="display:none;"></div>
@@ -2704,7 +2755,7 @@
       let frouterTags = [];
       let currentFRouterTab = "全部";
 
-      let xrayStatus = {
+      let coreStatus = {
         enabled: false,
         running: false,
         binary: "",
@@ -2720,12 +2771,21 @@
 	      let kernelLogOffset = 0;
 	      let kernelLogSession = 0;
 	      let kernelLogStartedAt = "";
+	      let appLogsPollHandle = null;
+	      let appLogOffset = 0;
+	      let appLogStartedAt = "";
 	      const ANSI_ESC = "\x1b";
 	      const ANSI_ESC_SYMBOL = "␛";
 	      let kernelLogAnsiState = createAnsiState();
 	      let kernelLogAnsiCarry = "";
+	      let appLogAnsiState = createAnsiState();
+	      let appLogAnsiCarry = "";
+	      let currentLogsTab = "kernel";
 	      let kernelLogAutoScroll = true;
 	      let kernelLogsPanelInitialized = false;
+	      let appLogAutoScroll = true;
+	      let appLogsPanelInitialized = false;
+	      let logsTabsInitialized = false;
 	      let nodesLoadInFlight = false;
 		      let homeAutoTestInFlight = false;
 		      let applyFRouterInFlight = false;
@@ -2748,6 +2808,12 @@
 	      function resetKernelLogRender(pre) {
 	        kernelLogAnsiState = createAnsiState();
 	        kernelLogAnsiCarry = "";
+	        if (pre) pre.innerHTML = "";
+	      }
+
+	      function resetAppLogRender(pre) {
+	        appLogAnsiState = createAnsiState();
+	        appLogAnsiCarry = "";
 	        if (pre) pre.innerHTML = "";
 	      }
 
@@ -2989,6 +3055,15 @@
 	        }
 	      }
 
+	      function appendAppLogChunk(pre, chunk) {
+	        if (!pre || !chunk) return;
+	        const { html, carry } = ansiToHtmlChunk(appLogAnsiCarry + chunk, appLogAnsiState);
+	        appLogAnsiCarry = carry || "";
+	        if (html) {
+	          pre.insertAdjacentHTML("beforeend", html);
+	        }
+	      }
+
 	      function ensureFRoutersPolling() {
 	        if (froutersPollHandle) {
 	          return;
@@ -3067,13 +3142,127 @@
 	        }
 	      }
 
+	      function ensureAppLogsPanel() {
+	        if (appLogsPanelInitialized) {
+	          return;
+	        }
+	        appLogsPanelInitialized = true;
+
+	        const refreshBtn = document.getElementById("app-log-refresh");
+	        const copyBtn = document.getElementById("app-log-copy");
+	        const autoScrollToggle = document.getElementById("app-log-autoscroll");
+	        const logContainer = document.getElementById("app-log-container");
+
+	        if (autoScrollToggle) {
+	          appLogAutoScroll = Boolean(autoScrollToggle.checked);
+	          autoScrollToggle.addEventListener("change", (e) => {
+	            appLogAutoScroll = Boolean(e.target.checked);
+	            if (appLogAutoScroll && logContainer) {
+	              logContainer.scrollTop = logContainer.scrollHeight;
+	            }
+	          });
+	        }
+
+	        if (refreshBtn) {
+	          refreshBtn.addEventListener("click", async () => {
+	            appLogOffset = 0;
+	            appLogStartedAt = "";
+	            const pre = document.getElementById("app-log-content");
+	            resetAppLogRender(pre);
+	            await loadAppLogs();
+	          });
+	        }
+
+	        if (copyBtn) {
+	          copyBtn.addEventListener("click", async () => {
+	            const pre = document.getElementById("app-log-content");
+	            const text = pre ? pre.textContent : "";
+	            if (!text) {
+	              showStatus("暂无可复制内容", "info", 1500);
+	              return;
+	            }
+	            try {
+	              await navigator.clipboard.writeText(text);
+	              showStatus("日志已复制到剪贴板", "success", 1600);
+	            } catch (err) {
+	              showStatus(`复制失败：${err.message}`, "error", 3000);
+	            }
+	          });
+	        }
+	      }
+
+	      function syncLogsTabUI() {
+	        const tabs = document.getElementById("log-tabs");
+	        const kernelCard = document.getElementById("kernel-log-card");
+	        const appCard = document.getElementById("app-log-card");
+
+	        if (kernelCard) {
+	          kernelCard.style.display = currentLogsTab === "kernel" ? "" : "none";
+	        }
+	        if (appCard) {
+	          appCard.style.display = currentLogsTab === "app" ? "" : "none";
+	        }
+
+	        if (tabs) {
+	          tabs.querySelectorAll(".node-tab[data-log-tab]").forEach((tab) => {
+	            tab.classList.toggle("active", tab.dataset.logTab === currentLogsTab);
+	          });
+	        }
+	      }
+
+	      function setLogsTab(tab) {
+	        const next = tab === "app" ? "app" : "kernel";
+	        if (next === currentLogsTab) {
+	          return;
+	        }
+	        currentLogsTab = next;
+	        syncLogsTabUI();
+	        if (currentPanel === "panel-logs") {
+	          if (currentLogsTab === "app") {
+	            loadAppLogs();
+	          } else {
+	            loadKernelLogs();
+	          }
+	        }
+	      }
+
+	      function ensureLogsTabs() {
+	        if (logsTabsInitialized) {
+	          return;
+	        }
+	        logsTabsInitialized = true;
+	        const tabs = document.getElementById("log-tabs");
+	        if (!tabs) {
+	          return;
+	        }
+	        tabs.addEventListener("click", (event) => {
+	          const button = event.target.closest(".node-tab[data-log-tab]");
+	          if (!button) {
+	            return;
+	          }
+	          setLogsTab(button.dataset.logTab);
+	        });
+	        syncLogsTabUI();
+	      }
+
 	      function startKernelLogsPolling() {
 	        if (kernelLogsPollHandle) {
 	          return;
 	        }
 	        kernelLogsPollHandle = setInterval(() => {
-	          if (currentPanel === "panel-logs") {
+	          if (currentPanel === "panel-logs" && currentLogsTab === "kernel") {
 	            loadKernelLogs();
+	          }
+	        }, KERNEL_LOGS_POLL_INTERVAL);
+	      }
+
+	      function startAppLogsPolling() {
+	        if (appLogsPollHandle) {
+	          return;
+	        }
+	        appLogsPollHandle = setInterval(() => {
+	          if (currentPanel === "panel-logs" && currentLogsTab === "app") {
+	            loadAppLogs();
 	          }
 	        }, KERNEL_LOGS_POLL_INTERVAL);
 	      }
@@ -3086,14 +3275,24 @@
 	        kernelLogsPollHandle = null;
 	      }
 
-	      async function loadKernelLogs() {
+	      function stopAppLogsPolling() {
+	        if (!appLogsPollHandle) {
+	          return;
+	        }
+	        clearInterval(appLogsPollHandle);
+	        appLogsPollHandle = null;
+	      }
+
+	      async function loadKernelLogs(options = {}) {
 	        const metaEl = document.getElementById("kernel-log-meta");
 	        const pre = document.getElementById("kernel-log-content");
 	        const logContainer = document.getElementById("kernel-log-container");
 	        if (!pre) return;
 
 	        try {
-	          const payload = await api.get(`/proxy/kernel/logs?since=${kernelLogOffset}`);
+	          const forceFromStart = Boolean(options && options.forceFromStart);
+	          const since = forceFromStart ? 0 : kernelLogOffset;
+	          const payload = await api.get(`/proxy/kernel/logs?since=${since}`);
 	          const data = payload || {};
 	          const session = Number(data.session || 0);
 	          const startedAt = data.startedAt || "";
@@ -3102,6 +3301,13 @@
 
 	          const sessionChanged = session && session !== kernelLogSession;
 	          const startedAtChanged = startedAt && startedAt !== kernelLogStartedAt;
+
+	          // 新 session 不应从旧 offset 续读：否则会丢掉“kernel start ...”等关键起始信息。
+	          if (!forceFromStart && (sessionChanged || startedAtChanged) && kernelLogOffset !== 0) {
+	            kernelLogOffset = 0;
+	            await loadKernelLogs({ forceFromStart: true });
+	            return;
+	          }
 
 	          const shouldReset = lost || sessionChanged || startedAtChanged || kernelLogOffset === 0;
 	          if (shouldReset) {
@@ -3118,18 +3324,71 @@
 	          if (metaEl) {
 	            const parts = [];
 	            if (data.engine) {
-	              parts.push(String(data.engine));
+	              parts.push(componentDisplayName(String(data.engine)));
 	            } else {
-	              parts.push("kernel");
+	              parts.push("内核");
 	            }
-	            if (data.running === false) parts.push("stopped");
+	            if (data.running === false) parts.push("已停止");
 	            if (data.pid) parts.push(`pid ${data.pid}`);
-	            if (startedAt) parts.push(`started ${formatTime(startedAt)}`);
-	            if (data.error) parts.push(`error: ${data.error}`);
+	            if (startedAt) parts.push(`启动于 ${formatTime(startedAt)}`);
+	            if (data.error) parts.push(`错误：${data.error}`);
 	            metaEl.textContent = parts.length ? parts.join(" · ") : "-";
 	          }
 
 	          if (kernelLogAutoScroll && logContainer) {
+	            logContainer.scrollTop = logContainer.scrollHeight;
+	          }
+	        } catch (err) {
+	          if (metaEl) {
+	            metaEl.textContent = `加载失败：${err.message}`;
+	          }
+	        }
+	      }
+
+	      async function loadAppLogs(options = {}) {
+	        const metaEl = document.getElementById("app-log-meta");
+	        const pre = document.getElementById("app-log-content");
+	        const logContainer = document.getElementById("app-log-container");
+	        if (!pre) return;
+
+	        try {
+	          const forceFromStart = Boolean(options && options.forceFromStart);
+	          const since = forceFromStart ? 0 : appLogOffset;
+	          const payload = await api.get(`/app/logs?since=${since}`);
+	          const data = payload || {};
+	          const startedAt = data.startedAt || "";
+	          const lost = Boolean(data.lost);
+	          const chunk = data.text || "";
+
+	          const startedAtChanged = startedAt && startedAt !== appLogStartedAt;
+
+	          if (!forceFromStart && startedAtChanged && appLogOffset !== 0) {
+	            appLogOffset = 0;
+	            await loadAppLogs({ forceFromStart: true });
+	            return;
+	          }
+
+	          const shouldReset = lost || startedAtChanged || appLogOffset === 0;
+	          if (shouldReset) {
+	            resetAppLogRender(pre);
+	          }
+	          appendAppLogChunk(pre, chunk);
+
+	          appLogStartedAt = startedAt || appLogStartedAt;
+	          if (typeof data.to === "number") {
+	            appLogOffset = data.to;
+	          }
+
+	          if (metaEl) {
+	            const parts = ["应用"];
+	            if (data.running === false) parts.push("已停止");
+	            if (data.pid) parts.push(`pid ${data.pid}`);
+	            if (startedAt) parts.push(`启动于 ${formatTime(startedAt)}`);
+	            if (data.error) parts.push(`错误：${data.error}`);
+	            metaEl.textContent = parts.length ? parts.join(" · ") : "-";
+	          }
+
+	          if (appLogAutoScroll && logContainer) {
 	            logContainer.scrollTop = logContainer.scrollHeight;
 	          }
 	        } catch (err) {
@@ -3244,8 +3503,8 @@
           return;
         }
 
-        xrayStatus = status || {};
-        updateXrayUI(xrayStatus);
+        coreStatus = status || {};
+        updateCoreUI(coreStatus);
 
         const coreRunning = Boolean(status && status.running);
         if (!coreRunning) {
@@ -3290,14 +3549,14 @@
           await api.post("/proxy/start", { frouterId });
         } catch (err) {
           showStatus(`切换失败：${err.message}`, "error", 6000);
-          await refreshXrayStatus();
+          await refreshCoreStatus();
           await loadSystemProxySettings();
           await loadIPGeo();
           return;
         }
 
         await sleep(500);
-        await refreshXrayStatus();
+        await refreshCoreStatus();
 
         if (wasSystemProxyEnabled) {
           try {
@@ -3317,13 +3576,13 @@
         }
       }
 
-      async function refreshXrayStatus({ notify = false } = {}) {
+      async function refreshCoreStatus({ notify = false } = {}) {
         try {
           const status = await api.proxy.status();
-          xrayStatus = status || {};
-          updateXrayUI(xrayStatus);
+          coreStatus = status || {};
+          updateCoreUI(coreStatus);
 
-          if (notify && xrayStatus.running) {
+          if (notify && coreStatus.running) {
             showStatus("内核已启动", "success");
           }
         } catch (err) {
@@ -3334,11 +3593,11 @@
         }
       }
 
-      function updateXrayUI(status = {}) {
+      function updateCoreUI(status = {}) {
         if (!status || typeof status !== "object") {
           status = {};
         }
-        const indicator = document.getElementById("xray-state");
+        const indicator = document.getElementById("core-state");
         const proxyToggle = document.getElementById("proxy-toggle");
 
         const coreRunning = Boolean(status.running);
@@ -3347,7 +3606,10 @@
         // Update core status indicator
         if (indicator) {
           indicator.className = coreRunning ? "badge active" : "badge";
-          indicator.textContent = coreRunning ? "运行中" : "已停止";
+          const engineLabel = coreRunning && status.engine ? componentDisplayName(status.engine) : "";
+          indicator.textContent = coreRunning
+            ? `核心：运行中${engineLabel ? `（${engineLabel}）` : ""}`
+            : "核心：已停止";
         }
 
         // Update proxy toggle button
@@ -3399,6 +3661,223 @@
           console.error("Failed to load TUN settings:", err);
           tunSettingsCache = { enabled: false };
           updateTUNToggle(tunSettingsCache);
+        }
+      }
+
+      // Engine Settings state
+      let engineSettingsCache = null;
+
+      function isCoreComponentInstalled(kind) {
+        const list = Array.isArray(componentsCache) ? componentsCache : [];
+        const target = list.find((item) => item && item.kind === kind);
+        return Boolean(target && target.installDir);
+      }
+
+      function updateEngineSelectOptions() {
+        const select = document.getElementById("engine-select");
+        if (!select) return;
+
+        Array.from(select.options).forEach((opt) => {
+          const value = opt.value || "";
+          const baseLabel = opt.dataset.label || opt.textContent || value || "-";
+          if (!opt.dataset.label) {
+            opt.dataset.label = baseLabel;
+          }
+
+          if (value === "auto") {
+            opt.disabled = false;
+            opt.textContent = baseLabel;
+            return;
+          }
+
+          const installed = isCoreComponentInstalled(value);
+          opt.disabled = !installed;
+          opt.textContent = installed ? baseLabel : `${baseLabel}（未安装）`;
+        });
+      }
+
+      async function loadEngineSettings() {
+        const select = document.getElementById("engine-select");
+        if (!select) return;
+        try {
+          const cfg = await api.get("/proxy/config");
+          const preferred = cfg && cfg.preferredEngine ? cfg.preferredEngine : "auto";
+          engineSettingsCache = { preferredEngine: preferred };
+          select.value = preferred || "auto";
+        } catch (err) {
+          console.error("Failed to load engine settings:", err);
+          engineSettingsCache = { preferredEngine: "auto" };
+          select.value = "auto";
+        } finally {
+          updateEngineSelectOptions();
+        }
+      }
+
+      async function updateEngineSetting(preferredEngine) {
+        const select = document.getElementById("engine-select");
+        if (!select) return;
+
+        const normalized = ["auto", "singbox", "clash"].includes(preferredEngine)
+          ? preferredEngine
+          : "auto";
+
+        select.disabled = true;
+
+        let prevEngine = "auto";
+        try {
+          if (engineSettingsCache && engineSettingsCache.preferredEngine) {
+            prevEngine = engineSettingsCache.preferredEngine;
+          } else {
+            const cfg = await api.get("/proxy/config");
+            prevEngine = cfg && cfg.preferredEngine ? cfg.preferredEngine : "auto";
+          }
+        } catch {
+          prevEngine = "auto";
+        }
+
+        if (normalized === prevEngine) {
+          select.value = normalized;
+          select.disabled = false;
+          updateEngineSelectOptions();
+          return;
+        }
+
+        const ignoreHosts = collectIgnoreHosts();
+        let wasRunning = false;
+        try {
+          const status = await api.proxy.status();
+          coreStatus = status || coreStatus;
+          wasRunning = Boolean(status && status.running);
+        } catch {
+          wasRunning = false;
+        }
+
+        const wasSystemProxyEnabled = Boolean(systemProxySettings && systemProxySettings.enabled);
+        let systemProxyDisabled = false;
+        let configSaved = false;
+
+        async function refreshEngineSwitchUI({ alwaysLoadSystemProxy = false, restoreSystemProxy = null } = {}) {
+          await refreshCoreStatus();
+
+          if (typeof restoreSystemProxy === "function") {
+            await restoreSystemProxy();
+          }
+
+          if (alwaysLoadSystemProxy || (wasSystemProxyEnabled && systemProxyDisabled)) {
+            await loadSystemProxySettings();
+          }
+
+          await loadIPGeo();
+
+          if (currentPanel === "panel-logs") {
+            kernelLogOffset = 0;
+            kernelLogSession = 0;
+            kernelLogStartedAt = "";
+            const pre = document.getElementById("kernel-log-content");
+            resetKernelLogRender(pre);
+            await loadKernelLogs();
+          }
+        }
+
+        try {
+          const updated = await api.put("/proxy/config", { preferredEngine: normalized });
+          configSaved = true;
+          engineSettingsCache = { preferredEngine: updated && updated.preferredEngine ? updated.preferredEngine : normalized };
+          select.value = engineSettingsCache.preferredEngine || normalized;
+
+          const selectedFRouter = getCurrentFRouter();
+          const frouterId = selectedFRouter && selectedFRouter.id
+            ? selectedFRouter.id
+            : (updated && updated.frouterId ? updated.frouterId : (coreStatus && coreStatus.frouterId ? coreStatus.frouterId : ""));
+          if (!frouterId) {
+            showStatus("内核偏好已保存，但未选择 FRouter，无法重启内核", "warn", 4000);
+            return;
+          }
+
+          if (wasSystemProxyEnabled) {
+            try {
+              await api.put("/settings/system-proxy", { enabled: false, ignoreHosts });
+              systemProxyDisabled = true;
+              await loadSystemProxySettings();
+            } catch (err) {
+              showStatus(`关闭系统代理失败：${err.message}`, "error", 6000);
+              return;
+            }
+          }
+
+          showStatus(wasRunning ? "正在重启内核..." : "正在启动内核...", "info", 2000);
+          await api.post("/proxy/start", { frouterId });
+          await sleep(500);
+
+          await refreshEngineSwitchUI({
+            restoreSystemProxy: async () => {
+              if (!wasSystemProxyEnabled || !systemProxyDisabled) return;
+              try {
+                await api.put("/settings/system-proxy", { enabled: true, ignoreHosts });
+              } catch (err) {
+                showStatus(`系统代理未能恢复：${err.message}`, "warn", 6000);
+              }
+            },
+          });
+
+          const actualEngine = coreStatus && coreStatus.engine ? String(coreStatus.engine) : "";
+          const action = wasRunning ? "重启" : "启动";
+          if (normalized === "auto") {
+            const label = actualEngine ? componentDisplayName(actualEngine) : "";
+            showStatus(label ? `内核已${action}（自动：${label}）` : `内核已${action}`, "success", 2000);
+          } else if (actualEngine && actualEngine !== normalized) {
+            showStatus(`内核已${action}，但实际运行：${componentDisplayName(actualEngine)}`, "warn", 5000);
+          } else {
+            const label = actualEngine ? componentDisplayName(actualEngine) : componentDisplayName(normalized);
+            showStatus(label ? `内核已${action}（${label}）` : `内核已${action}`, "success", 2000);
+          }
+        } catch (err) {
+          showStatus(`切换内核失败：${err.message}`, "error", 6000);
+          if (configSaved && wasRunning) {
+            select.value = prevEngine || "auto";
+            engineSettingsCache = { preferredEngine: prevEngine || "auto" };
+
+            try {
+              await api.put("/proxy/config", { preferredEngine: prevEngine || "auto" });
+            } catch {
+              // ignore
+            }
+
+            const selectedFRouter = getCurrentFRouter();
+            const frouterId = selectedFRouter && selectedFRouter.id
+              ? selectedFRouter.id
+              : (coreStatus && coreStatus.frouterId ? coreStatus.frouterId : "");
+            if (frouterId) {
+              try {
+                await api.post("/proxy/start", { frouterId });
+                await sleep(500);
+              } catch {
+                // ignore
+              }
+            }
+          } else if (!configSaved) {
+            select.value = prevEngine || "auto";
+            engineSettingsCache = { preferredEngine: prevEngine || "auto" };
+          } else {
+            select.value = normalized;
+            engineSettingsCache = { preferredEngine: normalized };
+          }
+
+          await refreshEngineSwitchUI({
+            alwaysLoadSystemProxy: true,
+            restoreSystemProxy: async () => {
+              if (!wasSystemProxyEnabled || !systemProxyDisabled) return;
+              if (!(coreStatus && coreStatus.running)) return;
+              try {
+                await api.put("/settings/system-proxy", { enabled: true, ignoreHosts });
+              } catch {
+                // ignore
+              }
+            },
+          });
+        } finally {
+          select.disabled = false;
+          updateEngineSelectOptions();
         }
       }
 
@@ -3456,7 +3935,7 @@
                 ignoreHosts: Array.isArray(data.ignoreHosts) ? data.ignoreHosts : systemProxySettings.ignoreHosts,
               };
               renderSystemProxy(systemProxySettings);
-              updateXrayUI(xrayStatus);
+              updateCoreUI(coreStatus);
             } catch (err) {
               console.warn("Failed to disable system proxy when enabling TUN:", err);
             }
@@ -3466,7 +3945,7 @@
           let status = null;
           try {
             status = await api.proxy.status();
-            xrayStatus = status || xrayStatus;
+            coreStatus = status || coreStatus;
           } catch {
             status = null;
           }
@@ -3484,7 +3963,7 @@
             await api.post("/proxy/start", { frouterId });
           }
 
-          await refreshXrayStatus();
+          await refreshCoreStatus();
           await checkTUNStatus();
           await loadSystemProxySettings();
           await loadIPGeo();
@@ -3601,7 +4080,7 @@
 	          renderFRouters(frouters, currentFRouterId);
 	          updateFRouterSelectors();
 	          updateHomeFRouterMetrics();
-	          refreshXrayStatus();
+	          refreshCoreStatus();
 	          if (notify) {
 	            showStatus("FRouter 列表已刷新", "success");
 	          }
@@ -3773,7 +4252,7 @@
 	        let cls = "";
 	        let title = "";
 	        if (n && n.lastLatencyError) {
-	          value = "Error";
+	          value = "错误";
 	          cls = "poor";
 	          title = n.lastLatencyError;
 	        } else if (n && typeof n.lastLatencyMs === "number" && n.lastLatencyMs > 0) {
@@ -3790,7 +4269,7 @@
 	        let cls = "";
 	        let title = "";
 	        if (n && n.lastSpeedError) {
-	          value = "Error";
+	          value = "错误";
 	          cls = "poor";
 	          title = n.lastSpeedError;
 	        } else if (n && typeof n.lastSpeedMbps === "number" && n.lastSpeedMbps > 0) {
@@ -3987,7 +4466,7 @@
               ? frouter.tags.join(" · ")
               : "无标签";
 
-	            let latencyValue = "Ping";
+	            let latencyValue = "延迟";
 	            let latencyClass = "";
 	            const latencyTitle = frouter.lastLatencyError
 	              ? `延迟失败：${frouter.lastLatencyError}`
@@ -3999,13 +4478,13 @@
 	              else latencyClass = "poor";
 	            }
 
-	            let speedValue = "Speed";
+	            let speedValue = "速度";
 	            let speedClass = "";
 	            const speedTitle = frouter.lastSpeedError
 	              ? `测速失败：${frouter.lastSpeedError}`
 	              : "测速";
 	            if (frouter.lastSpeedError) {
-	              speedValue = "Error";
+	              speedValue = "错误";
 	              speedClass = "poor";
 	            } else if (typeof frouter.lastSpeedMbps === "number" && frouter.lastSpeedMbps > 0) {
               const fixed = frouter.lastSpeedMbps >= 10 ? frouter.lastSpeedMbps.toFixed(1) : frouter.lastSpeedMbps.toFixed(2);
@@ -4024,7 +4503,7 @@
 		                <div class="node-row-name">${escapeHtml(frouter.name || "未命名 FRouter")}</div>
                 <div class="node-row-meta">边: ${edgeCount} · 槽: ${slotCount} · ${escapeHtml(tagText)}</div>
               </div>
-              <div class="node-row-protocol">ROUTE</div>
+              <div class="node-row-protocol">路由</div>
             </div>
 
 	            <div class="node-row-metrics">
@@ -4065,28 +4544,28 @@
         }
         tbody.innerHTML = configs
           .map((cfg) => {
-            const syncState = cfg.lastSyncError
-              ? `<span class="badge error">失败：${escapeHtml(cfg.lastSyncError)}</span>`
+            const syncErr = cfg.lastSyncError || "";
+            const syncState = syncErr
+              ? `<span class="badge error text-truncate" title="${escapeHtml(syncErr)}">失败：${escapeHtml(syncErr)}</span>`
               : '<span class="badge">正常</span>';
             const source = cfg.sourceUrl ? `<br /><div class="muted text-truncate" title="${escapeHtml(cfg.sourceUrl)}">${escapeHtml(cfg.sourceUrl)}</div>` : "";
             return `
           <tr data-id="${escapeHtml(cfg.id)}">
-            <td>${escapeHtml(cfg.name)}${source}</td>
-            <td><span class="badge">${escapeHtml(cfg.format)}</span></td>
-            <td>${formatInterval(cfg.autoUpdateInterval)}</td>
-            <td>${formatTime(cfg.lastSyncedAt)}</td>
-            <td>${syncState}</td>
-            <td>
+	            <td>${escapeHtml(cfg.name)}${source}</td>
+	            <td><span class="badge">${escapeHtml(cfg.format)}</span></td>
+	            <td>${formatInterval(cfg.autoUpdateInterval)}</td>
+	            <td>${formatTime(cfg.lastSyncedAt)}</td>
+	            <td>${syncState}</td>
+	            <td>
 	              <button class="ghost" data-action="edit-config">编辑</button>
 	              <button class="ghost" data-action="pull-nodes">拉取节点</button>
-              <button class="ghost" data-action="refresh-config">刷新</button>
-              <button class="danger" data-action="delete-config">删除</button>
-            </td>
-          </tr>
-        `;
-          })
-          .join("");
-      }
+	              <button class="danger" data-action="delete-config">删除</button>
+	            </td>
+	          </tr>
+	        `;
+	          })
+	          .join("");
+	      }
 
       function renderSystemProxy(settings) {
         if (!systemProxyIgnoreInput) return;
@@ -4103,7 +4582,7 @@
             ignoreHosts: Array.isArray(data.ignoreHosts) ? data.ignoreHosts : [...SYSTEM_PROXY_DEFAULTS],
           };
           renderSystemProxy(systemProxySettings);
-          updateXrayUI(xrayStatus);
+          updateCoreUI(coreStatus);
           if (notify) {
             const msg = payload && payload.message ? payload.message : "系统代理设置已刷新";
             showStatus(msg, payload && payload.message ? "info" : "success");
@@ -4150,7 +4629,7 @@
         latencyEl.textContent = typeof latencyMs === "number" ? `${latencyMs}ms` : "--";
 
         if (speedError) {
-          speedEl.textContent = "Error";
+          speedEl.textContent = "错误";
           speedEl.title = speedError;
           return;
         }
@@ -4170,12 +4649,14 @@
           loadNodes(),
           loadComponents(),
           loadIPGeo(),
-          refreshXrayStatus({ notify }),
+          refreshCoreStatus({ notify }),
           loadSystemProxySettings({ notify }),
           checkTUNStatus({ notify }),
-          loadTUNSettings()
+          loadTUNSettings(),
+          loadEngineSettings()
 	        ]);
 	        updateHomeFRouterMetrics();
+          updateEngineSelectOptions();
 	        autoTestHomePanel({ notify: true });
 	      }
 
@@ -4204,7 +4685,7 @@
             let status = null;
             try {
               status = await api.proxy.status();
-              xrayStatus = status || xrayStatus;
+              coreStatus = status || coreStatus;
             } catch {
               status = null;
             }
@@ -4230,7 +4711,7 @@
             }
           }
           // Immediately refresh status after toggle
-          await refreshXrayStatus();
+          await refreshCoreStatus();
           await loadSystemProxySettings();
           await loadIPGeo();
         } catch (err) {
@@ -4246,18 +4727,6 @@
       function normalizeComponents(components) {
         const list = Array.isArray(components) ? components : [];
 
-        const xray = list.find((item) => item && item.kind === "xray") || {
-          id: "",
-          name: "Xray",
-          kind: "xray",
-          lastInstalledAt: "",
-          installDir: "",
-          lastVersion: "",
-          checksum: "",
-          lastSyncError: "",
-          meta: { repo: "XTLS/Xray-core" },
-        };
-
         const singbox = list.find((item) => item && item.kind === "singbox") || {
           id: "",
           name: "sing-box",
@@ -4270,14 +4739,26 @@
           meta: { repo: "SagerNet/sing-box" },
         };
 
+        const clash = list.find((item) => item && item.kind === "clash") || {
+          id: "",
+          name: "clash",
+          kind: "clash",
+          lastInstalledAt: "",
+          installDir: "",
+          lastVersion: "",
+          checksum: "",
+          lastSyncError: "",
+          meta: { repo: "MetaCubeX/mihomo" },
+        };
+
         const rest = list.filter((item) => {
           if (!item || typeof item !== "object") return false;
-          if (item.kind === "xray") return item !== xray;
           if (item.kind === "singbox") return item !== singbox;
+          if (item.kind === "clash") return item !== clash;
           return true;
         });
 
-        return [xray, singbox, ...rest];
+        return [singbox, clash, ...rest];
       }
 
       function renderComponents(components) {
@@ -4333,7 +4814,10 @@
               actionBtn = `<button class="primary" data-action="update-component">安装</button>`;
             }
 
-            const isCoreComponent = component.kind === "xray" || component.kind === "singbox";
+            const isCoreComponent = component.kind === "singbox" || component.kind === "clash";
+            const uninstallBtn = (isCoreComponent && component.installDir && installStatus !== 'downloading' && installStatus !== 'extracting')
+              ? '<button class="danger" data-action="uninstall-component">卸载</button>'
+              : '';
             const deleteBtn = isCoreComponent ? '' : '<button class="danger" data-action="delete-component">删除</button>';
 
             return `
@@ -4346,6 +4830,7 @@
             <td>${statusText}</td>
             <td>
               ${actionBtn}
+              ${uninstallBtn}
               ${deleteBtn}
             </td>
           </tr>
@@ -4359,7 +4844,8 @@
           const components = await api.get("/components");
           componentsCache = Array.isArray(components) ? components : [];
           renderComponents(componentsCache);
-          await refreshXrayStatus();
+          updateEngineSelectOptions();
+          await refreshCoreStatus();
           if (notify) {
             showStatus("组件列表已刷新", "success");
           }
@@ -4367,16 +4853,17 @@
           showStatus(`加载组件失败：${err.message}`, "error", 6000);
           componentsCache = [];
           renderComponents([]);
-          await refreshXrayStatus();
+          updateEngineSelectOptions();
+          await refreshCoreStatus();
         }
       }
 
       function componentDisplayName(kind) {
         switch (kind) {
-          case "xray":
-            return "Xray";
           case "singbox":
             return "sing-box";
+          case "clash":
+            return "Clash";
           default:
             return kind || "组件";
         }
@@ -4399,7 +4886,7 @@
           await api.post(`/components/${target.id}/install`);
           showStatus(`${pretty} 安装任务已触发`, "info", 2400);
           await loadComponents();
-          await refreshXrayStatus();
+          await refreshCoreStatus();
         } catch (err) {
           showStatus(`${pretty} 安装失败：${err.message}`, "error", 6000);
         }
@@ -4486,14 +4973,15 @@
         renderRuleItem(edge, index) {
           const target = this.getChainDisplay(edge);
           const targetClass = edge.to === 'direct' ? 'direct' : (edge.to === 'block' ? 'block' : '');
-          const ruleInfo = this.getRuleInfo(edge);
+          const title = this.getRuleTitle(edge);
+          const ruleInfo = `去向: ${target}`;
           const disabledClass = edge.enabled === false ? 'disabled' : '';
 
           return `
             <div class="chain-rule-item ${disabledClass}" data-edge-id="${escapeHtml(edge.id)}" data-index="${index}" draggable="true">
               <div class="chain-rule-drag">⋮⋮</div>
               <div class="chain-rule-main">
-                <div class="chain-rule-target ${targetClass}">${escapeHtml(target)}</div>
+                <div class="chain-rule-target ${targetClass}">${escapeHtml(title)}</div>
                 <div class="chain-rule-info">${escapeHtml(ruleInfo)}</div>
               </div>
               <div class="chain-rule-meta">
@@ -4712,14 +5200,77 @@
           }
         }
 
-        getRuleInfo(edge) {
-          if (!edge.ruleType || edge.ruleType === '') {
-            return edge.description || '默认（匹配所有流量）';
+        getRuleTitle(edge) {
+          const ruleType = edge?.ruleType != null ? String(edge.ruleType) : '';
+          const desc = edge?.description != null ? String(edge.description).trim() : '';
+
+          if (!ruleType) {
+            return desc || '默认（匹配所有流量）';
           }
-          if (edge.ruleType === 'route') {
-            return (edge.description && String(edge.description).trim()) || '自定义';
+
+          if (ruleType === 'route') {
+            if (desc && desc.startsWith('模板:')) {
+              return desc;
+            }
+
+            const tmpl = this.findMatchingTemplate(edge);
+            if (tmpl?.name) {
+              return `模板: ${tmpl.name}`;
+            }
+
+            const domains = Array.isArray(edge?.routeRule?.domains)
+              ? edge.routeRule.domains.map(s => String(s).trim()).filter(Boolean)
+              : [];
+            const ips = Array.isArray(edge?.routeRule?.ips)
+              ? edge.routeRule.ips.map(s => String(s).trim()).filter(Boolean)
+              : [];
+            const total = domains.length + ips.length;
+            if (total > 0) {
+              const first = domains.length > 0 ? domains[0] : ips[0];
+              const kind = domains.length > 0 ? '域名' : 'IP';
+              return `${kind}: ${first}${total > 1 ? ` +${total - 1}` : ''}`;
+            }
+
+            return desc || '自定义';
           }
-          return (edge.description && String(edge.description).trim()) || '自定义';
+
+          return desc || '自定义';
+        }
+
+        findMatchingTemplate(edge) {
+          const rr = edge?.routeRule;
+          if (!rr) return null;
+
+          const normalize = (arr) => {
+            if (!Array.isArray(arr)) return [];
+            return arr
+              .map(v => (v == null ? '' : String(v).trim()))
+              .filter(Boolean)
+              .sort();
+          };
+
+          const domains = normalize(rr.domains);
+          const ips = normalize(rr.ips);
+          const templates = (typeof RULE_TEMPLATES !== 'undefined' && RULE_TEMPLATES && Array.isArray(RULE_TEMPLATES.templates))
+            ? RULE_TEMPLATES.templates
+            : [];
+
+          const equal = (a, b) => {
+            if (a.length !== b.length) return false;
+            for (let i = 0; i < a.length; i++) {
+              if (a[i] !== b[i]) return false;
+            }
+            return true;
+          };
+
+          for (const tmpl of templates) {
+            const tr = tmpl?.rule || {};
+            if (equal(domains, normalize(tr.domains)) && equal(ips, normalize(tr.ips))) {
+              return tmpl;
+            }
+          }
+
+          return null;
         }
 
         bindEvents() {
@@ -5219,9 +5770,13 @@
 		        },
 		        panel3: () => loadComponents(),
 		        "panel-logs": () => {
+		          ensureLogsTabs();
 		          ensureKernelLogsPanel();
+		          ensureAppLogsPanel();
 		          startKernelLogsPolling();
-		          return loadKernelLogs();
+		          startAppLogsPolling();
+		          syncLogsTabUI();
+		          return currentLogsTab === "app" ? loadAppLogs() : loadKernelLogs();
 		        },
 		        "panel-chain": initChainEditor,
 	        "panel-settings": async () => {
@@ -5236,6 +5791,7 @@
         }
         if (currentPanel === "panel-logs") {
           stopKernelLogsPolling();
+          stopAppLogsPolling();
         }
         if (target === currentPanel) {
           loaders[target]?.();
@@ -5264,6 +5820,7 @@
         }
         if (prevPanel === "panel-logs" && target !== "panel-logs") {
           stopKernelLogsPolling();
+          stopAppLogsPolling();
         }
         currentPanel = target;
         menu.querySelectorAll("button").forEach((btn) => btn.classList.remove("active"));
@@ -5276,6 +5833,7 @@
         }
         if (target === "panel-logs") {
           startKernelLogsPolling();
+          startAppLogsPolling();
         }
         loaders[target]?.();
       });
@@ -5419,19 +5977,27 @@
         tunStatusValue.addEventListener("click", showTUNStatusDialog);
       }
 
-      // TUN toggle handler
-      const tunToggle = document.getElementById("tun-toggle");
-      if (tunToggle) {
-        tunToggle.addEventListener("change", (event) => {
-          updateTUNSetting(event.target.checked);
-        });
-      }
+	      // TUN toggle handler
+	      const tunToggle = document.getElementById("tun-toggle");
+	      if (tunToggle) {
+	        tunToggle.addEventListener("change", (event) => {
+	          updateTUNSetting(event.target.checked);
+	        });
+	      }
 
-      const systemProxyIgnoreInput = document.getElementById("system-proxy-ignore");
-      const systemProxySaveButton = document.getElementById("system-proxy-save");
-      const systemProxyResetButton = document.getElementById("system-proxy-reset");
-      const proxyToggleButton = document.getElementById("proxy-toggle");
-      if (proxyToggleButton) {
+	      // Engine select handler
+	      const engineSelect = document.getElementById("engine-select");
+	      if (engineSelect) {
+	        engineSelect.addEventListener("change", (event) => {
+	          updateEngineSetting(event.target.value);
+	        });
+	      }
+
+	      const systemProxyIgnoreInput = document.getElementById("system-proxy-ignore");
+	      const systemProxySaveButton = document.getElementById("system-proxy-save");
+	      const systemProxyResetButton = document.getElementById("system-proxy-reset");
+	      const proxyToggleButton = document.getElementById("proxy-toggle");
+	      if (proxyToggleButton) {
         proxyToggleButton.addEventListener("click", handleProxyToggle);
       }
 
@@ -6088,20 +6654,12 @@
           event.preventDefault();
           const form = event.target;
           const isEdit = Boolean(editingConfig && editingConfig.id);
-          let inferredFormat = "";
           const typedPayload = (form.payload.value || "").trim();
           const sourceUrlInput = form.sourceUrl.value.trim();
           const sourceUrl = sourceUrlInput || (isEdit ? (editingConfig?.sourceUrl || "") : "");
-          const detectSample = typedPayload || sourceUrl;
-          if (detectSample) {
-            const lower = detectSample.toLowerCase();
-            if (/\"outbounds\"/.test(detectSample) || /\"inbounds\"/.test(detectSample) || /vmess|trojan|vless|ss:/.test(lower)) {
-              inferredFormat = "xray-json";
-            }
-          }
           const payload = {
             name: form.name.value.trim() || (isEdit ? (editingConfig?.name || "") : ""),
-            format: inferredFormat || (isEdit ? (editingConfig?.format || "xray-json") : "xray-json"),
+            format: "subscription",
             sourceUrl,
             payload: typedPayload || (isEdit ? (editingConfig?.payload || "") : ""),
             autoUpdateIntervalMinutes: parseNumber(form.autoUpdateInterval.value),
@@ -6192,22 +6750,18 @@
         const id = tr.dataset.id;
         const action = button.dataset.action;
         try {
-          if (action === "edit-config") {
-            const cfg = Array.isArray(configsCache) ? configsCache.find((item) => item.id === id) : null;
-            if (!cfg) {
-              showStatus("配置未找到", "error", 4000);
-              return;
-            }
-            openConfigModal(cfg);
-          } else if (action === "refresh-config") {
-            await api.post(`/configs/${id}/refresh`);
-            showStatus("配置刷新完成", "success");
-            await Promise.all([loadConfigs(), loadFRouters(), loadNodes()]);
-          } else if (action === "pull-nodes") {
-            await api.post(`/configs/${id}/pull-nodes`);
-            showStatus("订阅节点已同步", "success");
-            await Promise.all([loadConfigs(), loadFRouters(), loadNodes()]);
-          } else if (action === "delete-config") {
+	          if (action === "edit-config") {
+	            const cfg = Array.isArray(configsCache) ? configsCache.find((item) => item.id === id) : null;
+	            if (!cfg) {
+	              showStatus("配置未找到", "error", 4000);
+	              return;
+	            }
+	            openConfigModal(cfg);
+	          } else if (action === "pull-nodes") {
+	            await api.post(`/configs/${id}/pull-nodes`);
+	            showStatus("订阅节点已同步", "success");
+	            await Promise.all([loadConfigs(), loadFRouters(), loadNodes()]);
+	          } else if (action === "delete-config") {
             if (!confirm("确认删除该配置？")) return;
             await api.delete(`/configs/${id}`);
             showStatus("配置已删除", "success");
@@ -6233,7 +6787,7 @@
               ignoreHosts: Array.isArray(data.ignoreHosts) ? data.ignoreHosts : [...SYSTEM_PROXY_DEFAULTS],
             };
             renderSystemProxy(systemProxySettings);
-            updateXrayUI(xrayStatus);
+            updateCoreUI(coreStatus);
             const msg = response && response.message ? response.message : "系统代理设置已保存";
             showStatus(msg, response && response.message ? "info" : "success");
           } catch (err) {
@@ -6251,7 +6805,7 @@
             ignoreHosts: [...SYSTEM_PROXY_DEFAULTS],
           };
           renderSystemProxy(systemProxySettings);
-          updateXrayUI(xrayStatus);
+          updateCoreUI(coreStatus);
         });
       }
 
@@ -6300,7 +6854,6 @@
         proxy: 'settings-proxy',
         tun: 'settings-network',
         singbox: 'settings-singbox',
-        xray: 'settings-xray',
         advanced: 'settings-advanced'
       };
 
@@ -6384,6 +6937,114 @@
         });
       }
 
+      // ===== 系统代理端口（ProxyConfig.inboundPort）联动 =====
+      // 注意：
+      // - sing-box / mihomo(clash): mixed 端口同时提供 HTTP + SOCKS
+      let proxyPortApplyTimeout = null;
+
+      async function syncProxyPortFromBackend() {
+        try {
+          const cfg = await api.get("/proxy/config");
+          const port = cfg && typeof cfg.inboundPort === "number" ? cfg.inboundPort : 0;
+          if (port > 0) {
+            settingsManager.values["proxy.port"] = port; // 直接写入，避免触发监听器
+          }
+        } catch (err) {
+          console.warn("[Settings] 同步代理端口失败:", err.message);
+        }
+      }
+
+      async function applyProxyPortSetting(port) {
+        const normalized = parseInt(String(port), 10);
+        if (!Number.isFinite(normalized) || normalized < 1024 || normalized > 65535) {
+          showStatus("代理端口无效（范围 1024-65535）", "error", 5000);
+          return;
+        }
+
+        let currentCfg = null;
+        try {
+          currentCfg = await api.get("/proxy/config");
+        } catch {
+          currentCfg = null;
+        }
+
+        const inboundMode = currentCfg && currentCfg.inboundMode ? currentCfg.inboundMode : "mixed";
+
+        // TUN 模式下端口不生效，但仍可提前保存到配置中（切回非 TUN 时生效）。
+        if (inboundMode === "tun") {
+          try {
+            await api.put("/proxy/config", { inboundPort: normalized });
+            showStatus("已保存代理端口（当前为 TUN 模式，切回非 TUN 后生效）", "info", 4000);
+          } catch (err) {
+            showStatus(`保存代理端口失败：${err.message}`, "error", 6000);
+          }
+          return;
+        }
+
+        // 非 TUN：强制保持 mixed（系统代理场景需要 HTTP + SOCKS）
+        try {
+          await api.put("/proxy/config", { inboundMode: "mixed", inboundPort: normalized });
+        } catch (err) {
+          showStatus(`保存代理端口失败：${err.message}`, "error", 6000);
+          return;
+        }
+
+        // 如果内核正在运行，需要重启才能让端口变更生效。
+        let status = null;
+        try {
+          status = await api.proxy.status();
+          coreStatus = status || coreStatus;
+        } catch {
+          status = null;
+        }
+
+        const running = Boolean(status && status.running);
+        if (running) {
+          const frouterId = (status && status.frouterId) ? status.frouterId : (getCurrentFRouter()?.id || "");
+          if (!frouterId) {
+            showStatus("已更新端口，但无法自动重启：请先选择一个 FRouter", "warn", 6000);
+            return;
+          }
+
+          showStatus("正在应用代理端口（重启内核）...", "info", 2000);
+          try {
+            await api.post("/proxy/start", { frouterId });
+            await new Promise((r) => setTimeout(r, 500));
+          } catch (err) {
+            showStatus(`重启内核失败：${err.message}`, "error", 6000);
+            return;
+          }
+
+          // 系统代理已启用时，重启后需要重新应用系统代理（端口可能发生变化）。
+          if (systemProxySettings && systemProxySettings.enabled) {
+            try {
+              await api.put("/settings/system-proxy", {
+                enabled: true,
+                ignoreHosts: collectIgnoreHosts(),
+              });
+            } catch (err) {
+              console.warn("[SystemProxy] 重新应用系统代理失败:", err.message);
+            }
+          }
+        }
+
+        await refreshCoreStatus();
+        await loadSystemProxySettings();
+        await loadIPGeo();
+
+        // 提示端口更新结果
+        try {
+          const latest = await api.proxy.status();
+          if (latest && latest.running) {
+            showStatus(`代理端口已更新为 ${normalized}`, "success", 2000);
+          } else {
+            showStatus(`代理端口已更新为 ${normalized}`, "success", 2000);
+          }
+        } catch {
+          showStatus(`代理端口已更新为 ${normalized}`, "success", 2000);
+        }
+      }
+
       // 监听设置变化，保存到后端 API
       let saveTimeout = null;
       for (const category of SETTINGS_SCHEMA.categories) {
@@ -6394,6 +7055,14 @@
             saveTimeout = setTimeout(async () => {
               await settingsManager.saveToAPI(api.client.baseURL);
             }, 300);
+
+            // 特殊联动：系统代理端口 -> 后端 ProxyConfig.inboundPort
+            if (key === "proxy.port") {
+              if (proxyPortApplyTimeout) clearTimeout(proxyPortApplyTimeout);
+              proxyPortApplyTimeout = setTimeout(async () => {
+                await applyProxyPortSetting(value);
+              }, 300);
+            }
           });
         }
       }
@@ -6401,6 +7070,7 @@
       // 从后端 API 加载已保存的设置
       (async function loadSettingsFromAPI() {
         await settingsManager.loadFromAPI(api.client.baseURL);
+        await syncProxyPortFromBackend();
         renderAllSettings();
       })();
 
@@ -6420,7 +7090,13 @@
               await api.delete(`/components/${id}`);
               showStatus("组件已删除", "success");
               await loadComponents();
-              await refreshXrayStatus();
+              await refreshCoreStatus();
+            } else if (action === "uninstall-component") {
+              if (!confirm("确认卸载该组件？这将删除本地安装文件。")) return;
+              await api.post(`/components/${id}/uninstall`);
+              showStatus("组件已卸载", "success");
+              await loadComponents();
+              await refreshCoreStatus();
             } else if (action === "update-component") {
               if (kind) {
                 await ensureComponent(kind);

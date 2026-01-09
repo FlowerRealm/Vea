@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"vea/backend/domain"
+	"vea/backend/service/shared"
 )
 
 // ParseShareLink 解析分享链接
@@ -318,10 +319,14 @@ func parseShadowsocks(link string) (domain.Node, error) {
 						if plugin := params.Get("plugin"); plugin != "" {
 							// plugin 格式: obfs-local;obfs=http;obfs-host=xxx
 							pluginParts := strings.SplitN(plugin, ";", 2)
-							node.Security.Plugin = pluginParts[0]
+							pluginName := pluginParts[0]
+							pluginOpts := ""
 							if len(pluginParts) > 1 {
-								node.Security.PluginOpts = pluginParts[1]
+								pluginOpts = pluginParts[1]
 							}
+							pluginName, pluginOpts = shared.NormalizeShadowsocksPluginAlias(pluginName, pluginOpts)
+							node.Security.Plugin = pluginName
+							node.Security.PluginOpts = pluginOpts
 						}
 					}
 

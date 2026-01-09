@@ -206,6 +206,40 @@ func (r *ComponentRepo) SetInstalled(ctx context.Context, id string, dir, versio
 	return nil
 }
 
+// ClearInstalled 清除安装信息（用于卸载）
+func (r *ComponentRepo) ClearInstalled(ctx context.Context, id string) error {
+	r.store.Lock()
+
+	comp, ok := r.store.Components()[id]
+	if !ok {
+		r.store.Unlock()
+		return repository.ErrComponentNotFound
+	}
+
+	now := time.Now()
+	comp.InstallDir = ""
+	comp.LastVersion = ""
+	comp.Checksum = ""
+	comp.LastInstalledAt = time.Time{}
+	comp.InstallStatus = domain.InstallStatusIdle
+	comp.InstallProgress = 0
+	comp.InstallMessage = ""
+	comp.LastSyncError = ""
+	comp.UpdatedAt = now
+	r.store.Components()[id] = comp
+
+	r.store.Unlock()
+
+	// 在锁外发布事件
+	r.store.PublishEvent(events.ComponentEvent{
+		EventType:   events.EventComponentUpdated,
+		ComponentID: id,
+		Component:   comp,
+	})
+
+	return nil
+}
+
 // ClearSyncError 清除同步错误
 func (r *ComponentRepo) ClearSyncError(ctx context.Context, id string) error {
 	r.store.Lock()
