@@ -96,6 +96,55 @@ func TestService_Create_WithSourceURL_SyncsInBackground(t *testing.T) {
 	})
 }
 
+func TestService_Create_WithSourceURL_FallbackPayload_ClearsSyncError(t *testing.T) {
+	t.Parallel()
+
+	const fallbackPayload = "vless://11111111-1111-1111-1111-111111111111@example.com:443?security=tls#n1"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+
+	store := memory.NewStore(events.NewBus())
+	configRepo := memory.NewConfigRepo(store)
+	nodeRepo := memory.NewNodeRepo(store)
+	nodeSvc := nodes.NewService(context.Background(), nodeRepo)
+	svc := NewService(context.Background(), configRepo, nodeSvc, nil)
+
+	created, err := svc.Create(context.Background(), domain.Config{
+		Name:      "cfg-1",
+		Format:    domain.ConfigFormatSubscription,
+		SourceURL: srv.URL,
+		Payload:   fallbackPayload,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	sum := sha256.Sum256([]byte(fallbackPayload))
+	expectedChecksum := hex.EncodeToString(sum[:])
+
+	waitUntil(t, 3*time.Second, func() bool {
+		updated, getErr := configRepo.Get(context.Background(), created.ID)
+		if getErr != nil {
+			return false
+		}
+		if updated.Payload != fallbackPayload {
+			return false
+		}
+		if updated.Checksum != expectedChecksum {
+			return false
+		}
+		if updated.LastSyncError != "" {
+			return false
+		}
+
+		createdNodes, listErr := nodeRepo.ListByConfigID(context.Background(), created.ID)
+		return listErr == nil && len(createdNodes) == 1
+	})
+}
+
 func TestService_Sync_UnchangedChecksum_OnlyUpdatesLastSyncedAt(t *testing.T) {
 	t.Parallel()
 

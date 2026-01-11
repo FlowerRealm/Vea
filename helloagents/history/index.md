@@ -37,6 +37,7 @@
 | 202601091715 | fix-app-update-check-no-response | 修复 | ✅已完成 | [2026-01/202601091715_fix-app-update-check-no-response](2026-01/202601091715_fix-app-update-check-no-response/) |
 | 202601092132 | fix-ip-geo-context | 修复 | ✅已完成 | [2026-01/202601092132_fix-ip-geo-context](2026-01/202601092132_fix-ip-geo-context/) |
 | 202601100554 | pr-review-hardening | 修复 | ✅已完成 | [2026-01/202601100554_pr-review-hardening](2026-01/202601100554_pr-review-hardening/) |
+| 202601110913 | fix-subscription-fallback-syncstatus | 修复 | ✅已完成 | [2026-01/202601110913_fix-subscription-fallback-syncstatus](2026-01/202601110913_fix-subscription-fallback-syncstatus/) |
 
 ## 按月归档
 
@@ -73,3 +74,4 @@
 - [202601091715_fix-app-update-check-no-response](2026-01/202601091715_fix-app-update-check-no-response/) - 主题页：修复“检查应用更新”点击无响应（`showStatus` 作用域问题）
 - [202601092132_fix-ip-geo-context](2026-01/202601092132_fix-ip-geo-context/) - 修复 IP Geo 探测未贯穿请求 context，支持取消/超时
 - [202601100554_pr-review-hardening](2026-01/202601100554_pr-review-hardening/) - 代码审查跟进：root helper artifactsRoot 校验加固；主题页 `showStatus` 不再全局暴露；订阅导入刷新改为轮询 `lastSyncedAt`
+- [202601110913_fix-subscription-fallback-syncstatus](2026-01/202601110913_fix-subscription-fallback-syncstatus/) - 订阅：创建订阅后台首次同步失败但 fallback 解析成功时清理同步错误，避免 UI 误标红

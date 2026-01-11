@@ -112,6 +112,12 @@ func (s *Service) Create(ctx context.Context, cfg domain.Config) (domain.Config,
 				if strings.TrimSpace(fallbackPayload) != "" {
 					if parseErr := s.syncNodesFromPayload(bgCtx, createdID, fallbackPayload); parseErr != nil {
 						log.Printf("[ConfigCreate] fallback parse failed for %s: %v", createdID, parseErr)
+					} else {
+						hash := sha256.Sum256([]byte(fallbackPayload))
+						checksum := hex.EncodeToString(hash[:])
+						if updateErr := s.repo.UpdateSyncStatus(bgCtx, createdID, fallbackPayload, checksum, nil); updateErr != nil {
+							log.Printf("[ConfigCreate] failed to update sync status after fallback parse for %s: %v", createdID, updateErr)
+						}
 					}
 				}
 				log.Printf("[ConfigCreate] initial sync failed for %s: %v", createdID, err)

@@ -55,6 +55,7 @@
 - 修复主题页订阅导入后依赖固定 `setTimeout` 刷新的竞态问题：改为轮询配置 `lastSyncedAt` 变化，并在超时/失败时给出提示。
 - 加固 Linux root helper 对 `artifactsRoot` 的推导与校验：`socketPath` 必须符合 `<ArtifactsRoot>/runtime/resolvectl-helper.sock`，并拒绝将根路径解析为 `/`，避免 capabilities 操作范围扩大。
 - 清理订阅创建后台同步协程的冗余 bgCtx nil check：构造器已保证 bgCtx 非 nil。
+- 修复订阅创建后台首次同步失败但 fallback payload 解析成功时状态不一致的问题：成功 fallback 会清空 `lastSyncError` 并更新 checksum，避免 UI 误标红。
 
 ## [0.0.1] - 2026-01-05
 
