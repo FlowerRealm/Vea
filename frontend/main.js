@@ -374,48 +374,58 @@ function createWindow() {
 // 主题目录初始化与入口解析
 // ============================================================================
 
-function ensureBundledThemes(userDataDir) {
+async function ensureBundledThemes(userDataDir) {
   const themesRoot = path.join(userDataDir, 'themes')
-  fs.mkdirSync(themesRoot, { recursive: true })
 
   const bundledRoot = path.join(__dirname, 'theme')
   const builtinThemes = ['dark', 'light']
   const markerName = '.vea-bundled-theme.json'
   const backupRoot = path.join(themesRoot, '.vea-bundled-theme-backup')
+  const injectedSharedDirName = '_shared'
 
-  const computeDirHash = (rootDir) => {
+  const pathExists = async (pathname) => {
+    try {
+      await fs.promises.access(pathname)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  const computeDirHash = async (rootDir, { ignoreNames = [] } = {}) => {
     const hash = crypto.createHash('sha256')
+    const ignores = new Set([markerName, ...ignoreNames])
 
-    const walk = (dir) => {
-      const entries = fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))
+    const walk = async (dir) => {
+      const entries = (await fs.promises.readdir(dir, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))
       for (const ent of entries) {
-        if (ent.name === markerName) {
+        if (ignores.has(ent.name)) {
           continue
         }
         const full = path.join(dir, ent.name)
         const rel = path.relative(rootDir, full).split(path.sep).join('/')
         if (ent.isDirectory()) {
           hash.update(`dir:${rel}\n`)
-          walk(full)
+          await walk(full)
           continue
         }
         if (ent.isFile()) {
           hash.update(`file:${rel}\n`)
-          hash.update(fs.readFileSync(full))
+          hash.update(await fs.promises.readFile(full))
           hash.update('\n')
           continue
         }
       }
     }
 
-    walk(rootDir)
+    await walk(rootDir)
     return hash.digest('hex')
   }
 
-  const readMarker = (dir) => {
+  const readMarker = async (dir) => {
     const markerPath = path.join(dir, markerName)
     try {
-      const raw = fs.readFileSync(markerPath, 'utf8')
+      const raw = await fs.promises.readFile(markerPath, 'utf8')
       const data = JSON.parse(raw)
       return data && typeof data === 'object' ? data : null
     } catch {
@@ -423,18 +433,69 @@ function ensureBundledThemes(userDataDir) {
     }
   }
 
-  const writeMarker = (dir, bundledHash) => {
+  const writeMarker = async (dir, bundledHash) => {
     const markerPath = path.join(dir, markerName)
     const payload = {
       bundledHash,
       installedAt: new Date().toISOString()
     }
     try {
-      fs.writeFileSync(markerPath, JSON.stringify(payload, null, 2), 'utf8')
+      await fs.promises.writeFile(markerPath, JSON.stringify(payload, null, 2), 'utf8')
     } catch (e) {
       console.warn(`[Theme] write bundled theme marker failed: ${e.message}`)
     }
   }
+
+  const syncThemeSharedModule = async (themeDir) => {
+    const srcDir = path.join(bundledRoot, injectedSharedDirName)
+    const srcEntry = path.join(srcDir, 'js', 'app.js')
+    if (!await pathExists(srcEntry)) {
+      console.warn(`[Theme] bundled shared module is missing: ${srcEntry}`)
+      return
+    }
+
+    const destDir = path.join(themeDir, injectedSharedDirName)
+
+    let bundledHash = ''
+    try {
+      bundledHash = await computeDirHash(srcDir)
+    } catch (e) {
+      console.warn(`[Theme] compute bundled shared hash failed: ${e.message}`)
+    }
+
+    if (!bundledHash && await pathExists(destDir)) {
+      return
+    }
+
+    if (await pathExists(destDir) && bundledHash) {
+      try {
+        const marker = await readMarker(destDir)
+        const currentHash = await computeDirHash(destDir)
+        if (marker && marker.bundledHash && marker.bundledHash === bundledHash && currentHash === bundledHash) {
+          return
+        }
+      } catch (e) {
+        console.warn(`[Theme] bundled shared sync check failed: ${e.message}`)
+      }
+    }
+
+    try {
+      await fs.promises.rm(destDir, { recursive: true, force: true })
+    } catch (e) {
+      console.warn(`[Theme] remove theme shared dir failed: ${e.message}`)
+    }
+
+    try {
+      await fs.promises.cp(srcDir, destDir, { recursive: true })
+      if (bundledHash) {
+        await writeMarker(destDir, bundledHash)
+      }
+    } catch (e) {
+      console.error(`[Theme] copy theme shared dir failed: ${e.message}`)
+    }
+  }
+
+  await fs.promises.mkdir(themesRoot, { recursive: true })
 
   for (const id of builtinThemes) {
     const destDir = path.join(themesRoot, id)
@@ -442,51 +503,56 @@ function ensureBundledThemes(userDataDir) {
 
     const srcDir = path.join(bundledRoot, id)
     const srcIndex = path.join(srcDir, 'index.html')
-    if (!fs.existsSync(srcIndex)) {
+    if (!await pathExists(srcIndex)) {
       console.warn(`[Theme] bundled theme is missing: ${srcIndex}`)
       continue
     }
 
     let bundledHash = ''
     try {
-      bundledHash = computeDirHash(srcDir)
+      // injectedSharedDirName 是运行期注入目录：不参与主题“用户修改判定”。
+      bundledHash = await computeDirHash(srcDir, { ignoreNames: [injectedSharedDirName] })
     } catch (e) {
       console.warn(`[Theme] compute bundled theme hash failed (${id}): ${e.message}`)
     }
 
-    if (!bundledHash && fs.existsSync(destIndex)) {
+    if (!bundledHash && await pathExists(destIndex)) {
+      await syncThemeSharedModule(destDir)
       continue
     }
 
-    if (fs.existsSync(destIndex) && bundledHash) {
+    let shouldInstall = true
+
+    if (await pathExists(destIndex) && bundledHash) {
       try {
-        const marker = readMarker(destDir)
-        const currentHash = computeDirHash(destDir)
+        const marker = await readMarker(destDir)
+        const currentHash = await computeDirHash(destDir, { ignoreNames: [injectedSharedDirName] })
 
         if (marker && marker.bundledHash) {
           if (currentHash !== marker.bundledHash) {
             // 用户已修改过内置主题：不覆盖，尊重用户修改。
+            await syncThemeSharedModule(destDir)
             continue
           }
           if (marker.bundledHash === bundledHash) {
-            continue
+            shouldInstall = false
           }
         } else if (currentHash === bundledHash) {
           // 旧版本没有 marker：当前内容与 bundled 一致，补写 marker 即可。
-          writeMarker(destDir, bundledHash)
-          continue
+          await writeMarker(destDir, bundledHash)
+          shouldInstall = false
         } else {
           // 旧版本没有 marker 且内容不一致：不确定是否用户改过。
           // 为避免“升级后 UI 不更新”，这里做一次备份再覆盖。
-          fs.mkdirSync(backupRoot, { recursive: true })
+          await fs.promises.mkdir(backupRoot, { recursive: true })
           const backupDir = path.join(backupRoot, id)
           try {
-            fs.rmSync(backupDir, { recursive: true, force: true })
+            await fs.promises.rm(backupDir, { recursive: true, force: true })
           } catch (e) {
             console.warn(`[Theme] remove bundled theme backup failed: ${e.message}`)
           }
           try {
-            fs.cpSync(destDir, backupDir, { recursive: true })
+            await fs.promises.cp(destDir, backupDir, { recursive: true })
             console.warn(`[Theme] backed up existing bundled theme (${id}) to ${backupDir}`)
           } catch (e) {
             console.warn(`[Theme] backup bundled theme failed (${id}): ${e.message}`)
@@ -497,21 +563,26 @@ function ensureBundledThemes(userDataDir) {
       }
     }
 
-    try {
-      fs.rmSync(destDir, { recursive: true, force: true })
-    } catch (e) {
-      console.warn(`[Theme] remove existing theme dir failed: ${e.message}`)
+    if (shouldInstall) {
+      try {
+        await fs.promises.rm(destDir, { recursive: true, force: true })
+      } catch (e) {
+        console.warn(`[Theme] remove existing theme dir failed: ${e.message}`)
+      }
+
+      try {
+        await fs.promises.cp(srcDir, destDir, { recursive: true })
+        if (bundledHash) {
+          await writeMarker(destDir, bundledHash)
+        }
+        console.log(`[Theme] installed bundled theme: ${id}`)
+      } catch (e) {
+        console.error(`[Theme] copy bundled theme failed (${id}): ${e.message}`)
+        continue
+      }
     }
 
-    try {
-      fs.cpSync(srcDir, destDir, { recursive: true })
-      if (bundledHash) {
-        writeMarker(destDir, bundledHash)
-      }
-      console.log(`[Theme] installed bundled theme: ${id}`)
-    } catch (e) {
-      console.error(`[Theme] copy bundled theme failed (${id}): ${e.message}`)
-    }
+    await syncThemeSharedModule(destDir)
   }
 }
 
@@ -861,7 +932,7 @@ app.whenReady().then(async () => {
 
   // 主题初始化：缺少内置主题时从 app resources 复制到 userData/themes
   const userDataDir = app.getPath('userData')
-  ensureBundledThemes(userDataDir)
+  await ensureBundledThemes(userDataDir)
 
   // 启动前读取后端前端设置 theme（默认 dark）
   const themeId = await loadFrontendThemeSetting()

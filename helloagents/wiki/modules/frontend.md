@@ -36,3 +36,4 @@
 - [202601100601_theme-pack-manifest](../../history/2026-01/202601100601_theme-pack-manifest/) - 主题包支持 `manifest.json`（单包多子主题）；`entry` 驱动切换与启动加载
 - [202601111422_feat-restart-core-button](../../history/2026-01/202601111422_feat-restart-core-button/) - 主题页（首页）：增加“重启内核”按钮；并修复内置主题升级后不自动同步的问题
 - [202601112114_refactor-restart-core-button](../../history/2026-01/202601112114_refactor-restart-core-button/) - 主题页（首页）：抽取核心状态/按钮区域内联样式到 CSS；重构 `handleCoreRestart` 并统一缩进
+- [202601112155_pr-review-theme-shared-async](../../history/2026-01/202601112155_pr-review-theme-shared-async/) - 主题页：dark/light 主逻辑抽到共享模块；Electron 主题同步改为异步并注入共享模块，避免主进程同步 IO 阻塞

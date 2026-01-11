@@ -44,6 +44,7 @@
 | 202601111339 | theme-review-followups | 修复 | ✅已完成 | [2026-01/202601111339_theme-review-followups](2026-01/202601111339_theme-review-followups/) |
 | 202601111422 | feat-restart-core-button | 功能 | ✅已完成 | [2026-01/202601111422_feat-restart-core-button](2026-01/202601111422_feat-restart-core-button/) |
 | 202601112114 | refactor-restart-core-button | 重构 | ✅已完成 | [2026-01/202601112114_refactor-restart-core-button](2026-01/202601112114_refactor-restart-core-button/) |
+| 202601112155 | pr-review-theme-shared-async | 重构 | ✅已完成 | [2026-01/202601112155_pr-review-theme-shared-async](2026-01/202601112155_pr-review-theme-shared-async/) |
 
 ## 按月归档
 
@@ -87,3 +88,4 @@
 - [202601111339_theme-review-followups](2026-01/202601111339_theme-review-followups/) - 主题包：导入/导出维护性补强（常量复用、临时文件关闭简化、manifest 校验告警日志）
 - [202601111422_feat-restart-core-button](2026-01/202601111422_feat-restart-core-button/) - 主题页（首页）：增加“重启内核”按钮；并修复内置主题升级后不自动同步的问题
 - [202601112114_refactor-restart-core-button](2026-01/202601112114_refactor-restart-core-button/) - 主题页（首页）：抽取核心状态/按钮区域内联样式到 CSS；重构 `handleCoreRestart` 并统一缩进
+- [202601112155_pr-review-theme-shared-async](2026-01/202601112155_pr-review-theme-shared-async/) - 主题页：dark/light 主逻辑抽到共享模块；Electron 主题同步改为异步并注入共享模块，避免主进程同步 IO 阻塞
