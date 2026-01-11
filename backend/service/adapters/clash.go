@@ -225,6 +225,10 @@ func (a *ClashAdapter) applyInbound(cfg map[string]interface{}, profile domain.P
 			cfg["port"] = port
 		}
 	case domain.InboundTUN:
+		// TUN 模式下仍然提供本地 mixed 入站端口（HTTP + SOCKS），便于系统代理/手动代理共存。
+		if port > 0 {
+			cfg["mixed-port"] = port
+		}
 		cfg["tun"] = a.buildTUN(profile)
 	}
 }

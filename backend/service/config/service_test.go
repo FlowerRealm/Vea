@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -17,45 +18,131 @@ import (
 	"vea/backend/service/nodes"
 )
 
-func TestService_Create_WithSourceURL_DownloadsPayloadAndChecksum(t *testing.T) {
+func TestService_Create_WithSourceURL_SyncsInBackground(t *testing.T) {
 	t.Parallel()
 
 	const payload = "hello"
-	var gotUserAgent string
+	var gotUserAgent atomic.Value
+	var requestOnce sync.Once
+	requested := make(chan struct{})
+	unblock := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotUserAgent = r.UserAgent()
+		gotUserAgent.Store(r.UserAgent())
+		requestOnce.Do(func() { close(requested) })
+		<-unblock
 		_, _ = w.Write([]byte(payload))
 	}))
 	t.Cleanup(srv.Close)
 
 	repo := memory.NewConfigRepo(memory.NewStore(events.NewBus()))
-	svc := NewService(repo, nil, nil)
+	svc := NewService(context.Background(), repo, nil, nil)
+
+	var (
+		created domain.Config
+		err     error
+	)
+
+	done := make(chan struct{})
+	go func() {
+		created, err = svc.Create(context.Background(), domain.Config{
+			Name:      "cfg-1",
+			Format:    domain.ConfigFormatSubscription,
+			SourceURL: srv.URL,
+		})
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(300 * time.Millisecond):
+		t.Fatalf("expected Create to return without waiting for remote payload download")
+	}
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	if created.Payload != "" {
+		t.Fatalf("expected payload to be empty before background sync, got %q", created.Payload)
+	}
+
+	select {
+	case <-requested:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("expected background sync to start download request")
+	}
+	if got, ok := gotUserAgent.Load().(string); !ok || got != subscriptionUserAgent {
+		t.Fatalf("expected User-Agent %q, got %q", subscriptionUserAgent, got)
+	}
+
+	close(unblock)
+
+	sum := sha256.Sum256([]byte(payload))
+	expectedChecksum := hex.EncodeToString(sum[:])
+
+	waitUntil(t, 3*time.Second, func() bool {
+		got, getErr := repo.Get(context.Background(), created.ID)
+		if getErr != nil {
+			return false
+		}
+		if got.Payload != payload {
+			return false
+		}
+		if got.Checksum != expectedChecksum {
+			return false
+		}
+		if got.LastSyncedAt.IsZero() {
+			return false
+		}
+		return got.LastSyncError == ""
+	})
+}
+
+func TestService_Create_WithSourceURL_FallbackPayload_ClearsSyncError(t *testing.T) {
+	t.Parallel()
+
+	const fallbackPayload = "vless://11111111-1111-1111-1111-111111111111@example.com:443?security=tls#n1"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+
+	store := memory.NewStore(events.NewBus())
+	configRepo := memory.NewConfigRepo(store)
+	nodeRepo := memory.NewNodeRepo(store)
+	nodeSvc := nodes.NewService(context.Background(), nodeRepo)
+	svc := NewService(context.Background(), configRepo, nodeSvc, nil)
 
 	created, err := svc.Create(context.Background(), domain.Config{
 		Name:      "cfg-1",
 		Format:    domain.ConfigFormatSubscription,
 		SourceURL: srv.URL,
+		Payload:   fallbackPayload,
 	})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if gotUserAgent != subscriptionUserAgent {
-		t.Fatalf("expected User-Agent %q, got %q", subscriptionUserAgent, gotUserAgent)
-	}
-	if created.Payload != payload {
-		t.Fatalf("expected payload %q, got %q", payload, created.Payload)
-	}
-	sum := sha256.Sum256([]byte(payload))
+
+	sum := sha256.Sum256([]byte(fallbackPayload))
 	expectedChecksum := hex.EncodeToString(sum[:])
-	if created.Checksum != expectedChecksum {
-		t.Fatalf("expected checksum %q, got %q", expectedChecksum, created.Checksum)
-	}
-	if created.LastSyncedAt.IsZero() {
-		t.Fatalf("expected lastSyncedAt to be set")
-	}
-	if created.LastSyncError != "" {
-		t.Fatalf("expected lastSyncError empty, got %q", created.LastSyncError)
-	}
+
+	waitUntil(t, 3*time.Second, func() bool {
+		updated, getErr := configRepo.Get(context.Background(), created.ID)
+		if getErr != nil {
+			return false
+		}
+		if updated.Payload != fallbackPayload {
+			return false
+		}
+		if updated.Checksum != expectedChecksum {
+			return false
+		}
+		if updated.LastSyncError != "" {
+			return false
+		}
+
+		createdNodes, listErr := nodeRepo.ListByConfigID(context.Background(), created.ID)
+		return listErr == nil && len(createdNodes) == 1
+	})
 }
 
 func TestService_Sync_UnchangedChecksum_OnlyUpdatesLastSyncedAt(t *testing.T) {
@@ -68,7 +155,7 @@ func TestService_Sync_UnchangedChecksum_OnlyUpdatesLastSyncedAt(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	repo := memory.NewConfigRepo(memory.NewStore(events.NewBus()))
-	svc := NewService(repo, nil, nil)
+	svc := NewService(context.Background(), repo, nil, nil)
 
 	sum := sha256.Sum256([]byte(payload))
 	checksum := hex.EncodeToString(sum[:])
@@ -121,8 +208,8 @@ func TestService_Sync_ParseFailure_DoesNotClearExistingNodes(t *testing.T) {
 	configRepo := memory.NewConfigRepo(store)
 	nodeRepo := memory.NewNodeRepo(store)
 	frouterRepo := memory.NewFRouterRepo(store)
-	nodeSvc := nodes.NewService(nodeRepo)
-	svc := NewService(configRepo, nodeSvc, frouterRepo)
+	nodeSvc := nodes.NewService(context.Background(), nodeRepo)
+	svc := NewService(context.Background(), configRepo, nodeSvc, frouterRepo)
 
 	payload.Store("vless://11111111-1111-1111-1111-111111111111@example.com:443?security=tls#n1")
 	created, err := svc.Create(context.Background(), domain.Config{
@@ -134,13 +221,10 @@ func TestService_Sync_ParseFailure_DoesNotClearExistingNodes(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
-	nodesBefore, err := nodeRepo.ListByConfigID(context.Background(), created.ID)
-	if err != nil {
-		t.Fatalf("list nodes before: %v", err)
-	}
-	if len(nodesBefore) != 1 {
-		t.Fatalf("expected nodes=1 before sync, got %d", len(nodesBefore))
-	}
+	waitUntil(t, 3*time.Second, func() bool {
+		nodesBefore, listErr := nodeRepo.ListByConfigID(context.Background(), created.ID)
+		return listErr == nil && len(nodesBefore) == 1
+	})
 
 	payload.Store("port: 7890\nsocks-port: 7891\nProxy:\n  - name: 您的客户端版本过旧\n    type: socks5\n    server: 127.0.0.1\n    port: 1080\n")
 	if err := svc.Sync(context.Background(), created.ID); err == nil {
@@ -179,8 +263,8 @@ func TestService_Sync_EmptyPayload_DoesNotClearExistingNodes(t *testing.T) {
 	configRepo := memory.NewConfigRepo(store)
 	nodeRepo := memory.NewNodeRepo(store)
 	frouterRepo := memory.NewFRouterRepo(store)
-	nodeSvc := nodes.NewService(nodeRepo)
-	svc := NewService(configRepo, nodeSvc, frouterRepo)
+	nodeSvc := nodes.NewService(context.Background(), nodeRepo)
+	svc := NewService(context.Background(), configRepo, nodeSvc, frouterRepo)
 
 	payload.Store("vless://11111111-1111-1111-1111-111111111111@example.com:443?security=tls#n1")
 	created, err := svc.Create(context.Background(), domain.Config{
@@ -192,12 +276,14 @@ func TestService_Sync_EmptyPayload_DoesNotClearExistingNodes(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
-	nodesBefore, err := nodeRepo.ListByConfigID(context.Background(), created.ID)
+	waitUntil(t, 3*time.Second, func() bool {
+		nodesBefore, listErr := nodeRepo.ListByConfigID(context.Background(), created.ID)
+		return listErr == nil && len(nodesBefore) == 1
+	})
+
+	cfgBefore, err := configRepo.Get(context.Background(), created.ID)
 	if err != nil {
-		t.Fatalf("list nodes before: %v", err)
-	}
-	if len(nodesBefore) != 1 {
-		t.Fatalf("expected nodes=1 before sync, got %d", len(nodesBefore))
+		t.Fatalf("get config before sync: %v", err)
 	}
 
 	payload.Store("  \n\t")
@@ -217,11 +303,11 @@ func TestService_Sync_EmptyPayload_DoesNotClearExistingNodes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get config: %v", err)
 	}
-	if updatedCfg.Payload != created.Payload {
-		t.Fatalf("expected payload preserved on empty sync, got %q vs %q", updatedCfg.Payload, created.Payload)
+	if updatedCfg.Payload != cfgBefore.Payload {
+		t.Fatalf("expected payload preserved on empty sync, got %q vs %q", updatedCfg.Payload, cfgBefore.Payload)
 	}
-	if updatedCfg.Checksum != created.Checksum {
-		t.Fatalf("expected checksum preserved on empty sync, got %q vs %q", updatedCfg.Checksum, created.Checksum)
+	if updatedCfg.Checksum != cfgBefore.Checksum {
+		t.Fatalf("expected checksum preserved on empty sync, got %q vs %q", updatedCfg.Checksum, cfgBefore.Checksum)
 	}
 	if updatedCfg.LastSyncError == "" {
 		t.Fatalf("expected lastSyncError to be set on empty payload")
@@ -259,8 +345,8 @@ rules:
 	configRepo := memory.NewConfigRepo(store)
 	nodeRepo := memory.NewNodeRepo(store)
 	frouterRepo := memory.NewFRouterRepo(store)
-	nodeSvc := nodes.NewService(nodeRepo)
-	svc := NewService(configRepo, nodeSvc, frouterRepo)
+	nodeSvc := nodes.NewService(context.Background(), nodeRepo)
+	svc := NewService(context.Background(), configRepo, nodeSvc, frouterRepo)
 
 	created, err := svc.Create(context.Background(), domain.Config{
 		Name:      "cfg-1",
@@ -271,18 +357,24 @@ rules:
 		t.Fatalf("create: %v", err)
 	}
 
+	frouterID := stableFRouterIDForConfig(created.ID)
+	waitUntil(t, 3*time.Second, func() bool {
+		createdNodes, listErr := nodeRepo.ListByConfigID(context.Background(), created.ID)
+		if listErr != nil || len(createdNodes) != 1 {
+			return false
+		}
+		_, getErr := frouterRepo.Get(context.Background(), frouterID)
+		return getErr == nil
+	})
+
 	createdNodes, err := nodeRepo.ListByConfigID(context.Background(), created.ID)
 	if err != nil {
 		t.Fatalf("list nodes: %v", err)
-	}
-	if len(createdNodes) != 1 {
-		t.Fatalf("expected nodes=1, got %d", len(createdNodes))
 	}
 	if createdNodes[0].Protocol != domain.ProtocolVMess {
 		t.Fatalf("expected protocol=%s, got %s", domain.ProtocolVMess, createdNodes[0].Protocol)
 	}
 
-	frouterID := stableFRouterIDForConfig(created.ID)
 	frouter, err := frouterRepo.Get(context.Background(), frouterID)
 	if err != nil {
 		t.Fatalf("get frouter: %v", err)
@@ -340,8 +432,8 @@ rules:
 	configRepo := memory.NewConfigRepo(store)
 	nodeRepo := memory.NewNodeRepo(store)
 	frouterRepo := memory.NewFRouterRepo(store)
-	nodeSvc := nodes.NewService(nodeRepo)
-	svc := NewService(configRepo, nodeSvc, frouterRepo)
+	nodeSvc := nodes.NewService(context.Background(), nodeRepo)
+	svc := NewService(context.Background(), configRepo, nodeSvc, frouterRepo)
 
 	created, err := svc.Create(context.Background(), domain.Config{
 		Name:      "cfg-compact",
@@ -352,15 +444,16 @@ rules:
 		t.Fatalf("create: %v", err)
 	}
 
-	createdNodes, err := nodeRepo.ListByConfigID(context.Background(), created.ID)
-	if err != nil {
-		t.Fatalf("list nodes: %v", err)
-	}
-	if len(createdNodes) != 1 {
-		t.Fatalf("expected nodes=1, got %d", len(createdNodes))
-	}
-
 	frouterID := stableFRouterIDForConfig(created.ID)
+	waitUntil(t, 3*time.Second, func() bool {
+		createdNodes, listErr := nodeRepo.ListByConfigID(context.Background(), created.ID)
+		if listErr != nil || len(createdNodes) != 1 {
+			return false
+		}
+		_, getErr := frouterRepo.Get(context.Background(), frouterID)
+		return getErr == nil
+	})
+
 	frouter, err := frouterRepo.Get(context.Background(), frouterID)
 	if err != nil {
 		t.Fatalf("get frouter: %v", err)
@@ -469,8 +562,8 @@ rules:
 	configRepo := memory.NewConfigRepo(store)
 	nodeRepo := memory.NewNodeRepo(store)
 	frouterRepo := memory.NewFRouterRepo(store)
-	nodeSvc := nodes.NewService(nodeRepo)
-	svc := NewService(configRepo, nodeSvc, frouterRepo)
+	nodeSvc := nodes.NewService(context.Background(), nodeRepo)
+	svc := NewService(context.Background(), configRepo, nodeSvc, frouterRepo)
 
 	created, err := svc.Create(context.Background(), domain.Config{
 		Name:      "cfg-ss-obfs",
@@ -481,12 +574,14 @@ rules:
 		t.Fatalf("create: %v", err)
 	}
 
+	waitUntil(t, 3*time.Second, func() bool {
+		createdNodes, listErr := nodeRepo.ListByConfigID(context.Background(), created.ID)
+		return listErr == nil && len(createdNodes) == 1
+	})
+
 	createdNodes, err := nodeRepo.ListByConfigID(context.Background(), created.ID)
 	if err != nil {
 		t.Fatalf("list nodes: %v", err)
-	}
-	if len(createdNodes) != 1 {
-		t.Fatalf("expected nodes=1, got %d", len(createdNodes))
 	}
 	n := createdNodes[0]
 	if n.Protocol != domain.ProtocolShadowsocks {
@@ -501,4 +596,17 @@ rules:
 	if n.Security.PluginOpts != "obfs=tls;obfs-host=obfs.example.com" {
 		t.Fatalf("expected pluginOpts normalized, got %q", n.Security.PluginOpts)
 	}
+}
+
+func waitUntil(t *testing.T, timeout time.Duration, cond func() bool) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("condition not met within %s", timeout)
 }

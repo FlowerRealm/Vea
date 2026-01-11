@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -353,21 +352,36 @@ run_cmd "[TUN-Cleanup] 已删除链: XRAY" iptables -t mangle -X XRAY
 run_cmd "[TUN-Cleanup] 已删除跳转规则: OUTPUT -> XRAY_SELF" iptables -t mangle -D OUTPUT -j XRAY_SELF
 run_cmd "[TUN-Cleanup] 已清空链: XRAY_SELF" iptables -t mangle -F XRAY_SELF
 run_cmd "[TUN-Cleanup] 已删除链: XRAY_SELF" iptables -t mangle -X XRAY_SELF
-run_cmd "[TUN-Cleanup] 已删除 ip rule: fwmark 0x1 table 100" ip rule del fwmark 0x1 table 100
+	run_cmd "[TUN-Cleanup] 已删除 ip rule: fwmark 0x1 table 100" ip rule del fwmark 0x1 table 100
 exit 0
 `
 
-	var cmd *exec.Cmd
 	if os.Geteuid() != 0 {
 		if _, err := exec.LookPath("pkexec"); err != nil {
 			return
 		}
-		// 非 root 用户需要 pkexec 提权
-		cmd = exec.Command("pkexec", "sh", "-c", script)
-	} else {
-		cmd = exec.Command("sh", "-c", script)
+
+		socketPath := ResolvectlHelperSocketPath()
+		if err := EnsureRootHelper(socketPath, RootHelperEnsureOptions{ParentPID: os.Getpid()}); err != nil {
+			log.Printf("[TUN-Cleanup] 启动 root helper 失败: %v", err)
+			return
+		}
+		resp, err := CallRootHelper(socketPath, RootHelperRequest{Op: "tun-cleanup"})
+		if err != nil {
+			log.Printf("[TUN-Cleanup] 调用 root helper 失败: %v", err)
+			return
+		}
+		if resp.ExitCode != 0 {
+			if strings.TrimSpace(resp.Error) != "" {
+				log.Printf("[TUN-Cleanup] root helper 执行失败: %s", strings.TrimSpace(resp.Error))
+			} else {
+				log.Printf("[TUN-Cleanup] root helper 执行失败: exitCode=%d", resp.ExitCode)
+			}
+		}
+		return
 	}
 
+	cmd := exec.Command("sh", "-c", script)
 	output, err := cmd.CombinedOutput()
 	if len(output) > 0 {
 		for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
@@ -397,25 +411,21 @@ func ensureTUNCapabilitiesOnce(binaryPath string) (bool, error) {
 
 	resolvedBinaryPath := status.BinaryPath
 
-	// 重要：一次配置动作里不要分多次 pkexec，否则会多次弹授权。
-	// 做法：用 pkexec 运行一次 vea setup-tun（传入二进制路径），在 root 进程内完成 user/group + chown + setcap。
-	exePath, err := os.Executable()
-	if err != nil {
-		return false, fmt.Errorf("获取可执行文件路径失败: %w", err)
-	}
-	if realPath, err := filepath.EvalSymlinks(exePath); err == nil && realPath != "" {
-		exePath = realPath
-	}
-	if abs, err := filepath.Abs(exePath); err == nil && abs != "" {
-		exePath = abs
+	socketPath := ResolvectlHelperSocketPath()
+	if err := EnsureRootHelper(socketPath, RootHelperEnsureOptions{ParentPID: os.Getpid()}); err != nil {
+		return false, fmt.Errorf("启动 root helper 失败: %w", err)
 	}
 
-	log.Printf("[TUN-Setup] 使用 pkexec 调用: %s setup-tun --binary %s", exePath, resolvedBinaryPath)
-	cmd := exec.Command("pkexec", exePath, "setup-tun", "--binary", resolvedBinaryPath)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return false, fmt.Errorf("自动配置 TUN 权限失败: %v, stderr: %s", err, stderr.String())
+	log.Printf("[TUN-Setup] 使用 root helper 配置: setup-tun --binary %s", resolvedBinaryPath)
+	resp, err := CallRootHelper(socketPath, RootHelperRequest{Op: "tun-setup", BinaryPath: resolvedBinaryPath})
+	if err != nil {
+		return false, fmt.Errorf("调用 root helper 失败: %w", err)
+	}
+	if resp.ExitCode != 0 {
+		if strings.TrimSpace(resp.Error) != "" {
+			return false, fmt.Errorf("自动配置 TUN 权限失败: %s", strings.TrimSpace(resp.Error))
+		}
+		return false, fmt.Errorf("自动配置 TUN 权限失败: exitCode=%d", resp.ExitCode)
 	}
 
 	// 验证配置

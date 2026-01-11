@@ -36,6 +36,7 @@ type Service struct {
 	repo        repository.ConfigRepository
 	nodeService *nodes.Service
 	frouterRepo repository.FRouterRepository
+	bgCtx       context.Context
 }
 
 type subscriptionParseError struct {
@@ -58,11 +59,15 @@ func (e *subscriptionParseError) Unwrap() error {
 }
 
 // NewService 创建配置服务
-func NewService(repo repository.ConfigRepository, nodeService *nodes.Service, frouterRepo repository.FRouterRepository) *Service {
+func NewService(bgCtx context.Context, repo repository.ConfigRepository, nodeService *nodes.Service, frouterRepo repository.FRouterRepository) *Service {
+	if bgCtx == nil {
+		bgCtx = context.Background()
+	}
 	return &Service{
 		repo:        repo,
 		nodeService: nodeService,
 		frouterRepo: frouterRepo,
+		bgCtx:       bgCtx,
 	}
 }
 
@@ -80,31 +85,47 @@ func (s *Service) Get(ctx context.Context, id string) (domain.Config, error) {
 
 // Create 创建配置
 func (s *Service) Create(ctx context.Context, cfg domain.Config) (domain.Config, error) {
-	// 如果有 SourceURL，先同步
-	if cfg.SourceURL != "" {
-		payload, checksum, err := s.downloadConfig(cfg.SourceURL)
-		if err != nil {
-			cfg.LastSyncError = err.Error()
-		} else if strings.TrimSpace(payload) == "" {
-			cfg.LastSyncError = "订阅内容为空"
-		} else {
-			cfg.Payload = payload
-			cfg.Checksum = checksum
-			cfg.LastSyncedAt = time.Now()
-		}
-	}
-
 	created, err := s.repo.Create(ctx, cfg)
 	if err != nil {
 		return domain.Config{}, err
 	}
 
-	// 解析并同步节点（为避免破坏用户配置，解析失败时不清空旧节点）。
-	if err := s.syncNodesFromPayload(ctx, created.ID, created.Payload); err != nil {
-		// 创建配置时不应因为解析失败就直接失败：记录错误即可。
-		if updateErr := s.repo.UpdateSyncStatus(ctx, created.ID, created.Payload, created.Checksum, err); updateErr != nil {
-			log.Printf("[ConfigCreate] failed to update sync status for %s after parse error: %v", created.ID, updateErr)
+	// 手动配置（无 SourceURL）需要立即从 payload 解析节点，否则该配置会一直为空。
+	if strings.TrimSpace(created.SourceURL) == "" {
+		if strings.TrimSpace(created.Payload) != "" {
+			if parseErr := s.syncNodesFromPayload(ctx, created.ID, created.Payload); parseErr != nil {
+				log.Printf("[ConfigCreate] parse payload failed for %s: %v", created.ID, parseErr)
+			}
 		}
+		return created, nil
+	}
+
+	if strings.TrimSpace(created.SourceURL) != "" {
+		createdID := created.ID
+		fallbackPayload := created.Payload
+		go func() {
+			bgCtx := s.bgCtx
+			if err := s.Sync(bgCtx, createdID); err != nil {
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					return
+				}
+				if strings.TrimSpace(fallbackPayload) != "" {
+					if parseErr := s.syncNodesFromPayload(bgCtx, createdID, fallbackPayload); parseErr != nil {
+						log.Printf("[ConfigCreate] initial sync failed for %s: %v (fallback parse failed: %v)", createdID, err, parseErr)
+					} else {
+						hash := sha256.Sum256([]byte(fallbackPayload))
+						checksum := hex.EncodeToString(hash[:])
+						if updateErr := s.repo.UpdateSyncStatus(bgCtx, createdID, fallbackPayload, checksum, nil); updateErr != nil {
+							log.Printf("[ConfigCreate] initial sync failed for %s: %v (fallback parsed but update sync status failed: %v)", createdID, err, updateErr)
+						} else {
+							log.Printf("[ConfigCreate] initial sync failed for %s: %v (fallback payload parsed successfully)", createdID, err)
+						}
+					}
+					return
+				}
+				log.Printf("[ConfigCreate] initial sync failed for %s: %v", createdID, err)
+			}
+		}()
 	}
 
 	return created, nil
@@ -133,7 +154,7 @@ func (s *Service) Sync(ctx context.Context, id string) error {
 		return nil // 没有 SourceURL，无需同步
 	}
 
-	payload, checksum, err := s.downloadConfig(cfg.SourceURL)
+	payload, checksum, err := s.downloadConfig(ctx, cfg.SourceURL)
 	if err != nil {
 		if updateErr := s.repo.UpdateSyncStatus(ctx, id, cfg.Payload, cfg.Checksum, err); updateErr != nil {
 			log.Printf("[ConfigSync] failed to update sync status for %s after download error: %v", id, updateErr)
@@ -198,6 +219,9 @@ func (s *Service) SyncAll(ctx context.Context) {
 			// 检查是否需要同步
 			if time.Since(cfg.LastSyncedAt) >= cfg.AutoUpdateInterval {
 				if err := s.Sync(ctx, cfg.ID); err != nil {
+					if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+						return
+					}
 					log.Printf("[ConfigSync] sync failed for %s: %v", cfg.ID, err)
 				}
 			}
@@ -331,9 +355,12 @@ func looksLikeClashSubscriptionYAML(payload string) bool {
 	return false
 }
 
-func (s *Service) downloadConfig(sourceURL string) (payload, checksum string, err error) {
+func (s *Service) downloadConfig(ctx context.Context, sourceURL string) (payload, checksum string, err error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	// 使用订阅专用 User-Agent
-	req, err := http.NewRequest(http.MethodGet, sourceURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
 	if err != nil {
 		return "", "", err
 	}
