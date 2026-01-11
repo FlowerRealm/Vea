@@ -38,6 +38,7 @@
 | 202601092132 | fix-ip-geo-context | 修复 | ✅已完成 | [2026-01/202601092132_fix-ip-geo-context](2026-01/202601092132_fix-ip-geo-context/) |
 | 202601100554 | pr-review-hardening | 修复 | ✅已完成 | [2026-01/202601100554_pr-review-hardening](2026-01/202601100554_pr-review-hardening/) |
 | 202601110913 | fix-subscription-fallback-syncstatus | 修复 | ✅已完成 | [2026-01/202601110913_fix-subscription-fallback-syncstatus](2026-01/202601110913_fix-subscription-fallback-syncstatus/) |
+| 202601111002 | fix-review-log-port-probe | 修复 | ✅已完成 | [2026-01/202601111002_fix-review-log-port-probe](2026-01/202601111002_fix-review-log-port-probe/) |
 
 ## 按月归档
 
@@ -75,3 +76,4 @@
 - [202601092132_fix-ip-geo-context](2026-01/202601092132_fix-ip-geo-context/) - 修复 IP Geo 探测未贯穿请求 context，支持取消/超时
 - [202601100554_pr-review-hardening](2026-01/202601100554_pr-review-hardening/) - 代码审查跟进：root helper artifactsRoot 校验加固；主题页 `showStatus` 不再全局暴露；订阅导入刷新改为轮询 `lastSyncedAt`
 - [202601110913_fix-subscription-fallback-syncstatus](2026-01/202601110913_fix-subscription-fallback-syncstatus/) - 订阅：创建订阅后台首次同步失败但 fallback 解析成功时清理同步错误，避免 UI 误标红
+- [202601111002_fix-review-log-port-probe](2026-01/202601111002_fix-review-log-port-probe/) - 代码审查跟进：ConfigCreate fallback 日志语义修正；系统代理默认端口常量；TUN readiness probe 去重

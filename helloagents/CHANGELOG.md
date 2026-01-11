@@ -56,6 +56,9 @@
 - 加固 Linux root helper 对 `artifactsRoot` 的推导与校验：`socketPath` 必须符合 `<ArtifactsRoot>/runtime/resolvectl-helper.sock`，并拒绝将根路径解析为 `/`，避免 capabilities 操作范围扩大。
 - 清理订阅创建后台同步协程的冗余 bgCtx nil check：构造器已保证 bgCtx 非 nil。
 - 修复订阅创建后台首次同步失败但 fallback payload 解析成功时状态不一致的问题：成功 fallback 会清空 `lastSyncError` 并更新 checksum，避免 UI 误标红。
+- 修复订阅创建后台首次同步失败但 fallback payload 解析成功时日志语义误导的问题：日志会明确标注 fallback 已成功，避免误判为“最终仍失败”。
+- 维护性：系统代理默认端口抽取为常量，避免重复 magic number。
+- 维护性：抽取入站端口 readiness probe 的公共逻辑，减少 TUN 启动流程重复代码。
 
 ## [0.0.1] - 2026-01-05
 

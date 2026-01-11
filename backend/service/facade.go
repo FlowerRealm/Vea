@@ -26,6 +26,8 @@ import (
 	"github.com/google/uuid"
 )
 
+const defaultProxyPort = 1080
+
 // Facade 服务门面（API 聚合层）
 type Facade struct {
 	nodes     *nodes.Service
@@ -560,7 +562,7 @@ func (f *Facade) UpdateSystemProxySettings(settings domain.SystemProxySettings) 
 		inboundMode, _ := status["inboundMode"].(string)
 		inboundPort, _ := status["inboundPort"].(int)
 		if inboundPort <= 0 {
-			inboundPort = 1080
+			inboundPort = defaultProxyPort
 		}
 		if inboundMode == string(domain.InboundTUN) {
 			return domain.SystemProxySettings{}, "", fmt.Errorf("inboundMode=tun: 系统代理无需启用（请关闭系统代理，使用 TUN 接管系统流量）")
@@ -684,7 +686,7 @@ func (f *Facade) GetIPGeo(ctx context.Context) (map[string]interface{}, error) {
 
 	inboundPort, _ := status["inboundPort"].(int)
 	if inboundPort <= 0 {
-		inboundPort = 1080
+		inboundPort = defaultProxyPort
 	}
 
 	proxyHost := "127.0.0.1"
