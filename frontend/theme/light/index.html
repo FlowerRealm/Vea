@@ -109,6 +109,10 @@
             </svg>
           </button>
         </div>
+        <div style="margin-top:12px; display:flex; align-items:center; justify-content:center; gap:12px; flex-wrap:wrap;">
+          <span id="core-state" style="font-size:12px; color:var(--text-secondary);">核心：未知</span>
+          <button id="core-restart" class="mini-btn" title="手动重启内核">重启内核</button>
+        </div>
       </div>
 
       <div class="metrics-grid">
@@ -307,18 +311,16 @@
     </section>
 
 	    <!-- FRouters -->
-	    <section id="panel1" class="panel">
-	      <div class="panel-header">
-	        <div class="panel-title">
-	          <h2>FRouter</h2>
-	          <p>管理和监控你的 FRouter 配置。</p>
-	        </div>
-	        <div class="panel-actions">
-          <span id="core-state" style="font-size:12px; color:var(--text-secondary); margin-right:16px;">核心：
-            未知</span>
-	          <button id="node-refresh">刷新 FRouter</button>
-	        </div>
-	      </div>
+    <section id="panel1" class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <h2>FRouter</h2>
+          <p>管理和监控你的 FRouter 配置。</p>
+        </div>
+        <div class="panel-actions">
+          <button id="node-refresh">刷新 FRouter</button>
+        </div>
+      </div>
 
       <div class="node-toolbar">
         <div id="node-tabs" class="node-tabs"></div>

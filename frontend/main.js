@@ -3,6 +3,7 @@ const { spawn } = require('child_process')
 const path = require('path')
 const http = require('http')
 const fs = require('fs')
+const crypto = require('crypto')
 
 // ============================================================================
 // 配置常量
@@ -379,19 +380,121 @@ function ensureBundledThemes(userDataDir) {
 
   const bundledRoot = path.join(__dirname, 'theme')
   const builtinThemes = ['dark', 'light']
+  const markerName = '.vea-bundled-theme.json'
+  const backupRoot = path.join(themesRoot, '.vea-bundled-theme-backup')
+
+  const computeDirHash = (rootDir) => {
+    const hash = crypto.createHash('sha256')
+
+    const walk = (dir) => {
+      const entries = fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))
+      for (const ent of entries) {
+        if (ent.name === markerName) {
+          continue
+        }
+        const full = path.join(dir, ent.name)
+        const rel = path.relative(rootDir, full).split(path.sep).join('/')
+        if (ent.isDirectory()) {
+          hash.update(`dir:${rel}\n`)
+          walk(full)
+          continue
+        }
+        if (ent.isFile()) {
+          hash.update(`file:${rel}\n`)
+          hash.update(fs.readFileSync(full))
+          hash.update('\n')
+          continue
+        }
+      }
+    }
+
+    walk(rootDir)
+    return hash.digest('hex')
+  }
+
+  const readMarker = (dir) => {
+    const markerPath = path.join(dir, markerName)
+    try {
+      const raw = fs.readFileSync(markerPath, 'utf8')
+      const data = JSON.parse(raw)
+      return data && typeof data === 'object' ? data : null
+    } catch {
+      return null
+    }
+  }
+
+  const writeMarker = (dir, bundledHash) => {
+    const markerPath = path.join(dir, markerName)
+    const payload = {
+      bundledHash,
+      installedAt: new Date().toISOString()
+    }
+    try {
+      fs.writeFileSync(markerPath, JSON.stringify(payload, null, 2), 'utf8')
+    } catch (e) {
+      console.warn(`[Theme] write bundled theme marker failed: ${e.message}`)
+    }
+  }
 
   for (const id of builtinThemes) {
     const destDir = path.join(themesRoot, id)
     const destIndex = path.join(destDir, 'index.html')
-    if (fs.existsSync(destIndex)) {
-      continue
-    }
 
     const srcDir = path.join(bundledRoot, id)
     const srcIndex = path.join(srcDir, 'index.html')
     if (!fs.existsSync(srcIndex)) {
       console.warn(`[Theme] bundled theme is missing: ${srcIndex}`)
       continue
+    }
+
+    let bundledHash = ''
+    try {
+      bundledHash = computeDirHash(srcDir)
+    } catch (e) {
+      console.warn(`[Theme] compute bundled theme hash failed (${id}): ${e.message}`)
+    }
+
+    if (!bundledHash && fs.existsSync(destIndex)) {
+      continue
+    }
+
+    if (fs.existsSync(destIndex) && bundledHash) {
+      try {
+        const marker = readMarker(destDir)
+        const currentHash = computeDirHash(destDir)
+
+        if (marker && marker.bundledHash) {
+          if (currentHash !== marker.bundledHash) {
+            // 用户已修改过内置主题：不覆盖，尊重用户修改。
+            continue
+          }
+          if (marker.bundledHash === bundledHash) {
+            continue
+          }
+        } else if (currentHash === bundledHash) {
+          // 旧版本没有 marker：当前内容与 bundled 一致，补写 marker 即可。
+          writeMarker(destDir, bundledHash)
+          continue
+        } else {
+          // 旧版本没有 marker 且内容不一致：不确定是否用户改过。
+          // 为避免“升级后 UI 不更新”，这里做一次备份再覆盖。
+          fs.mkdirSync(backupRoot, { recursive: true })
+          const backupDir = path.join(backupRoot, id)
+          try {
+            fs.rmSync(backupDir, { recursive: true, force: true })
+          } catch (e) {
+            console.warn(`[Theme] remove bundled theme backup failed: ${e.message}`)
+          }
+          try {
+            fs.cpSync(destDir, backupDir, { recursive: true })
+            console.warn(`[Theme] backed up existing bundled theme (${id}) to ${backupDir}`)
+          } catch (e) {
+            console.warn(`[Theme] backup bundled theme failed (${id}): ${e.message}`)
+          }
+        }
+      } catch (e) {
+        console.warn(`[Theme] bundled theme sync check failed (${id}): ${e.message}`)
+      }
     }
 
     try {
@@ -402,6 +505,9 @@ function ensureBundledThemes(userDataDir) {
 
     try {
       fs.cpSync(srcDir, destDir, { recursive: true })
+      if (bundledHash) {
+        writeMarker(destDir, bundledHash)
+      }
       console.log(`[Theme] installed bundled theme: ${id}`)
     } catch (e) {
       console.error(`[Theme] copy bundled theme failed (${id}): ${e.message}`)

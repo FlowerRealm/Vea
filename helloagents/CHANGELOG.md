@@ -15,6 +15,7 @@
 - 主题包（目录化 + ZIP 导入/导出）：主题以 `index.html` 为入口的目录形式存在；后端新增 `/themes`（list/import/export/delete）；Electron 启动从 userData/themes 加载并在缺失时复制内置主题；主题内提供“导入主题(.zip)”与“导出当前主题(.zip)”。
 - 主题包支持 `manifest.json`（单包多子主题）：在 `userData/themes/<packId>/manifest.json` 中描述包信息与子主题入口；`GET /themes` 展开子主题并返回 `entry`，用于切换与启动加载。
 - 增加应用内“检查更新”能力：支持 Windows/macOS 从 GitHub Releases 获取最新稳定版并自动下载、安装与重启（Issue #24）。
+- 主题页（首页）增加“重启内核”按钮：允许手动触发 `POST /proxy/start` 重启/启动内核，并在系统代理启用时自动关闭/恢复以避免断网。
 
 ### 变更
 - 运行期数据与 artifacts 统一写入 userData（开发模式同样）；启动时会将仓库/可执行目录旁遗留的 `data/` 与 `artifacts/` 迁移到 userData 并清理源目录。
@@ -62,6 +63,7 @@
 - 维护性：系统代理默认端口抽取为常量，避免重复 magic number。
 - 维护性：抽取入站端口 readiness probe 的公共逻辑，减少 TUN 启动流程重复代码。
 - 维护性：主题导出临时文件处理更稳健；主题包 `manifest.json` 校验失败输出告警日志，便于排障。
+- 修复内置主题升级后不自动更新的问题：在未检测到用户修改时，启动会自动同步最新内置主题到 userData（旧版本首次同步会备份旧目录）。
 
 ## [0.0.1] - 2026-01-05
 

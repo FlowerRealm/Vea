@@ -42,6 +42,7 @@
 | 202601110913 | fix-subscription-fallback-syncstatus | 修复 | ✅已完成 | [2026-01/202601110913_fix-subscription-fallback-syncstatus](2026-01/202601110913_fix-subscription-fallback-syncstatus/) |
 | 202601111002 | fix-review-log-port-probe | 修复 | ✅已完成 | [2026-01/202601111002_fix-review-log-port-probe](2026-01/202601111002_fix-review-log-port-probe/) |
 | 202601111339 | theme-review-followups | 修复 | ✅已完成 | [2026-01/202601111339_theme-review-followups](2026-01/202601111339_theme-review-followups/) |
+| 202601111422 | feat-restart-core-button | 功能 | ✅已完成 | [2026-01/202601111422_feat-restart-core-button](2026-01/202601111422_feat-restart-core-button/) |
 
 ## 按月归档
 
@@ -83,3 +84,4 @@
 - [202601110913_fix-subscription-fallback-syncstatus](2026-01/202601110913_fix-subscription-fallback-syncstatus/) - 订阅：创建订阅后台首次同步失败但 fallback 解析成功时清理同步错误，避免 UI 误标红
 - [202601111002_fix-review-log-port-probe](2026-01/202601111002_fix-review-log-port-probe/) - 代码审查跟进：ConfigCreate fallback 日志语义修正；系统代理默认端口常量；TUN readiness probe 去重
 - [202601111339_theme-review-followups](2026-01/202601111339_theme-review-followups/) - 主题包：导入/导出维护性补强（常量复用、临时文件关闭简化、manifest 校验告警日志）
+- [202601111422_feat-restart-core-button](2026-01/202601111422_feat-restart-core-button/) - 主题页（首页）：增加“重启内核”按钮；并修复内置主题升级后不自动同步的问题
