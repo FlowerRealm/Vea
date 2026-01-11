@@ -178,7 +178,7 @@ utils.formatTime('2025-11-20T09:30:00Z')  // "2025/11/20 09:30:00"
 utils.formatBytes(1048576)                // "1.0 MB"
 utils.formatInterval(3600000000000)       // "60 分钟"
 utils.formatLatency(50)                   // "50 ms"
-utils.formatSpeed(15.678)                 // "15.7 Mbps"
+utils.formatSpeed(15.678)                 // "15.7 MB/s"
 
 // HTML转义
 utils.escapeHtml('<script>')              // "&lt;script&gt;"

@@ -15,21 +15,44 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
+
+	"vea/backend/service/shared"
 )
 
-type resolvectlRequest struct {
-	Args []string `json:"args"`
-}
+var rootHelperArtifactsRoot string
 
-type resolvectlResponse struct {
-	ExitCode int    `json:"exitCode"`
-	Stdout   string `json:"stdout,omitempty"`
-	Stderr   string `json:"stderr,omitempty"`
-	Error    string `json:"error,omitempty"`
+func deriveArtifactsRootFromSocketPath(socketPath string) (string, error) {
+	p := strings.TrimSpace(socketPath)
+	if p == "" {
+		return "", errors.New("socketPath 为空")
+	}
+	p = filepath.Clean(p)
+	if !filepath.IsAbs(p) {
+		return "", fmt.Errorf("socketPath 必须是绝对路径: %q", p)
+	}
+
+	if filepath.Base(p) != "resolvectl-helper.sock" {
+		return "", fmt.Errorf("socketPath 不符合预期: %q", p)
+	}
+	runtimeDir := filepath.Dir(p)
+	if filepath.Base(runtimeDir) != "runtime" {
+		return "", fmt.Errorf("socketPath 不符合预期: %q", p)
+	}
+
+	root := filepath.Clean(filepath.Dir(runtimeDir))
+	if root == "." || root == string(os.PathSeparator) {
+		return "", fmt.Errorf("artifactsRoot 不安全: %q", root)
+	}
+
+	expected := filepath.Join(root, "runtime", "resolvectl-helper.sock")
+	if filepath.Clean(expected) != p {
+		return "", fmt.Errorf("socketPath 不符合预期: %q", p)
+	}
+
+	return root, nil
 }
 
 func runResolvectlHelper() {
@@ -50,6 +73,15 @@ func runResolvectlHelper() {
 	if *uid < 0 {
 		log.Fatal("--uid is required")
 	}
+
+	// 从 socketPath 推导 ArtifactsRoot：
+	// <ArtifactsRoot>/runtime/resolvectl-helper.sock -> <ArtifactsRoot>
+	// 用于限制 root helper 的可操作范围（避免对任意路径执行特权动作）。
+	artifactsRoot, err := deriveArtifactsRootFromSocketPath(*socketPath)
+	if err != nil {
+		log.Fatalf("invalid socketPath: %v", err)
+	}
+	rootHelperArtifactsRoot = artifactsRoot
 
 	if err := os.MkdirAll(filepath.Dir(*socketPath), 0o755); err != nil {
 		log.Fatalf("mkdir socket dir: %v", err)
@@ -120,31 +152,46 @@ func handleResolvectlConn(conn net.Conn) {
 	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
 
 	dec := json.NewDecoder(io.LimitReader(conn, 64*1024))
-	var req resolvectlRequest
+	var req shared.RootHelperRequest
 	if err := dec.Decode(&req); err != nil {
-		_ = json.NewEncoder(conn).Encode(resolvectlResponse{ExitCode: 1, Error: fmt.Sprintf("decode request: %v", err)})
+		_ = json.NewEncoder(conn).Encode(shared.RootHelperResponse{ExitCode: 1, Error: fmt.Sprintf("解析请求失败: %v", err)})
 		return
 	}
 
-	resp := runResolvectlWhitelisted(req.Args)
+	resp := dispatchRootHelperRequest(req)
 	_ = json.NewEncoder(conn).Encode(resp)
 }
 
-func runResolvectlWhitelisted(args []string) resolvectlResponse {
+func dispatchRootHelperRequest(req shared.RootHelperRequest) shared.RootHelperResponse {
+	op := strings.TrimSpace(req.Op)
+	if op == "" || op == "resolvectl" {
+		return runResolvectlWhitelisted(req.Args)
+	}
+	switch op {
+	case "tun-setup":
+		return runTUNSetup(req.BinaryPath)
+	case "tun-cleanup":
+		return runTUNCleanup()
+	default:
+		return shared.RootHelperResponse{ExitCode: 1, Error: "不支持的 op"}
+	}
+}
+
+func runResolvectlWhitelisted(args []string) shared.RootHelperResponse {
 	if len(args) == 0 {
-		return resolvectlResponse{ExitCode: 1, Error: "empty args"}
+		return shared.RootHelperResponse{ExitCode: 1, Error: "参数为空"}
 	}
 	if args[0] == "__ping" {
-		return resolvectlResponse{ExitCode: 0}
+		return shared.RootHelperResponse{ExitCode: 0}
 	}
 	if strings.HasPrefix(args[0], "-") {
-		return resolvectlResponse{ExitCode: 1, Error: "options are not allowed"}
+		return shared.RootHelperResponse{ExitCode: 1, Error: "不允许传入选项"}
 	}
 
 	switch args[0] {
 	case "dns", "domain", "default-route", "revert":
 	default:
-		return resolvectlResponse{ExitCode: 1, Error: "command not allowed"}
+		return shared.RootHelperResponse{ExitCode: 1, Error: "不允许的命令"}
 	}
 
 	resolvectlPath := "/usr/bin/resolvectl"
@@ -171,7 +218,7 @@ func runResolvectlWhitelisted(args []string) resolvectlResponse {
 		}
 	}
 
-	resp := resolvectlResponse{
+	resp := shared.RootHelperResponse{
 		ExitCode: exitCode,
 		Stdout:   stdout.String(),
 		Stderr:   stderr.String(),
@@ -180,6 +227,69 @@ func runResolvectlWhitelisted(args []string) resolvectlResponse {
 		resp.Error = err.Error()
 	}
 	return resp
+}
+
+func runTUNCleanup() shared.RootHelperResponse {
+	shared.CleanConflictingIPTablesRules()
+	return shared.RootHelperResponse{ExitCode: 0}
+}
+
+func runTUNSetup(binaryPath string) shared.RootHelperResponse {
+	binaryPath = strings.TrimSpace(binaryPath)
+	if binaryPath == "" {
+		return shared.RootHelperResponse{ExitCode: 1, Error: "binaryPath 为空"}
+	}
+	if _, err := os.Stat(binaryPath); err != nil {
+		return shared.RootHelperResponse{ExitCode: 1, Error: fmt.Sprintf("binaryPath 无效: %v", err)}
+	}
+
+	// 安全：仅允许对本应用 artifacts/core 下的已知内核二进制配置 capabilities，
+	// 避免“授权一次后可对任意路径 setcap”的权限扩大。
+	root := strings.TrimSpace(rootHelperArtifactsRoot)
+	if root == "" {
+		return shared.RootHelperResponse{ExitCode: 1, Error: "无法确定 artifactsRoot（socketPath 不符合预期）"}
+	}
+
+	realRoot := root
+	if p, err := filepath.EvalSymlinks(realRoot); err == nil && p != "" {
+		realRoot = p
+	}
+	if p, err := filepath.Abs(realRoot); err == nil && p != "" {
+		realRoot = p
+	}
+	if realRoot == string(os.PathSeparator) {
+		return shared.RootHelperResponse{ExitCode: 1, Error: "artifactsRoot 不安全（解析为 /，拒绝执行）"}
+	}
+
+	realBin := binaryPath
+	if p, err := filepath.EvalSymlinks(realBin); err == nil && p != "" {
+		realBin = p
+	}
+	if p, err := filepath.Abs(realBin); err == nil && p != "" {
+		realBin = p
+	}
+
+	rel, err := filepath.Rel(realRoot, realBin)
+	if err != nil {
+		return shared.RootHelperResponse{ExitCode: 1, Error: fmt.Sprintf("binaryPath 校验失败: %v", err)}
+	}
+	sep := string(os.PathSeparator)
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+sep) {
+		return shared.RootHelperResponse{ExitCode: 1, Error: "binaryPath 不在 artifactsRoot 下（拒绝执行）"}
+	}
+	if !(strings.HasPrefix(rel, "core"+sep+"sing-box"+sep) || strings.HasPrefix(rel, "core"+sep+"clash"+sep)) {
+		return shared.RootHelperResponse{ExitCode: 1, Error: "binaryPath 不在允许的 core 目录下（拒绝执行）"}
+	}
+	switch filepath.Base(realBin) {
+	case "sing-box", "mihomo", "clash":
+	default:
+		return shared.RootHelperResponse{ExitCode: 1, Error: "binaryPath 不是允许的内核二进制名（拒绝执行）"}
+	}
+
+	if err := shared.SetupTUNForBinary(realBin); err != nil {
+		return shared.RootHelperResponse{ExitCode: 1, Error: err.Error()}
+	}
+	return shared.RootHelperResponse{ExitCode: 0}
 }
 
 func processAlive(pid int) bool {
@@ -199,16 +309,16 @@ func processAlive(pid int) bool {
 func runResolvectlShim() {
 	args := os.Args[2:]
 
-	socketPath := strings.TrimSpace(os.Getenv("VEA_RESOLVECTL_SOCKET"))
+	socketPath := strings.TrimSpace(os.Getenv(shared.EnvResolvectlSocket))
 	if socketPath == "" {
 		execRealResolvectl(args)
 		return
 	}
 
-	resp, err := callResolvectlHelper(socketPath, args)
+	resp, err := shared.CallRootHelper(socketPath, shared.RootHelperRequest{Args: args})
 	if err != nil {
-		if err2 := ensureResolvectlHelper(socketPath); err2 == nil {
-			resp, err = callResolvectlHelper(socketPath, args)
+		if err2 := shared.EnsureRootHelper(socketPath, shared.RootHelperEnsureOptions{}); err2 == nil {
+			resp, err = shared.CallRootHelper(socketPath, shared.RootHelperRequest{Args: args})
 		}
 	}
 
@@ -248,90 +358,4 @@ func execRealResolvectl(args []string) {
 		os.Exit(1)
 	}
 	os.Exit(0)
-}
-
-func callResolvectlHelper(socketPath string, args []string) (resolvectlResponse, error) {
-	conn, err := net.DialTimeout("unix", socketPath, 200*time.Millisecond)
-	if err != nil {
-		return resolvectlResponse{}, err
-	}
-	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
-
-	if err := json.NewEncoder(conn).Encode(resolvectlRequest{Args: args}); err != nil {
-		return resolvectlResponse{}, err
-	}
-
-	var resp resolvectlResponse
-	if err := json.NewDecoder(io.LimitReader(conn, 1024*1024)).Decode(&resp); err != nil {
-		return resolvectlResponse{}, err
-	}
-	return resp, nil
-}
-
-func ensureResolvectlHelper(socketPath string) error {
-	lockPath := socketPath + ".lock"
-	lockFd, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-	if err != nil {
-		deadline := time.Now().Add(20 * time.Second)
-		for time.Now().Before(deadline) {
-			if _, err := callResolvectlHelper(socketPath, []string{"__ping"}); err == nil {
-				return nil
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-		return fmt.Errorf("timeout waiting helper: %w", err)
-	}
-	_ = lockFd.Close()
-	defer os.Remove(lockPath)
-
-	veaPath := strings.TrimSpace(os.Getenv("VEA_EXECUTABLE"))
-	if veaPath == "" {
-		if exe, err := os.Executable(); err == nil {
-			veaPath = exe
-		}
-	}
-	if veaPath == "" {
-		return errors.New("missing VEA_EXECUTABLE and os.Executable failed")
-	}
-	if realPath, err := filepath.EvalSymlinks(veaPath); err == nil && realPath != "" {
-		veaPath = realPath
-	}
-
-	uidStr := strings.TrimSpace(os.Getenv("VEA_RESOLVECTL_UID"))
-	if uidStr == "" {
-		uidStr = strconv.Itoa(os.Getuid())
-	}
-
-	parentStr := strings.TrimSpace(os.Getenv("VEA_RESOLVECTL_PARENT_PID"))
-	if parentStr == "" {
-		parentStr = strconv.Itoa(os.Getppid())
-	}
-
-	pkexecPath, err := exec.LookPath("pkexec")
-	if err != nil {
-		return fmt.Errorf("pkexec not found: %w", err)
-	}
-
-	cmd := exec.Command(pkexecPath, veaPath, "resolvectl-helper",
-		"--socket", socketPath,
-		"--uid", uidStr,
-		"--parent-pid", parentStr,
-	)
-
-	// 不要继承 shim 的 stdout/stderr：sing-box 会把输出当成 resolvectl 的输出解析。
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("start resolvectl-helper via pkexec: %w", err)
-	}
-
-	deadline := time.Now().Add(20 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, err := callResolvectlHelper(socketPath, []string{"__ping"}); err == nil {
-			return nil
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	return errors.New("helper not ready in time")
 }

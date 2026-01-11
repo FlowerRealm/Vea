@@ -59,7 +59,7 @@ func TestNodeRepoReplaceNodesForConfig_StableIDAndPreservesRuntimeMetrics(t *tes
 	}
 }
 
-func TestNodeRepoReplaceNodesForConfig_DoesNotRemoveExistingNodes(t *testing.T) {
+func TestNodeRepoReplaceNodesForConfig_RemovesMissingNodes(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -88,8 +88,8 @@ func TestNodeRepoReplaceNodesForConfig_DoesNotRemoveExistingNodes(t *testing.T) 
 	if err != nil {
 		t.Fatalf("ListByConfigID cfg1: %v", err)
 	}
-	if len(nodesCfg1) != 2 {
-		t.Fatalf("expected cfg1 nodes=2, got %d", len(nodesCfg1))
+	if len(nodesCfg1) != 1 {
+		t.Fatalf("expected cfg1 nodes=1, got %d", len(nodesCfg1))
 	}
 
 	nodesCfg2, err := repo.ListByConfigID(ctx, "cfg2")

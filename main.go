@@ -142,17 +142,17 @@ func run() int {
 	repos := repository.NewRepositories(memStore, nodeRepo, frouterRepo, configRepo, geoRepo, componentRepo, settingsRepo)
 
 	// 5. 创建服务层
-	nodeSvc := nodes.NewService(nodeRepo)
-	frouterSvc := frouter.NewService(frouterRepo, nodeRepo)
+	nodeSvc := nodes.NewService(ctx, nodeRepo)
+	frouterSvc := frouter.NewService(ctx, frouterRepo, nodeRepo)
 
 	// 创建速度测量器并注入到测量相关服务
-	speedMeasurer := proxy.NewSpeedMeasurer(componentRepo, geoRepo, settingsRepo)
+	speedMeasurer := proxy.NewSpeedMeasurer(ctx, componentRepo, geoRepo, settingsRepo)
 	nodeSvc.SetMeasurer(speedMeasurer)
 	frouterSvc.SetMeasurer(speedMeasurer)
 
-	configSvc := configsvc.NewService(configRepo, nodeSvc, frouterRepo)
+	configSvc := configsvc.NewService(ctx, configRepo, nodeSvc, frouterRepo)
 	proxySvc := proxy.NewService(frouterRepo, nodeRepo, componentRepo, settingsRepo)
-	componentSvc := component.NewService(componentRepo)
+	componentSvc := component.NewService(ctx, componentRepo)
 	geoSvc := geo.NewService(geoRepo)
 	themeSvc := themesvc.NewService(themesvc.Options{UserDataRoot: shared.UserDataRoot()})
 

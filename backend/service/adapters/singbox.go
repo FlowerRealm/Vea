@@ -263,6 +263,18 @@ func (a *SingBoxAdapter) buildInbounds(profile domain.ProxyConfig) ([]map[string
 
 		inbounds = append(inbounds, tun)
 
+		// TUN 模式下仍然提供本地 mixed 入站端口（HTTP + SOCKS），便于系统代理/手动代理共存。
+		if profile.InboundPort > 0 {
+			mixed := map[string]interface{}{
+				"type":        "mixed",
+				"tag":         "mixed-in",
+				"listen":      "127.0.0.1",
+				"listen_port": profile.InboundPort,
+			}
+			a.applyInboundConfig(mixed, profile)
+			inbounds = append(inbounds, mixed)
+		}
+
 	case domain.InboundMixed:
 		// sing-box 的 mixed 模式（HTTP + SOCKS）
 		mixed := map[string]interface{}{

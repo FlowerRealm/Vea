@@ -30,7 +30,7 @@ func (r *noopNodeRepo) UpdateSpeed(context.Context, string, float64, string) err
 func TestService_ProbeLatencyAsync_Deduplicates(t *testing.T) {
 	t.Parallel()
 
-	svc := NewService(&noopNodeRepo{})
+	svc := NewService(context.Background(), &noopNodeRepo{})
 	close(svc.stopCh) // 停止 worker，避免消费队列影响断言
 
 	svc.ProbeLatencyAsync("n1")

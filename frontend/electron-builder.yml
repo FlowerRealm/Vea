@@ -5,6 +5,11 @@ copyright: Copyright © 2025 FlowerRealm
 # 默认文件命名格式: Vea-版本-平台-架构.扩展名（Windows 安装器见 nsis.artifactName）
 artifactName: "${productName}-${version}-${os}-${arch}.${ext}"
 
+publish:
+  provider: github
+  owner: FlowerRealm
+  repo: Vea
+
 directories:
   output: ../release
 
@@ -12,13 +17,16 @@ files:
   - main.js
   - preload.js
   - settings-schema.js
+  - chain-editor/**/*
   - theme/**/*
   - assets/**/*
   - sdk/dist/**/*
   - "!**/*.map"
 
 mac:
-  target: dmg
+  target:
+    - dmg
+    - zip
   # arch 由命令行参数控制 (--x64 或 --arm64)
   category: public.app-category.utilities
   icon: assets/icon.icns

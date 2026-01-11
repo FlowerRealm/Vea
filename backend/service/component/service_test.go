@@ -16,7 +16,7 @@ func TestList_SeedsDefaultComponents(t *testing.T) {
 
 	store := memory.NewStore(nil)
 	repo := memory.NewComponentRepo(store)
-	svc := NewService(repo)
+	svc := NewService(context.Background(), repo)
 
 	components, err := svc.List(context.Background())
 	if err != nil {
@@ -48,7 +48,7 @@ func TestCreate_CoreComponent_IsIdempotent(t *testing.T) {
 
 	store := memory.NewStore(nil)
 	repo := memory.NewComponentRepo(store)
-	svc := NewService(repo)
+	svc := NewService(context.Background(), repo)
 
 	singbox1, err := svc.Create(context.Background(), domain.CoreComponent{Kind: domain.ComponentSingBox})
 	if err != nil {
@@ -99,7 +99,7 @@ func TestList_DetectsInstalledSingBoxInSubdir(t *testing.T) {
 
 	store := memory.NewStore(nil)
 	repo := memory.NewComponentRepo(store)
-	svc := NewService(repo)
+	svc := NewService(context.Background(), repo)
 
 	components, err := svc.List(context.Background())
 	if err != nil {
@@ -139,7 +139,7 @@ func TestUninstall_RemovesInstallDirAndClearsState(t *testing.T) {
 
 	store := memory.NewStore(nil)
 	repo := memory.NewComponentRepo(store)
-	svc := NewService(repo)
+	svc := NewService(context.Background(), repo)
 
 	components, err := svc.List(context.Background())
 	if err != nil {

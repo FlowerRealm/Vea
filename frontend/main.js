@@ -40,6 +40,97 @@ let cleanupInProgress = false
 let startupThemeEntryPath = null
 
 // ============================================================================
+// 应用自更新（electron-updater）
+// ============================================================================
+
+let autoUpdater = null
+let updaterState = 'idle' // idle | checking | downloading | downloaded
+let updaterInitError = null
+let installUpdateOnQuit = false
+
+function getAutoUpdateSupport() {
+  if (!app.isPackaged) {
+    return { supported: false, message: '开发模式不支持自动更新' }
+  }
+
+  const platform = process.platform
+  if (platform !== 'win32' && platform !== 'darwin') {
+    return { supported: false, message: '当前平台不支持自动更新，请前往 GitHub Releases 下载最新版' }
+  }
+
+  return { supported: true, message: '' }
+}
+
+function sendAutoUpdateEvent(payload) {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  mainWindow.webContents.send('app:update:event', payload)
+}
+
+function initAutoUpdater() {
+  if (autoUpdater || updaterInitError) return
+
+  const support = getAutoUpdateSupport()
+  if (!support.supported) return
+
+  try {
+    autoUpdater = require('electron-updater').autoUpdater
+  } catch (err) {
+    updaterInitError = err
+    console.error('[Updater] Failed to load electron-updater:', err && err.message ? err.message : err)
+    return
+  }
+
+  autoUpdater.allowPrerelease = false
+  autoUpdater.autoDownload = true
+
+  autoUpdater.on('checking-for-update', () => {
+    updaterState = 'checking'
+    sendAutoUpdateEvent({ type: 'checking-for-update', message: '正在检查更新...' })
+  })
+
+  autoUpdater.on('update-available', (info) => {
+    updaterState = 'downloading'
+    sendAutoUpdateEvent({
+      type: 'update-available',
+      info,
+      message: info && info.version ? `发现新版本 ${info.version}，正在下载...` : '发现新版本，正在下载...',
+    })
+  })
+
+  autoUpdater.on('update-not-available', (info) => {
+    updaterState = 'idle'
+    sendAutoUpdateEvent({ type: 'update-not-available', info, message: '已是最新版本' })
+  })
+
+  autoUpdater.on('download-progress', (progress) => {
+    sendAutoUpdateEvent({ type: 'download-progress', progress })
+  })
+
+  autoUpdater.on('update-downloaded', (info) => {
+    updaterState = 'downloaded'
+    sendAutoUpdateEvent({
+      type: 'update-downloaded',
+      info,
+      message: '更新已下载，将自动重启安装...',
+    })
+
+    setTimeout(() => {
+      installUpdateOnQuit = true
+      isQuitting = true
+      app.quit()
+    }, 1500)
+  })
+
+  autoUpdater.on('error', (err) => {
+    updaterState = 'idle'
+    sendAutoUpdateEvent({
+      type: 'error',
+      message: err && err.message ? err.message : String(err),
+    })
+  })
+}
+
+// ============================================================================
 // 通用 HTTP 请求工具函数
 // ============================================================================
 
@@ -593,6 +684,38 @@ ipcMain.on('window-close', () => {
   if (mainWindow) mainWindow.close()
 })
 
+/**
+ * 手动检查更新（渲染进程触发）
+ */
+ipcMain.handle('app:update:check', async () => {
+  const support = getAutoUpdateSupport()
+  if (!support.supported) {
+    return { supported: false, message: support.message }
+  }
+
+  initAutoUpdater()
+  if (!autoUpdater) {
+    return { supported: false, message: '自动更新初始化失败' }
+  }
+
+  if (updaterState === 'checking' || updaterState === 'downloading') {
+    return { supported: true, started: false, message: '更新任务进行中，请稍候...' }
+  }
+
+  updaterState = 'checking'
+  try {
+    await autoUpdater.checkForUpdates()
+    return { supported: true, started: true }
+  } catch (err) {
+    updaterState = 'idle'
+    sendAutoUpdateEvent({
+      type: 'error',
+      message: err && err.message ? err.message : String(err),
+    })
+    return { supported: true, started: false, message: err && err.message ? err.message : String(err) }
+  }
+})
+
 // ============================================================================
 // 应用生命周期
 // ============================================================================
@@ -601,6 +724,9 @@ ipcMain.on('window-close', () => {
  * 应用就绪
  */
 app.whenReady().then(async () => {
+  // 仅在支持的平台 + 打包态初始化（手动检查更新时触发实际动作）。
+  initAutoUpdater()
+
   // 总是启动服务（确保使用最新的二进制文件和权限配置）
   // 如果服务已在运行，startVeaService 会检测到端口占用并跳过
   startVeaService()
@@ -683,6 +809,16 @@ app.on('before-quit', async (event) => {
 
   if (veaProcess) {
     veaProcess.kill('SIGTERM')
+  }
+
+  if (installUpdateOnQuit && autoUpdater) {
+    installUpdateOnQuit = false
+    try {
+      autoUpdater.quitAndInstall()
+      return
+    } catch (err) {
+      console.error('[Updater] quitAndInstall failed:', err && err.message ? err.message : err)
+    }
   }
 
   // 延迟一下让清理完成

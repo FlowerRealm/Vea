@@ -4436,6 +4436,20 @@ import { createAPI, utils } from './vea-sdk.esm.js';
         }
 
         setupThemeManager();
+
+        // TUN：配置按钮（renderAllSettings 会重建 DOM）
+        const tunSetupBtn = document.getElementById("tun-setup-btn");
+        if (tunSetupBtn && !tunSetupBtn.dataset.bound) {
+          tunSetupBtn.dataset.bound = "1";
+          tunSetupBtn.addEventListener("click", () => {
+            setupTUN();
+          });
+        }
+
+        // 重新渲染后刷新一次 TUN UI（避免状态面板显示为默认值）
+        if (tunStatusCache) {
+          updateTUNUI(tunStatusCache);
+        }
       }
 
       // 初始化渲染

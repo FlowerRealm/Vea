@@ -33,15 +33,15 @@ func TestFacade_Snapshot_IncludesRuntimeMetrics(t *testing.T) {
 
 	repos := repository.NewRepositories(memStore, nodeRepo, frouterRepo, configRepo, geoRepo, componentRepo, settingsRepo)
 
-	nodeSvc := nodes.NewService(nodeRepo)
-	frouterSvc := frouter.NewService(frouterRepo, nodeRepo)
-	speedMeasurer := proxy.NewSpeedMeasurer(componentRepo, geoRepo, settingsRepo)
+	nodeSvc := nodes.NewService(context.Background(), nodeRepo)
+	frouterSvc := frouter.NewService(context.Background(), frouterRepo, nodeRepo)
+	speedMeasurer := proxy.NewSpeedMeasurer(context.Background(), componentRepo, geoRepo, settingsRepo)
 	nodeSvc.SetMeasurer(speedMeasurer)
 	frouterSvc.SetMeasurer(speedMeasurer)
 
-	configSvc := configsvc.NewService(configRepo, nodeSvc, frouterRepo)
+	configSvc := configsvc.NewService(context.Background(), configRepo, nodeSvc, frouterRepo)
 	proxySvc := proxy.NewService(frouterRepo, nodeRepo, componentRepo, settingsRepo)
-	componentSvc := component.NewService(componentRepo)
+	componentSvc := component.NewService(context.Background(), componentRepo)
 	geoSvc := geo.NewService(geoRepo)
 
 	facade := NewFacade(nodeSvc, frouterSvc, configSvc, proxySvc, componentSvc, geoSvc, nil, repos)
@@ -123,7 +123,7 @@ func TestFacade_Snapshot_PropagatesListError(t *testing.T) {
 	t.Parallel()
 
 	expected := errors.New("boom")
-	nodeSvc := nodes.NewService(&errorNodeRepo{err: expected})
+	nodeSvc := nodes.NewService(context.Background(), &errorNodeRepo{err: expected})
 
 	facade := NewFacade(nodeSvc, nil, nil, nil, nil, nil, nil, nil)
 	_, err := facade.Snapshot()

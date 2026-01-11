@@ -975,7 +975,7 @@ func (r *Router) saveFrontendSettings(c *gin.Context) {
 }
 
 func (r *Router) getIPGeo(c *gin.Context) {
-	result, err := r.service.GetIPGeo()
+	result, err := r.service.GetIPGeo(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"ip":       "",

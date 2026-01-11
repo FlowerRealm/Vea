@@ -145,3 +145,93 @@ func TestSingBoxAdapter_BuildConfig_TUNRespectsSettings(t *testing.T) {
 		}
 	}
 }
+
+func TestSingBoxAdapter_BuildConfig_TUNIncludesMixedInboundPort(t *testing.T) {
+	t.Parallel()
+
+	a := &SingBoxAdapter{}
+	nodes := []domain.Node{
+		{
+			ID:       "n1",
+			Name:     "test-ss",
+			Protocol: domain.ProtocolShadowsocks,
+			Address:  "1.1.1.1",
+			Port:     443,
+			Security: &domain.NodeSecurity{Method: "aes-128-gcm", Password: "pass"},
+		},
+	}
+	frouter := domain.FRouter{
+		ID:   "fr1",
+		Name: "test",
+		ChainProxy: domain.ChainProxySettings{
+			Edges: []domain.ProxyEdge{
+				{
+					ID:       "e-default",
+					From:     domain.EdgeNodeLocal,
+					To:       "n1",
+					Priority: 100,
+					Enabled:  true,
+				},
+			},
+		},
+	}
+
+	profile := domain.ProxyConfig{
+		InboundMode: domain.InboundTUN,
+		InboundPort: 23456,
+		TUNSettings: &domain.TUNConfiguration{
+			InterfaceName: "tun9",
+			MTU:           9000,
+			Address:       []string{"172.19.0.1/30"},
+			AutoRoute:     true,
+			StrictRoute:   true,
+			Stack:         "mixed",
+			DNSHijack:     true,
+		},
+	}
+
+	plan, err := nodegroup.CompileProxyPlan(domain.EngineSingBox, profile, frouter, nodes)
+	if err != nil {
+		t.Fatalf("CompileProxyPlan() error: %v", err)
+	}
+
+	b, err := a.BuildConfig(plan, GeoFiles{ArtifactsDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("BuildConfig() error: %v", err)
+	}
+
+	var cfg map[string]any
+	if err := json.Unmarshal(b, &cfg); err != nil {
+		t.Fatalf("json.Unmarshal() error: %v", err)
+	}
+
+	inbounds, ok := cfg["inbounds"].([]any)
+	if !ok || len(inbounds) == 0 {
+		t.Fatalf("expected inbounds, got %T", cfg["inbounds"])
+	}
+
+	hasTun := false
+	hasMixedPort := false
+	for _, it := range inbounds {
+		m, ok := it.(map[string]any)
+		if !ok {
+			continue
+		}
+		typ, _ := m["type"].(string)
+		switch typ {
+		case "tun":
+			hasTun = true
+		case "mixed":
+			if port, ok := m["listen_port"].(float64); ok && int(port) == profile.InboundPort {
+				hasMixedPort = true
+			}
+		}
+	}
+
+	if !hasTun {
+		t.Fatalf("expected tun inbound to exist")
+	}
+	if !hasMixedPort {
+		t.Fatalf("expected mixed inbound listen_port=%d in tun mode", profile.InboundPort)
+	}
+}

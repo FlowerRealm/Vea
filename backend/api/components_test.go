@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -34,15 +35,15 @@ func TestGETComponents_SeedsDefaultComponents(t *testing.T) {
 
 	repos := repository.NewRepositories(memStore, nodeRepo, frouterRepo, configRepo, geoRepo, componentRepo, settingsRepo)
 
-	nodeSvc := nodes.NewService(nodeRepo)
-	frouterSvc := frouter.NewService(frouterRepo, nodeRepo)
-	speedMeasurer := proxy.NewSpeedMeasurer(componentRepo, geoRepo, settingsRepo)
+	nodeSvc := nodes.NewService(context.Background(), nodeRepo)
+	frouterSvc := frouter.NewService(context.Background(), frouterRepo, nodeRepo)
+	speedMeasurer := proxy.NewSpeedMeasurer(context.Background(), componentRepo, geoRepo, settingsRepo)
 	nodeSvc.SetMeasurer(speedMeasurer)
 	frouterSvc.SetMeasurer(speedMeasurer)
 
-	configSvc := configsvc.NewService(configRepo, nodeSvc, frouterRepo)
+	configSvc := configsvc.NewService(context.Background(), configRepo, nodeSvc, frouterRepo)
 	proxySvc := proxy.NewService(frouterRepo, nodeRepo, componentRepo, settingsRepo)
-	componentSvc := component.NewService(componentRepo)
+	componentSvc := component.NewService(context.Background(), componentRepo)
 	geoSvc := geo.NewService(geoRepo)
 
 	facade := service.NewFacade(nodeSvc, frouterSvc, configSvc, proxySvc, componentSvc, geoSvc, nil, repos)

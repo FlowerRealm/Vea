@@ -295,6 +295,9 @@ jobs:
         run: |
           mkdir -p release-x64
           mv release/*x64* release-x64/ 2>/dev/null || true
+          # electron-updater: x64 元数据文件（不包含 x64 字样）
+          mv release/latest-mac.yml release-x64/ 2>/dev/null || true
+          mv release/*.blockmap release-x64/ 2>/dev/null || true
           echo "=== Preserved x64 artifacts ==="
           ls -lh release-x64/
 
@@ -329,7 +332,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: macos-packages
-          path: release/*.dmg
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/latest-mac*.yml
+            release/*.blockmap
           retention-days: 1
 
   # ===================================
@@ -399,6 +406,8 @@ jobs:
           path: |
             release/*.exe
             release/*.zip
+            release/latest.yml
+            release/*.blockmap
           retention-days: 1
 
   # ===================================
@@ -419,7 +428,7 @@ jobs:
         working-directory: release-dist
         run: |
           mkdir -p ../dist
-          find . -type f \( -name "*.deb" -o -name "*.dmg" -o -name "*.exe" -o -name "*.zip" \) -exec mv {} ../dist/ \;
+          find . -type f \( -name "*.deb" -o -name "*.dmg" -o -name "*.exe" -o -name "*.zip" -o -name "latest*.yml" -o -name "*.blockmap" \) -exec mv {} ../dist/ \;
           ls -lh ../dist/
 
       - name: Generate checksums
@@ -445,6 +454,7 @@ jobs:
 
             ### macOS
             - **dmg** (Intel/Apple Silicon) - 支持 x64 和 arm64
+            - **zip** (Intel/Apple Silicon) - 自动更新使用（一般无需手动下载）
 
             ### Windows
             - **exe** (x64) - NSIS 安装程序

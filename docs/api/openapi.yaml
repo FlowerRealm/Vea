@@ -255,7 +255,7 @@ paths:
     post:
       tags: [nodes]
       summary: 测试节点速度
-      description: 异步执行速度测试，结果更新到节点的 lastSpeedMbps 字段
+      description: 异步执行速度测试，结果更新到节点的 lastSpeedMbps 字段（单位：MB/s）
       operationId: speedtestNode
       parameters:
         - $ref: '#/components/parameters/NodeId'
@@ -410,7 +410,7 @@ paths:
     post:
       tags: [frouters]
       summary: 测试 FRouter 速度
-      description: 异步执行速度测试，结果更新到 FRouter 的 lastSpeedMbps 字段
+      description: 异步执行速度测试，结果更新到 FRouter 的 lastSpeedMbps 字段（单位：MB/s）
       operationId: speedtestFRouter
       parameters:
         - $ref: '#/components/parameters/FRouterId'
@@ -1398,7 +1398,7 @@ components:
         lastSpeedMbps:
           type: number
           format: double
-          description: 最后一次速度测试结果（Mbps）
+          description: 最后一次速度测试结果（MB/s）
         lastSpeedAt:
           type: string
           format: date-time
@@ -1562,6 +1562,7 @@ components:
         lastSpeedMbps:
           type: number
           format: double
+          description: 最后一次速度测试结果（MB/s）
         lastSpeedAt:
           type: string
           format: date-time

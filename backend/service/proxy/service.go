@@ -179,7 +179,7 @@ func (s *Service) Start(ctx context.Context, cfg domain.ProxyConfig) error {
 		return cause
 	}
 
-	cfg = s.applyConfigDefaults(cfg)
+	cfg = s.applyConfigDefaults(ctx, cfg)
 
 	// 获取 FRouter 与链式代理设置
 	frouter, err := s.resolveFRouter(ctx, cfg)
@@ -427,9 +427,7 @@ func (s *Service) resolveFRouter(ctx context.Context, cfg domain.ProxyConfig) (d
 	return s.frouters.Get(ctx, cfg.FRouterID)
 }
 
-func (s *Service) applyConfigDefaults(cfg domain.ProxyConfig) domain.ProxyConfig {
-	ctx := context.Background()
-
+func (s *Service) applyConfigDefaults(ctx context.Context, cfg domain.ProxyConfig) domain.ProxyConfig {
 	if cfg.InboundMode == "" {
 		cfg.InboundMode = domain.InboundMixed
 	}
@@ -727,13 +725,9 @@ func (s *Service) startProcess(adapter adapters.CoreAdapter, engine domain.CoreE
 	go s.monitorProcess(handle, done)
 
 	// 非 TUN：等端口监听就绪，提前失败而不是“启动成功但不可用”。
-	if cfg.InboundMode != domain.InboundTUN && cfg.InboundPort > 0 {
-		handle.Port = cfg.InboundPort
-		if err := adapter.WaitForReady(handle, 5*time.Second); err != nil {
-			_ = adapter.Stop(handle)
-			s.mainHandle = nil
-			s.mainEngine = ""
-			return fmt.Errorf("process not ready: %w", err)
+	if cfg.InboundMode != domain.InboundTUN {
+		if err := s.waitForInboundPortReady(adapter, handle, cfg.InboundPort, 5*time.Second, false); err != nil {
+			return err
 		}
 	}
 
@@ -759,6 +753,11 @@ func (s *Service) startProcess(adapter adapters.CoreAdapter, engine domain.CoreE
 				return fmt.Errorf("TUN interface not ready: %w", err)
 			}
 			s.tunIface = interfaceName
+
+			// TUN 也可能同时开启本地代理端口（HTTP/SOCKS），这里同样做 readiness probe。
+			if err := s.waitForInboundPortReady(adapter, handle, cfg.InboundPort, 5*time.Second, true); err != nil {
+				return err
+			}
 			return nil
 		}
 
@@ -771,9 +770,32 @@ func (s *Service) startProcess(adapter adapters.CoreAdapter, engine domain.CoreE
 			return fmt.Errorf("TUN interface not ready: %w", err)
 		}
 		s.tunIface = ifaceName
+
+		// TUN 也可能同时开启本地代理端口（HTTP/SOCKS），这里同样做 readiness probe。
+		if err := s.waitForInboundPortReady(adapter, handle, cfg.InboundPort, 5*time.Second, true); err != nil {
+			return err
+		}
 		return nil
 	}
 
+	return nil
+}
+
+func (s *Service) waitForInboundPortReady(adapter adapters.CoreAdapter, handle *adapters.ProcessHandle, port int, timeout time.Duration, clearTunIface bool) error {
+	if port <= 0 {
+		return nil
+	}
+
+	handle.Port = port
+	if err := adapter.WaitForReady(handle, timeout); err != nil {
+		_ = adapter.Stop(handle)
+		s.mainHandle = nil
+		s.mainEngine = ""
+		if clearTunIface {
+			s.tunIface = ""
+		}
+		return fmt.Errorf("process not ready: %w", err)
+	}
 	return nil
 }
 

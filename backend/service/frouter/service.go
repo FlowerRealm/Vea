@@ -26,6 +26,8 @@ type Service struct {
 	repo     repository.FRouterRepository
 	nodeRepo repository.NodeRepository
 
+	bgCtx context.Context
+
 	measurer Measurer
 
 	mu           sync.Mutex
@@ -37,10 +39,14 @@ type Service struct {
 }
 
 // NewService 创建 FRouter 服务
-func NewService(repo repository.FRouterRepository, nodeRepo repository.NodeRepository) *Service {
+func NewService(bgCtx context.Context, repo repository.FRouterRepository, nodeRepo repository.NodeRepository) *Service {
+	if bgCtx == nil {
+		bgCtx = context.Background()
+	}
 	s := &Service{
 		repo:         repo,
 		nodeRepo:     nodeRepo,
+		bgCtx:        bgCtx,
 		speedQueue:   make(chan string, 32),
 		latencyQueue: make(chan string, 32),
 		speedJobs:    make(map[string]struct{}),
@@ -115,6 +121,8 @@ func (s *Service) ProbeSpeedAsync(id string) {
 func (s *Service) speedWorker() {
 	for {
 		select {
+		case <-s.bgCtx.Done():
+			return
 		case <-s.stopCh:
 			return
 		case id := <-s.speedQueue:
@@ -129,6 +137,8 @@ func (s *Service) speedWorker() {
 func (s *Service) latencyWorker() {
 	for {
 		select {
+		case <-s.bgCtx.Done():
+			return
 		case <-s.stopCh:
 			return
 		case id := <-s.latencyQueue:
@@ -141,7 +151,7 @@ func (s *Service) latencyWorker() {
 }
 
 func (s *Service) doProbeSpeed(id string) {
-	ctx := context.Background()
+	ctx := s.bgCtx
 	frouter, err := s.repo.Get(ctx, id)
 	if err != nil {
 		log.Printf("[FRouterSpeed] 获取 FRouter 失败 %s: %v", id, err)
@@ -191,7 +201,7 @@ func (s *Service) doProbeSpeed(id string) {
 }
 
 func (s *Service) doProbeLatency(id string) {
-	ctx := context.Background()
+	ctx := s.bgCtx
 	frouter, err := s.repo.Get(ctx, id)
 	if err != nil {
 		log.Printf("[FRouterLatency] 获取 FRouter 失败 %s: %v", id, err)

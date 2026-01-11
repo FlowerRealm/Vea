@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -24,6 +27,8 @@ import (
 
 	"github.com/google/uuid"
 )
+
+const defaultProxyPort = 1080
 
 // Facade 服务门面（API 聚合层）
 type Facade struct {
@@ -562,7 +567,7 @@ func (f *Facade) UpdateSystemProxySettings(settings domain.SystemProxySettings) 
 		inboundMode, _ := status["inboundMode"].(string)
 		inboundPort, _ := status["inboundPort"].(int)
 		if inboundPort <= 0 {
-			inboundPort = 1080
+			inboundPort = defaultProxyPort
 		}
 		if inboundMode == string(domain.InboundTUN) {
 			return domain.SystemProxySettings{}, "", fmt.Errorf("inboundMode=tun: 系统代理无需启用（请关闭系统代理，使用 TUN 接管系统流量）")
@@ -663,8 +668,110 @@ func (f *Facade) SetupTUN() error {
 }
 
 // GetIPGeo 获取 IP 地理位置
-func (f *Facade) GetIPGeo() (map[string]interface{}, error) {
-	return shared.GetIPGeo()
+func (f *Facade) GetIPGeo(ctx context.Context) (map[string]interface{}, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	if f.proxy == nil {
+		return shared.GetIPGeo(ctx)
+	}
+
+	status := f.proxy.Status(ctx)
+	running, _ := status["running"].(bool)
+	if !running {
+		return shared.GetIPGeo(ctx)
+	}
+
+	inboundMode, _ := status["inboundMode"].(string)
+	if inboundMode == string(domain.InboundTUN) {
+		// TUN 模式下由系统路由接管流量；此处无需强制走本地入站端口。
+		return shared.GetIPGeo(ctx)
+	}
+
+	inboundPort, _ := status["inboundPort"].(int)
+	if inboundPort <= 0 {
+		inboundPort = defaultProxyPort
+	}
+
+	proxyHost := "127.0.0.1"
+	auth := (*shared.SOCKS5Auth)(nil)
+	httpAuthUser := ""
+	httpAuthPass := ""
+	if f.repos != nil && f.repos.Settings() != nil {
+		if cfg, err := f.repos.Settings().GetProxyConfig(ctx); err == nil {
+			if cfg.InboundConfig != nil {
+				host := strings.TrimSpace(cfg.InboundConfig.Listen)
+				switch host {
+				case "", "0.0.0.0":
+					proxyHost = "127.0.0.1"
+				case "::":
+					proxyHost = "::1"
+				default:
+					proxyHost = host
+				}
+
+				if cfg.InboundConfig.Authentication != nil {
+					user := cfg.InboundConfig.Authentication.Username
+					pass := cfg.InboundConfig.Authentication.Password
+					if strings.TrimSpace(user) != "" {
+						auth = &shared.SOCKS5Auth{Username: user, Password: pass}
+						httpAuthUser, httpAuthPass = user, pass
+					}
+				}
+			}
+		}
+	}
+
+	proxyAddr := net.JoinHostPort(proxyHost, fmt.Sprintf("%d", inboundPort))
+
+	newClientViaSocks5 := func() *http.Client {
+		tr := http.DefaultTransport.(*http.Transport).Clone()
+		tr.Proxy = nil
+		tr.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+			return shared.DialSOCKS5Context(ctx, proxyAddr, auth, network, address)
+		}
+		return &http.Client{Timeout: 6 * time.Second, Transport: tr}
+	}
+
+	newClientViaHTTPProxy := func() *http.Client {
+		u := &url.URL{
+			Scheme: "http",
+			Host:   net.JoinHostPort(proxyHost, fmt.Sprintf("%d", inboundPort)),
+		}
+		if strings.TrimSpace(httpAuthUser) != "" {
+			u.User = url.UserPassword(httpAuthUser, httpAuthPass)
+		}
+		tr := http.DefaultTransport.(*http.Transport).Clone()
+		tr.Proxy = http.ProxyURL(u)
+		return &http.Client{Timeout: 6 * time.Second, Transport: tr}
+	}
+
+	mode := domain.InboundMode(inboundMode)
+	switch mode {
+	case domain.InboundSOCKS:
+		return shared.GetIPGeoWithHTTPClient(ctx, newClientViaSocks5())
+	case domain.InboundHTTP:
+		return shared.GetIPGeoWithHTTPClient(ctx, newClientViaHTTPProxy())
+	case domain.InboundMixed:
+		// mixed 理论上同时支持 SOCKS/HTTP，但实现可能存在差异；先尝试 SOCKS，
+		// 仅在“明显是 SOCKS 协议/握手层失败”时回退到 HTTP，避免双倍超时。
+		res, err := shared.GetIPGeoWithHTTPClient(ctx, newClientViaSocks5())
+		if err == nil {
+			return res, nil
+		}
+		if strings.Contains(err.Error(), "socks5:") {
+			return shared.GetIPGeoWithHTTPClient(ctx, newClientViaHTTPProxy())
+		}
+		return nil, err
+	default:
+		// 兜底：按 mixed 处理（优先 SOCKS）。
+		res, err := shared.GetIPGeoWithHTTPClient(ctx, newClientViaSocks5())
+		if err == nil {
+			return res, nil
+		}
+		return nil, err
+	}
 }
 
 // ========== 引擎推荐 ==========
