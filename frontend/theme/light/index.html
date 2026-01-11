@@ -4,6 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
   <title>Vea Console</title>
   <link rel="stylesheet" href="./css/main.css">
 </head>
@@ -198,14 +199,15 @@
             <h3>路由规则</h3>
             <p>拖拽调整优先级，位置越靠前优先级越高</p>
           </div>
-          <div class="chain-list-actions">
-            <div class="route-selector">
-              <span>当前 FRouter</span>
-              <select id="chain-route-select"></select>
-            </div>
-            <button id="chain-add-rule" class="chain-btn primary">+ 添加规则</button>
-          </div>
-        </div>
+	          <div class="chain-list-actions">
+	            <div class="route-selector">
+	              <span>当前 FRouter</span>
+	              <select id="chain-route-select"></select>
+	            </div>
+	            <button id="chain-manage-slots" class="chain-btn">槽位管理</button>
+	            <button id="chain-add-rule" class="chain-btn primary">+ 添加规则</button>
+	          </div>
+	        </div>
 
         <!-- 可排序规则列表 -->
         <div id="chain-rules-list" class="chain-rules-list">
@@ -296,15 +298,39 @@
             </div>
           </div>
 
-          <div class="chain-rule-dialog-footer">
-            <button class="chain-btn danger" id="rule-delete" style="display:none;">删除</button>
-            <div style="flex:1;"></div>
-            <button class="chain-btn" id="rule-cancel">取消</button>
-            <button class="chain-btn primary" id="rule-save">保存</button>
-          </div>
-        </div>
-      </div>
-    </section>
+	          <div class="chain-rule-dialog-footer">
+	            <button class="chain-btn danger" id="rule-delete" style="display:none;">删除</button>
+	            <div style="flex:1;"></div>
+	            <button class="chain-btn" id="rule-cancel">取消</button>
+	            <button class="chain-btn primary" id="rule-save">保存</button>
+	          </div>
+	        </div>
+	      </div>
+
+	      <!-- 槽位管理弹窗 -->
+	      <div class="chain-rule-dialog" id="slot-manage-dialog">
+	        <div class="chain-rule-dialog-content">
+	          <div class="chain-rule-dialog-header">
+	            <h4>槽位管理</h4>
+	            <button class="chain-rule-dialog-close" id="slot-dialog-close">&times;</button>
+	          </div>
+
+	          <div class="chain-rule-dialog-body">
+	            <div class="chain-form-group">
+	              <div id="slot-list" class="slot-list"></div>
+	              <div class="rule-chain-hint">槽位是可被规则引用的占位符，可绑定到具体节点；未绑定的槽位会在编译时被跳过。</div>
+	            </div>
+	          </div>
+
+	          <div class="chain-rule-dialog-footer">
+	            <button class="chain-btn" id="slot-add">+ 添加槽位</button>
+	            <div style="flex:1;"></div>
+	            <button class="chain-btn" id="slot-cancel">关闭</button>
+	            <button class="chain-btn primary" id="slot-save">保存</button>
+	          </div>
+	        </div>
+	      </div>
+	    </section>
 
 	    <!-- FRouters -->
 	    <section id="panel1" class="panel">

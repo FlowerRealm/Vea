@@ -44,7 +44,7 @@ import { createAPI, utils } from './vea-sdk.esm.js';
       };
 	      let froutersCache = [];
 	      let nodesCache = [];
-	      let configsCache = [];
+		      let configsCache = null;
 	      let currentFRouterId = "";
 	      let componentsCache = [];
 	      let froutersPollHandle = null;
@@ -1930,13 +1930,14 @@ import { createAPI, utils } from './vea-sdk.esm.js';
 	          loadFRouters(),
           loadNodes(),
           loadComponents(),
-          loadIPGeo(),
-          refreshCoreStatus({ notify }),
           loadSystemProxySettings({ notify }),
           checkTUNStatus({ notify }),
           loadTUNSettings(),
           loadEngineSettings()
 	        ]);
+
+        await refreshCoreStatus({ notify });
+        await loadIPGeo();
 	        updateHomeFRouterMetrics();
           updateEngineSelectOptions();
 	        autoTestHomePanel({ notify: true });
@@ -2179,18 +2180,20 @@ import { createAPI, utils } from './vea-sdk.esm.js';
       let chainEditorInitialized = false;
 
       class ChainListEditor {
-        constructor(container, apiClient) {
-          this.container = container;
-          this.api = apiClient;
-          this.frouterId = '';
-          this.edges = [];
-          this.detourEdges = [];
-          this.slots = [];
-          this.nodes = [];
-          this.dirty = false;
-          this.draggedItem = null;
-          this.editingEdgeId = null;
-        }
+	        constructor(container, apiClient) {
+	          this.container = container;
+	          this.api = apiClient;
+	          this.frouterId = '';
+	          this.edges = [];
+	          this.detourEdges = [];
+	          this.slots = [];
+	          this.positions = {};
+	          this.nodes = [];
+	          this.dirty = false;
+	          this.draggedItem = null;
+	          this.editingEdgeId = null;
+	          this.slotDraft = null;
+	        }
 
         setFRouterId(id) {
           this.frouterId = id;
@@ -2212,29 +2215,33 @@ import { createAPI, utils } from './vea-sdk.esm.js';
           }
         }
 
-        async loadGraph() {
-          try {
-            await this.loadNodes();
-            const path = this.frouterId
-              ? `/frouters/${encodeURIComponent(this.frouterId)}/graph`
-              : '/graph';
-            const data = await this.api.get(path);
-            const allEdges = Array.isArray(data.edges) ? data.edges : [];
-            this.edges = allEdges.filter(e => (e?.from || '') === 'local');
-            this.detourEdges = allEdges.filter(e => (e?.from || '') !== 'local');
-            this.slots = Array.isArray(data.slots) ? data.slots : [];
-            this.sortEdgesByPriority();
-            this.render();
-            this.dirty = false;
-            this.updateStatus();
-          } catch (err) {
-            console.error('加载图数据失败:', err);
-            this.edges = [];
-            this.detourEdges = [];
-            this.slots = [];
-            this.render();
-          }
-        }
+	        async loadGraph() {
+	          try {
+	            await this.loadNodes();
+	            const path = this.frouterId
+	              ? `/frouters/${encodeURIComponent(this.frouterId)}/graph`
+	              : '/graph';
+	            const data = await this.api.get(path);
+	            const allEdges = Array.isArray(data.edges) ? data.edges : [];
+	            this.edges = allEdges.filter(e => (e?.from || '') === 'local');
+	            this.detourEdges = allEdges.filter(e => (e?.from || '') !== 'local');
+	            this.slots = Array.isArray(data.slots) ? data.slots : [];
+	            this.positions = (data && data.positions && typeof data.positions === 'object' && !Array.isArray(data.positions))
+	              ? data.positions
+	              : {};
+	            this.sortEdgesByPriority();
+	            this.render();
+	            this.dirty = false;
+	            this.updateStatus();
+	          } catch (err) {
+	            console.error('加载图数据失败:', err);
+	            this.edges = [];
+	            this.detourEdges = [];
+	            this.slots = [];
+	            this.positions = {};
+	            this.render();
+	          }
+	        }
 
         sortEdgesByPriority() {
           this.edges.sort((a, b) => (b.priority || 0) - (a.priority || 0));
@@ -2555,10 +2562,10 @@ import { createAPI, utils } from './vea-sdk.esm.js';
           return null;
         }
 
-        bindEvents() {
-          const list = this.container.querySelector('#chain-rules-list');
-          if (list) {
-            list.addEventListener('dragstart', (e) => this.onDragStart(e));
+	        bindEvents() {
+	          const list = this.container.querySelector('#chain-rules-list');
+	          if (list) {
+	            list.addEventListener('dragstart', (e) => this.onDragStart(e));
             list.addEventListener('dragover', (e) => this.onDragOver(e));
             list.addEventListener('dragend', (e) => this.onDragEnd(e));
             list.addEventListener('drop', (e) => this.onDrop(e));
@@ -2602,11 +2609,30 @@ import { createAPI, utils } from './vea-sdk.esm.js';
             this.appendChainHopRow(list, last);
           });
 
-          this.container.querySelector('#rule-chain-list')?.addEventListener('click', (e) => {
-            if (e.target?.dataset?.action !== 'chain-remove') return;
-            e.target.closest('.rule-chain-item')?.remove();
-          });
-        }
+	          this.container.querySelector('#rule-chain-list')?.addEventListener('click', (e) => {
+	            if (e.target?.dataset?.action !== 'chain-remove') return;
+	            e.target.closest('.rule-chain-item')?.remove();
+	          });
+
+	          // 槽位管理弹窗
+	          this.container.querySelector('#chain-manage-slots')?.addEventListener('click', () => this.openSlotDialog());
+	          const slotDialog = this.container.querySelector('#slot-manage-dialog');
+	          if (slotDialog) {
+	            slotDialog.addEventListener('click', (e) => {
+	              if (e.target === slotDialog) this.closeSlotDialog();
+	            });
+	          }
+	          this.container.querySelector('#slot-dialog-close')?.addEventListener('click', () => this.closeSlotDialog());
+	          this.container.querySelector('#slot-cancel')?.addEventListener('click', () => this.closeSlotDialog());
+	          this.container.querySelector('#slot-save')?.addEventListener('click', () => this.saveSlotDialog());
+	          this.container.querySelector('#slot-add')?.addEventListener('click', () => this.addSlotDraft());
+
+	          const slotList = this.container.querySelector('#slot-list');
+	          if (slotList) {
+	            slotList.addEventListener('input', (e) => this.onSlotDialogInput(e));
+	            slotList.addEventListener('change', (e) => this.onSlotDialogChange(e));
+	          }
+	        }
 
         // 拖拽排序
         onDragStart(e) {
@@ -2749,15 +2775,198 @@ import { createAPI, utils } from './vea-sdk.esm.js';
           dialog?.classList.add('open');
         }
 
-        closeEditDialog() {
-          this.editingEdgeId = null;
-          const dialog = this.container.querySelector('#rule-edit-dialog');
-          dialog?.classList.remove('open');
-        }
+	        closeEditDialog() {
+	          this.editingEdgeId = null;
+	          const dialog = this.container.querySelector('#rule-edit-dialog');
+	          dialog?.classList.remove('open');
+	        }
 
-        saveEditDialog() {
-          const edge = this.edges.find(e => e.id === this.editingEdgeId);
-          if (!edge) return;
+	        // ===== 槽位管理 =====
+	        openSlotDialog() {
+	          const dialog = this.container.querySelector('#slot-manage-dialog');
+	          if (!dialog) {
+	            showStatus('当前主题缺少槽位管理弹窗', 'error', 4000);
+	            return;
+	          }
+
+	          const slots = Array.isArray(this.slots) ? this.slots : [];
+	          this.slotDraft = slots
+	            .map(s => ({
+	              id: (s?.id == null ? '' : String(s.id)).trim(),
+	              name: s?.name == null ? '' : String(s.name),
+	              boundNodeId: (s?.boundNodeId == null ? '' : String(s.boundNodeId)).trim()
+	            }))
+	            .filter(s => s.id);
+
+	          this.renderSlotDialog();
+	          dialog.classList.add('open');
+	        }
+
+	        closeSlotDialog() {
+	          const dialog = this.container.querySelector('#slot-manage-dialog');
+	          dialog?.classList.remove('open');
+	          this.slotDraft = null;
+	        }
+
+	        addSlotDraft() {
+	          const draft = Array.isArray(this.slotDraft) ? [...this.slotDraft] : [];
+	          const used = new Set(draft.map(s => (s?.id == null ? '' : String(s.id)).trim()).filter(Boolean));
+
+	          let maxNumeric = 0;
+	          for (const id of used) {
+	            const m = /^slot-(\d+)$/.exec(id);
+	            if (!m) continue;
+	            const n = Number(m[1]);
+	            if (Number.isFinite(n)) maxNumeric = Math.max(maxNumeric, n);
+	          }
+
+	          let idx = maxNumeric + 1;
+	          let id = `slot-${idx}`;
+	          while (used.has(id)) {
+	            idx++;
+	            id = `slot-${idx}`;
+	          }
+
+	          draft.push({ id, name: `槽位 ${idx}`, boundNodeId: '' });
+	          this.slotDraft = draft;
+	          this.renderSlotDialog();
+	        }
+
+	        buildSlotBoundOptions(boundNodeId) {
+	          const nodes = Array.isArray(this.nodes) ? [...this.nodes] : [];
+	          const selected = (boundNodeId == null ? '' : String(boundNodeId)).trim();
+	          const hasBound = selected && nodes.some(n => n?.id === selected);
+	          const optionHtml = (val, label, isSelected) => {
+	            const sel = isSelected ? ' selected' : '';
+	            return `<option value="${escapeHtml(val)}"${sel}>${escapeHtml(label)}</option>`;
+	          };
+
+	          let html = '';
+	          html += optionHtml('', '未绑定', !selected);
+	          if (selected && !hasBound) {
+	            html += optionHtml(selected, `未知绑定: ${selected}`, true);
+	          }
+
+	          const groups = typeof groupNodesBySubscription === 'function'
+	            ? groupNodesBySubscription(nodes)
+	            : [{ label: '节点', nodes }];
+
+	          for (const group of groups) {
+	            const opts = [];
+	            for (const n of group.nodes || []) {
+	              const id = n?.id;
+	              if (!id) continue;
+	              opts.push(optionHtml(id, n?.name || id, id === selected));
+	            }
+	            if (opts.length > 0) {
+	              html += `<optgroup label="${escapeHtml(group.label || '节点')}">${opts.join('')}</optgroup>`;
+	            }
+	          }
+
+	          return html;
+	        }
+
+	        renderSlotDialog() {
+	          const list = this.container.querySelector('#slot-list');
+	          if (!list) return;
+	          const draft = Array.isArray(this.slotDraft) ? this.slotDraft : [];
+
+	          if (draft.length === 0) {
+	            list.innerHTML = '<div class="chain-rules-empty">暂无槽位，点击“添加槽位”创建</div>';
+	            return;
+	          }
+
+	          list.innerHTML = draft.map((s) => {
+	            const id = (s?.id || '').trim();
+	            const name = s?.name == null ? '' : String(s.name);
+	            const bound = (s?.boundNodeId || '').trim();
+	            return `
+	              <div class="rule-chain-item slot-row" data-slot-id="${escapeHtml(id)}">
+	                <span class="slot-id" title="${escapeHtml(id)}">${escapeHtml(id)}</span>
+	                <input type="text" class="slot-name" placeholder="槽位名称" value="${escapeHtml(name)}">
+	                <select class="slot-bound">${this.buildSlotBoundOptions(bound)}</select>
+	              </div>
+	            `;
+	          }).join('');
+	        }
+
+	        onSlotDialogInput(e) {
+	          const input = e.target;
+	          if (!input || !input.classList || !input.classList.contains('slot-name')) return;
+	          const row = input.closest('.slot-row');
+	          const id = row?.dataset?.slotId || '';
+	          if (!id || !Array.isArray(this.slotDraft)) return;
+	          const slot = this.slotDraft.find(s => s?.id === id);
+	          if (!slot) return;
+	          slot.name = input.value;
+	        }
+
+	        onSlotDialogChange(e) {
+	          const select = e.target;
+	          if (!select || !select.classList || !select.classList.contains('slot-bound')) return;
+	          const row = select.closest('.slot-row');
+	          const id = row?.dataset?.slotId || '';
+	          if (!id || !Array.isArray(this.slotDraft)) return;
+	          const slot = this.slotDraft.find(s => s?.id === id);
+	          if (!slot) return;
+	          slot.boundNodeId = select.value;
+	        }
+
+	        validateAndNormalizeSlotDraft() {
+	          const draft = Array.isArray(this.slotDraft) ? this.slotDraft : [];
+	          const nodes = Array.isArray(this.nodes) ? this.nodes : [];
+	          const validateBound = nodes.length > 0;
+	          const nodeIDs = new Set(nodes.map(n => n?.id).filter(Boolean));
+
+	          const seen = new Set();
+	          const slots = [];
+	          for (const raw of draft) {
+	            const id = (raw?.id == null ? '' : String(raw.id)).trim();
+	            if (!id) return { ok: false, error: '槽位 id 为空' };
+	            if (!id.startsWith('slot-')) return { ok: false, error: `槽位 ${id} 的 id 必须以 slot- 开头` };
+	            if (seen.has(id)) return { ok: false, error: `槽位 id 重复: ${id}` };
+	            seen.add(id);
+
+	            const name = raw?.name == null ? '' : String(raw.name).trim();
+	            const bound = (raw?.boundNodeId == null ? '' : String(raw.boundNodeId)).trim();
+	            if (bound && validateBound && !nodeIDs.has(bound)) {
+	              return { ok: false, error: `槽位 ${id} 绑定的节点不存在: ${bound}` };
+	            }
+	            slots.push({ id, name, boundNodeId: bound });
+	          }
+
+	          return { ok: true, slots };
+	        }
+
+	        refreshRuleDialogSelects() {
+	          const dialog = this.container.querySelector('#rule-edit-dialog');
+	          if (!dialog || !dialog.classList.contains('open')) return;
+
+	          const toSelect = this.container.querySelector('#rule-to');
+	          if (toSelect) this.fillRuleToSelect(toSelect, toSelect.value);
+
+	          this.container.querySelectorAll('#rule-chain-list .rule-chain-hop').forEach((sel) => {
+	            this.fillChainHopSelect(sel, sel.value);
+	          });
+	        }
+
+	        saveSlotDialog() {
+	          const result = this.validateAndNormalizeSlotDraft();
+	          if (!result.ok) {
+	            showStatus(`槽位配置无效：${result.error}`, 'error', 5000);
+	            return;
+	          }
+
+	          this.slots = result.slots;
+	          this.render();
+	          this.markDirty();
+	          this.refreshRuleDialogSelects();
+	          this.closeSlotDialog();
+	        }
+
+	        saveEditDialog() {
+	          const edge = this.edges.find(e => e.id === this.editingEdgeId);
+	          if (!edge) return;
 
           const toSelect = this.container.querySelector('#rule-to');
           const typeSelect = this.container.querySelector('#rule-type');
@@ -2800,21 +3009,21 @@ import { createAPI, utils } from './vea-sdk.esm.js';
         }
 
         // 保存
-        async saveGraph() {
-          try {
-            const path = this.frouterId
-              ? `/frouters/${encodeURIComponent(this.frouterId)}/graph`
-              : '/graph';
+	        async saveGraph() {
+	          try {
+	            const path = this.frouterId
+	              ? `/frouters/${encodeURIComponent(this.frouterId)}/graph`
+	              : '/graph';
 
-            const data = {
-              edges: [...this.edges, ...this.detourEdges],
-              slots: this.slots,
-              positions: {}
-            };
+	            const data = {
+	              edges: [...this.edges, ...this.detourEdges],
+	              slots: Array.isArray(this.slots) ? this.slots : [],
+	              positions: (this.positions && typeof this.positions === 'object' && !Array.isArray(this.positions)) ? this.positions : {}
+	            };
 
-            await this.api.put(path, data);
-            this.dirty = false;
-            this.updateStatus();
+	            await this.api.put(path, data);
+	            this.dirty = false;
+	            this.updateStatus();
             return { success: true };
           } catch (err) {
             console.error('保存失败:', err);
@@ -2946,10 +3155,16 @@ import { createAPI, utils } from './vea-sdk.esm.js';
       }
 
       async function initChainEditor() {
-        if (chainEditorInitialized) return;
-
         const container = document.getElementById('panel-chain');
         if (!container) return;
+
+        if (chainEditorInitialized && chainListEditor) {
+          const current = getCurrentFRouter();
+          chainListEditor.setFRouterId(current ? current.id : "");
+          await chainListEditor.loadGraph();
+          return;
+        }
+        if (chainEditorInitialized) return;
 
         async function waitForProxyRestartError(prevRestartAt) {
           const timeoutMs = 20000;
@@ -3046,10 +3261,13 @@ import { createAPI, utils } from './vea-sdk.esm.js';
 		        "panel-home": () => loadHomePanel(),
 		        panel1: loadFRouters,
 		        panel2: loadConfigs,
-		        "panel-nodes": () => {
-		          startNodesPolling();
-		          return loadNodes();
-		        },
+			        "panel-nodes": async () => {
+			          startNodesPolling();
+			          if (!Array.isArray(configsCache)) {
+			            await loadConfigs();
+			          }
+			          return loadNodes();
+			        },
 		        panel3: () => loadComponents(),
 		        "panel-logs": () => {
 		          ensureLogsTabs();
@@ -4139,31 +4357,93 @@ import { createAPI, utils } from './vea-sdk.esm.js';
         advanced: 'settings-advanced'
       };
 
-      let themeCatalog = [];
+	      let themeCatalog = [];
 
-      function getThemesBaseHref() {
-        const href = window.location.href;
-        const marker = '/themes/';
-        const idx = href.lastIndexOf(marker);
-        if (idx === -1) return '';
-        return href.slice(0, idx + marker.length);
-      }
+	      function normalizeThemePathname(pathname) {
+	        const raw = String(pathname || '');
+	        if (!raw) return '';
 
-      function getCurrentThemeEntry() {
-        const href = window.location.href;
-        const marker = '/themes/';
-        const idx = href.lastIndexOf(marker);
-        if (idx === -1) return '';
-        const rel = href.slice(idx + marker.length).split(/[?#]/)[0];
-        try {
-          return decodeURI(rel);
-        } catch {
-          return rel;
-        }
-      }
+	        let decoded = raw;
+	        try {
+	          decoded = decodeURI(raw);
+	        } catch {}
 
-      function normalizeEntry(entry) {
-        return String(entry || '').trim().replace(/^\/+/, '');
+	        if (decoded.includes('%')) {
+	          try {
+	            decoded = decodeURIComponent(raw);
+	          } catch {}
+	        }
+
+	        return decoded.replace(/\\/g, '/');
+	      }
+
+	      function getThemeMarkerInfo() {
+	        try {
+	          const url = new URL(window.location.href);
+	          const pathname = normalizeThemePathname(url.pathname);
+	          const markers = ['/themes/', '/theme/'];
+	          for (const marker of markers) {
+	            const idx = pathname.lastIndexOf(marker);
+	            if (idx !== -1) {
+	              return { url, pathname, marker, idx };
+	            }
+	          }
+	          return { url, pathname, marker: '', idx: -1 };
+	        } catch {
+	          return { url: null, pathname: '', marker: '', idx: -1 };
+	        }
+	      }
+
+	      function getThemesBaseHref() {
+	        const info = getThemeMarkerInfo();
+	        if (!info.url || info.idx === -1) return '';
+	        const basePath = info.pathname.slice(0, info.idx + info.marker.length);
+	        info.url.hash = '';
+	        info.url.search = '';
+	        info.url.pathname = basePath;
+	        return info.url.toString();
+	      }
+
+	      function getCurrentThemeEntry() {
+	        const info = getThemeMarkerInfo();
+	        if (!info.url || info.idx === -1) return '';
+	        return info.pathname.slice(info.idx + info.marker.length).replace(/^\/+/, '');
+	      }
+
+	      function resolveBuiltinThemeHref(themeId) {
+	        const next = String(themeId || '').trim();
+	        if (next !== 'dark' && next !== 'light') return '';
+
+	        try {
+	          const url = new URL(window.location.href);
+	          const pathname = normalizeThemePathname(url.pathname);
+	          const markers = ['/themes/', '/theme/'];
+
+	          for (const marker of markers) {
+	            const idx = pathname.lastIndexOf(marker);
+	            if (idx !== -1) {
+	              const basePath = pathname.slice(0, idx + marker.length);
+	              url.hash = '';
+	              url.search = '';
+	              url.pathname = basePath + `${next}/index.html`;
+	              return url.toString();
+	            }
+	          }
+
+	          const sibling = pathname.replace(/\/[^/]+\/index\.html$/i, `/${next}/index.html`);
+	          if (sibling !== pathname) {
+	            url.hash = '';
+	            url.search = '';
+	            url.pathname = sibling;
+	            return url.toString();
+	          }
+	        } catch {}
+
+	        return '';
+	      }
+
+	      function normalizeEntry(entry) {
+	        return String(entry || '').trim().replace(/^\/+/, '');
       }
 
       function resolveThemeHref(entry) {
@@ -4290,17 +4570,20 @@ import { createAPI, utils } from './vea-sdk.esm.js';
           return;
         }
 
-        let picked = themes.find((t) => t && t.id === next);
-        if (!picked) {
-          themes = await fetchThemes();
-          themeCatalog = themes;
-          picked = themes.find((t) => t && t.id === next);
-        }
-        const href = picked && picked.entry ? resolveThemeHref(picked.entry) : '';
-        if (!href) {
-          showStatus(`无法解析主题入口：${next}`, 'error', 6000);
-          return;
-        }
+	        let picked = themes.find((t) => t && t.id === next);
+	        if (!picked) {
+	          themes = await fetchThemes();
+	          themeCatalog = themes;
+	          picked = themes.find((t) => t && t.id === next);
+	        }
+	        let href = picked && picked.entry ? resolveThemeHref(picked.entry) : '';
+	        if (!href && (next === 'dark' || next === 'light')) {
+	          href = resolveBuiltinThemeHref(next);
+	        }
+	        if (!href) {
+	          showStatus(`无法解析主题入口：${next}`, 'error', 6000);
+	          return;
+	        }
 
         showStatus('正在切换主题...', 'info', 1200);
         window.location.href = href;

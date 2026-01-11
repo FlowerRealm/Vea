@@ -677,19 +677,54 @@ func (f *Facade) GetIPGeo(ctx context.Context) (map[string]interface{}, error) {
 		return shared.GetIPGeo(ctx)
 	}
 
+	sleepWithContext := func(d time.Duration) error {
+		if d <= 0 {
+			return nil
+		}
+		t := time.NewTimer(d)
+		defer t.Stop()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-t.C:
+			return nil
+		}
+	}
+
 	status := f.proxy.Status(ctx)
+	if busy, _ := status["busy"].(bool); busy {
+		// proxy.Status() 内部用 TryLock；并发时会返回 busy=true 且 running=false。
+		// 这里不要误判为“未运行”回落直连探测（会导致首页显示真实出口 IP）。
+		const retry = 4
+		for i := 0; i < retry; i++ {
+			if err := sleepWithContext(60 * time.Millisecond); err != nil {
+				return nil, err
+			}
+			status = f.proxy.Status(ctx)
+			if busyNow, _ := status["busy"].(bool); !busyNow {
+				break
+			}
+		}
+		if busyNow, _ := status["busy"].(bool); busyNow {
+			return nil, errors.New("内核忙碌，请稍后重试")
+		}
+	}
 	running, _ := status["running"].(bool)
 	if !running {
 		return shared.GetIPGeo(ctx)
 	}
 
 	inboundMode, _ := status["inboundMode"].(string)
-	if inboundMode == string(domain.InboundTUN) {
-		// TUN 模式下由系统路由接管流量；此处无需强制走本地入站端口。
-		return shared.GetIPGeo(ctx)
-	}
 
 	inboundPort, _ := status["inboundPort"].(int)
+	mode := domain.InboundMode(inboundMode)
+	if mode == domain.InboundTUN {
+		// TUN 模式优先依赖系统路由；但当用户显式配置了本地入站端口时，优先走本地入站以提升“当前 IP”探测稳定性。
+		if inboundPort <= 0 {
+			return shared.GetIPGeo(ctx)
+		}
+		mode = domain.InboundMixed
+	}
 	if inboundPort <= 0 {
 		inboundPort = defaultProxyPort
 	}
@@ -747,7 +782,6 @@ func (f *Facade) GetIPGeo(ctx context.Context) (map[string]interface{}, error) {
 		return &http.Client{Timeout: 6 * time.Second, Transport: tr}
 	}
 
-	mode := domain.InboundMode(inboundMode)
 	switch mode {
 	case domain.InboundSOCKS:
 		return shared.GetIPGeoWithHTTPClient(ctx, newClientViaSocks5())
