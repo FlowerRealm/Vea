@@ -4022,7 +4022,7 @@
           tunSettingsCache = { enabled: updated && updated.inboundMode === "tun" };
           updateTUNToggle(tunSettingsCache || { enabled: false });
 
-          // 启用 TUN 时系统代理应该关闭（否则系统会指向一个不存在的本地端口）。
+          // 启用 TUN 时先关闭系统代理，避免重启期间系统代理短暂指向“黑洞”导致断网。
           if (enabled) {
             try {
               const response = await api.put("/settings/system-proxy", {
@@ -7455,20 +7455,14 @@
 
         const inboundMode = currentCfg && currentCfg.inboundMode ? currentCfg.inboundMode : "mixed";
 
-        // TUN 模式下端口不生效，但仍可提前保存到配置中（切回非 TUN 时生效）。
-        if (inboundMode === "tun") {
-          try {
-            await api.put("/proxy/config", { inboundPort: normalized });
-            showStatus("已保存代理端口（当前为 TUN 模式，切回非 TUN 后生效）", "info", 4000);
-          } catch (err) {
-            showStatus(`保存代理端口失败：${err.message}`, "error", 6000);
-          }
-          return;
-        }
-
-        // 非 TUN：强制保持 mixed（系统代理场景需要 HTTP + SOCKS）
+        // 端口在 TUN / 非 TUN 下都会生效（需要重启内核应用）。
         try {
-          await api.put("/proxy/config", { inboundMode: "mixed", inboundPort: normalized });
+          if (inboundMode === "tun") {
+            await api.put("/proxy/config", { inboundPort: normalized });
+          } else {
+            // 非 TUN：强制保持 mixed（系统代理场景需要 HTTP + SOCKS）
+            await api.put("/proxy/config", { inboundMode: "mixed", inboundPort: normalized });
+          }
         } catch (err) {
           showStatus(`保存代理端口失败：${err.message}`, "error", 6000);
           return;

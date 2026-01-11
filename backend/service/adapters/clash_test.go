@@ -87,6 +87,76 @@ func TestClashAdapter_TUNDNSListenAvoidsPort53(t *testing.T) {
 	}
 }
 
+func TestClashAdapter_TUNIncludesMixedPort(t *testing.T) {
+	frouter := domain.FRouter{
+		ID:   "fr1",
+		Name: "test",
+		ChainProxy: domain.ChainProxySettings{
+			Edges: []domain.ProxyEdge{
+				{
+					ID:       "e1",
+					From:     domain.EdgeNodeLocal,
+					To:       domain.EdgeNodeDirect,
+					Priority: 0,
+					Enabled:  true,
+				},
+			},
+		},
+	}
+
+	cfg := domain.ProxyConfig{
+		InboundMode:     domain.InboundTUN,
+		InboundPort:     23456,
+		PreferredEngine: domain.EngineClash,
+		FRouterID:       frouter.ID,
+		TUNSettings: &domain.TUNConfiguration{
+			InterfaceName: "tun0",
+			MTU:           9000,
+			Address:       []string{"198.18.0.1/30"},
+			AutoRoute:     true,
+			StrictRoute:   true,
+			Stack:         "mixed",
+			DNSHijack:     true,
+		},
+	}
+
+	plan, err := nodegroup.CompileProxyPlan(domain.EngineClash, cfg, frouter, nil)
+	if err != nil {
+		t.Fatalf("CompileProxyPlan: %v", err)
+	}
+
+	out, err := (&ClashAdapter{}).BuildConfig(plan, GeoFiles{})
+	if err != nil {
+		t.Fatalf("BuildConfig: %v", err)
+	}
+
+	var m map[string]interface{}
+	if err := yaml.Unmarshal(out, &m); err != nil {
+		t.Fatalf("yaml.Unmarshal: %v", err)
+	}
+
+	got, ok := m["mixed-port"]
+	if !ok {
+		t.Fatalf("expected mixed-port to be set in tun mode")
+	}
+	switch v := got.(type) {
+	case int:
+		if v != cfg.InboundPort {
+			t.Fatalf("expected mixed-port=%d, got %v", cfg.InboundPort, v)
+		}
+	case int64:
+		if int(v) != cfg.InboundPort {
+			t.Fatalf("expected mixed-port=%d, got %v", cfg.InboundPort, v)
+		}
+	case uint64:
+		if int(v) != cfg.InboundPort {
+			t.Fatalf("expected mixed-port=%d, got %v", cfg.InboundPort, v)
+		}
+	default:
+		t.Fatalf("expected mixed-port to be a number, got %T %v", got, got)
+	}
+}
+
 func TestClashAdapter_TUNTunInet4AddressIsList(t *testing.T) {
 	frouter := domain.FRouter{
 		ID:   "fr1",

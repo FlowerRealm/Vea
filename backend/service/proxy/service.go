@@ -757,6 +757,18 @@ func (s *Service) startProcess(adapter adapters.CoreAdapter, engine domain.CoreE
 				return fmt.Errorf("TUN interface not ready: %w", err)
 			}
 			s.tunIface = interfaceName
+
+			// TUN 也可能同时开启本地代理端口（HTTP/SOCKS），这里同样做 readiness probe。
+			if cfg.InboundPort > 0 {
+				handle.Port = cfg.InboundPort
+				if err := adapter.WaitForReady(handle, 5*time.Second); err != nil {
+					_ = adapter.Stop(handle)
+					s.mainHandle = nil
+					s.mainEngine = ""
+					s.tunIface = ""
+					return fmt.Errorf("process not ready: %w", err)
+				}
+			}
 			return nil
 		}
 
@@ -769,6 +781,18 @@ func (s *Service) startProcess(adapter adapters.CoreAdapter, engine domain.CoreE
 			return fmt.Errorf("TUN interface not ready: %w", err)
 		}
 		s.tunIface = ifaceName
+
+		// TUN 也可能同时开启本地代理端口（HTTP/SOCKS），这里同样做 readiness probe。
+		if cfg.InboundPort > 0 {
+			handle.Port = cfg.InboundPort
+			if err := adapter.WaitForReady(handle, 5*time.Second); err != nil {
+				_ = adapter.Stop(handle)
+				s.mainHandle = nil
+				s.mainEngine = ""
+				s.tunIface = ""
+				return fmt.Errorf("process not ready: %w", err)
+			}
+		}
 		return nil
 	}
 
