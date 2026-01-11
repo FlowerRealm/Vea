@@ -47,7 +47,7 @@ func TestGETSnapshot_IncludesRuntimeMetrics(t *testing.T) {
 	componentSvc := component.NewService(context.Background(), componentRepo)
 	geoSvc := geo.NewService(geoRepo)
 
-	facade := service.NewFacade(nodeSvc, frouterSvc, configSvc, proxySvc, componentSvc, geoSvc, repos)
+	facade := service.NewFacade(nodeSvc, frouterSvc, configSvc, proxySvc, componentSvc, geoSvc, nil, repos)
 	router := NewRouter(facade)
 
 	createdNode, err := nodeRepo.Create(context.Background(), domain.Node{

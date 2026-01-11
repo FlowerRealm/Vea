@@ -17,7 +17,7 @@
 
 ### Frontend
 
-- 主题 UI：`frontend/theme/light.html`、`frontend/theme/dark.html`（主操作单元为 FRouter；主页自动测速/测延迟当前 FRouter）
+- 主题 UI：`frontend/theme/light/index.html`、`frontend/theme/dark/index.html`（主操作单元为 FRouter；主页自动测速/测延迟当前 FRouter）
 - 图编辑器：`frontend/chain-editor/chain-editor.js`（接口：`/frouters/:id/graph`；图语义：`local`/`direct`/`block`/slot；只允许 `local->*` 写规则）
 
 ### SDK

@@ -44,7 +44,7 @@ func TestFacade_Snapshot_IncludesRuntimeMetrics(t *testing.T) {
 	componentSvc := component.NewService(context.Background(), componentRepo)
 	geoSvc := geo.NewService(geoRepo)
 
-	facade := NewFacade(nodeSvc, frouterSvc, configSvc, proxySvc, componentSvc, geoSvc, repos)
+	facade := NewFacade(nodeSvc, frouterSvc, configSvc, proxySvc, componentSvc, geoSvc, nil, repos)
 
 	createdNode, err := nodeRepo.Create(context.Background(), domain.Node{
 		Name:     "node-1",
@@ -125,7 +125,7 @@ func TestFacade_Snapshot_PropagatesListError(t *testing.T) {
 	expected := errors.New("boom")
 	nodeSvc := nodes.NewService(context.Background(), &errorNodeRepo{err: expected})
 
-	facade := NewFacade(nodeSvc, nil, nil, nil, nil, nil, nil)
+	facade := NewFacade(nodeSvc, nil, nil, nil, nil, nil, nil, nil)
 	_, err := facade.Snapshot()
 	if !errors.Is(err, expected) {
 		t.Fatalf("expected %v, got %v", expected, err)

@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -17,7 +18,10 @@ import (
 	"vea/backend/service"
 	nodeshare "vea/backend/service/node"
 	"vea/backend/service/nodegroup"
+	themesvc "vea/backend/service/theme"
 )
+
+const maxThemeZipBytes int64 = themesvc.DefaultMaxZipBytes
 
 type Router struct {
 	service              *service.Facade
@@ -33,6 +37,7 @@ func NewRouter(svc *service.Facade) *gin.Engine {
 	r.nodeNotFoundErr, r.frouterNotFoundErr, r.configNotFoundErr, r.geoNotFoundErr, r.componentNotFoundErr = svc.Errors()
 	engine := gin.New()
 	engine.Use(gin.Recovery())
+	engine.MaxMultipartMemory = 64 << 20
 	r.register(engine)
 	return engine
 }
@@ -135,6 +140,14 @@ func (r *Router) register(engine *gin.Engine) {
 		settings.PUT("/system-proxy", r.updateSystemProxySettings)
 		settings.GET("/frontend", r.getFrontendSettings)
 		settings.PUT("/frontend", r.saveFrontendSettings)
+	}
+
+	themes := engine.Group("/themes")
+	{
+		themes.GET("", r.listThemes)
+		themes.POST("/import", r.importTheme)
+		themes.GET(":id/export", r.exportTheme)
+		themes.DELETE(":id", r.deleteTheme)
 	}
 
 	proxy := engine.Group("/proxy")
@@ -997,6 +1010,19 @@ func (r *Router) handleError(c *gin.Context, err error) {
 		return
 	}
 
+	if errors.Is(err, themesvc.ErrInvalidThemeID) ||
+		errors.Is(err, themesvc.ErrThemeMissingIndex) ||
+		errors.Is(err, themesvc.ErrThemeManifestInvalid) ||
+		errors.Is(err, themesvc.ErrThemeZipInvalid) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if errors.Is(err, themesvc.ErrThemeZipTooLarge) {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": err.Error()})
+		return
+	}
+
 	if errors.Is(err, r.frouterNotFoundErr) ||
 		errors.Is(err, r.nodeNotFoundErr) ||
 		errors.Is(err, r.configNotFoundErr) ||
@@ -1006,8 +1032,112 @@ func (r *Router) handleError(c *gin.Context, err error) {
 		return
 	}
 
+	if errors.Is(err, themesvc.ErrThemeNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
 	log.Printf("[API] %s %s: %v", c.Request.Method, c.Request.URL.Path, err)
 	c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+}
+
+func (r *Router) listThemes(c *gin.Context) {
+	themes, err := r.service.ListThemes()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"themes": themes})
+}
+
+func (r *Router) importTheme(c *gin.Context) {
+	file, err := c.FormFile("file")
+	if err != nil {
+		badRequest(c, err)
+		return
+	}
+	if file.Size > maxThemeZipBytes {
+		r.handleError(c, themesvc.ErrThemeZipTooLarge)
+		return
+	}
+
+	src, err := file.Open()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	defer src.Close()
+
+	tmp, err := os.CreateTemp("", "vea-theme-*.zip")
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+
+	written, copyErr := io.Copy(tmp, io.LimitReader(src, maxThemeZipBytes+1))
+	closeErr := tmp.Close()
+	if copyErr != nil {
+		r.handleError(c, copyErr)
+		return
+	}
+	if closeErr != nil {
+		r.handleError(c, closeErr)
+		return
+	}
+	if written > maxThemeZipBytes {
+		r.handleError(c, themesvc.ErrThemeZipTooLarge)
+		return
+	}
+
+	themeID, err := r.service.ImportThemeZip(tmpPath)
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"themeId":   themeID,
+		"installed": true,
+	})
+}
+
+func (r *Router) exportTheme(c *gin.Context) {
+	id := c.Param("id")
+
+	tmp, err := os.CreateTemp("", "vea-theme-export-*.zip")
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	defer tmp.Close()
+
+	if err := r.service.ExportThemeZip(id, tmp); err != nil {
+		r.handleError(c, err)
+		return
+	}
+	if _, err := tmp.Seek(0, 0); err != nil {
+		r.handleError(c, err)
+		return
+	}
+
+	c.Header("Content-Type", "application/zip")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", id+".zip"))
+	c.Status(http.StatusOK)
+	if _, err := io.Copy(c.Writer, tmp); err != nil {
+		log.Printf("[API] exportTheme: failed to copy zip to response: %v", err)
+	}
+}
+
+func (r *Router) deleteTheme(c *gin.Context) {
+	id := c.Param("id")
+	if err := r.service.DeleteTheme(id); err != nil {
+		r.handleError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 // ==================== FRouter Graph API ====================

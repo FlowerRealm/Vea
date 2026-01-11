@@ -49,7 +49,7 @@ func newTestRouterWithRepos(t *testing.T) (*memory.NodeRepo, *memory.FRouterRepo
 	componentSvc := component.NewService(context.Background(), componentRepo)
 	geoSvc := geo.NewService(geoRepo)
 
-	facade := service.NewFacade(nodeSvc, frouterSvc, configSvc, proxySvc, componentSvc, geoSvc, repos)
+	facade := service.NewFacade(nodeSvc, frouterSvc, configSvc, proxySvc, componentSvc, geoSvc, nil, repos)
 	router := NewRouter(facade)
 
 	// NOTE: gin.Engine already implements http.Handler; we keep the signature compatible with existing tests.

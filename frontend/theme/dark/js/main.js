@@ -1,2860 +1,37 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Vea Console</title>
-  <style>
-    @font-face {
-      font-family: "FiraCode Nerd Font";
-      src: url("fonts/FiraCodeNerdFont-Regular.ttf") format("truetype");
-      font-weight: 400;
-      font-style: normal;
-      font-display: swap;
-    }
-
-    @font-face {
-      font-family: "FiraCode Nerd Font";
-      src: url("fonts/FiraCodeNerdFont-Medium.ttf") format("truetype");
-      font-weight: 500;
-      font-style: normal;
-      font-display: swap;
-    }
-
-    @font-face {
-      font-family: "FiraCode Nerd Font";
-      src: url("fonts/FiraCodeNerdFont-SemiBold.ttf") format("truetype");
-      font-weight: 600;
-      font-style: normal;
-      font-display: swap;
-    }
-
-    @font-face {
-      font-family: "FiraCode Nerd Font";
-      src: url("fonts/FiraCodeNerdFont-Bold.ttf") format("truetype");
-      font-weight: 700;
-      font-style: normal;
-      font-display: swap;
-    }
-
-    :root {
-      /* Premium Dark (Linear-esque) */
-      --bg-root: #050505;
-      --bg-sidebar: rgba(10, 10, 10, 0.8);
-      --bg-card: rgba(255, 255, 255, 0.03);
-      --bg-card-hover: rgba(255, 255, 255, 0.06);
-      --bg-secondary: rgba(255, 255, 255, 0.05);
-
-      --border-subtle: rgba(255, 255, 255, 0.08);
-      --border-highlight: rgba(255, 255, 255, 0.15);
-
-      --text-primary: #ededed;
-      --text-secondary: #a1a1a1;
-      --text-tertiary: #6e6e6e;
-
-      --accent: #ffffff;
-      --accent-glow: 0 0 20px rgba(255, 255, 255, 0.15);
-
-      --success: #27c93f;
-      --warning: #ffbd2e;
-      --error: #ff5f56;
-
-      --radius-sm: 6px;
-      --radius-md: 12px;
-      --radius-lg: 16px;
-
-      --font-sans: "FiraCode Nerd Font", "FiraCode Nerd Font Mono", "Fira Code", "FiraCode", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      --font-mono: "FiraCode Nerd Font", "FiraCode Nerd Font Mono", "Fira Code", "FiraCode", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-
-      --ease: cubic-bezier(0.23, 1, 0.32, 1);
-    }
-
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      background-color: var(--bg-root);
-      color: var(--text-primary);
-      font-family: var(--font-sans);
-      height: 100vh;
-      display: grid;
-      grid-template-columns: 240px 1fr;
-      /* Restored wider sidebar for elegance */
-      grid-template-rows: 44px 1fr;
-      overflow: hidden;
-      font-size: 14px;
-      letter-spacing: -0.01em;
-      -webkit-font-smoothing: antialiased;
-    }
-
-    /* === Titlebar === */
-    .titlebar {
-      grid-column: 1 / -1;
-      grid-row: 1;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 20px;
-      background: var(--bg-root);
-      border-bottom: 1px solid var(--border-subtle);
-      -webkit-app-region: drag;
-      user-select: none;
-      z-index: 50;
-    }
-
-    .titlebar-title {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text-secondary);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .logo-dot {
-      width: 8px;
-      height: 8px;
-      background: var(--text-primary);
-      border-radius: 50%;
-      box-shadow: var(--accent-glow);
-    }
-
-    .titlebar-controls {
-      display: flex;
-      gap: 8px;
-      -webkit-app-region: no-drag;
-    }
-
-    .window-ctrl {
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      background: var(--border-subtle);
-      cursor: pointer;
-      transition: 0.2s;
-    }
-
-    .window-ctrl:hover {
-      background: var(--text-secondary);
-    }
-
-    /* macOS-style window control colors */
-    #close-btn {
-      background: #ff5f57;
-    }
-    #minimize-btn {
-      background: #febc2e;
-    }
-    #maximize-btn {
-      background: #28c840;
-    }
-    #close-btn:hover {
-      background: #ff7b74;
-    }
-    #minimize-btn:hover {
-      background: #ffd06a;
-    }
-    #maximize-btn:hover {
-      background: #4fe06a;
-    }
-
-    /* === Sidebar === */
-    .sidebar {
-      grid-column: 1;
-      grid-row: 2;
-      background: var(--bg-sidebar);
-      border-right: 1px solid var(--border-subtle);
-      display: flex;
-      flex-direction: column;
-      padding: 24px 16px;
-      backdrop-filter: blur(20px);
-    }
-
-    .sidebar-section-title {
-      font-size: 11px;
-      text-transform: uppercase;
-      color: var(--text-tertiary);
-      margin-bottom: 12px;
-      padding-left: 12px;
-      font-weight: 600;
-      letter-spacing: 0.05em;
-    }
-
-    .nav-item {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 10px 12px;
-      border-radius: var(--radius-sm);
-      color: var(--text-secondary);
-      background: transparent;
-      border: none;
-      cursor: pointer;
-      transition: all 0.3s var(--ease);
-      font-size: 14px;
-      font-weight: 500;
-      text-align: left;
-      margin-bottom: 4px;
-    }
-
-    .nav-item svg {
-      width: 18px;
-      height: 18px;
-      opacity: 0.9;
-      stroke-width: 2.5;
-      transition: 0.3s;
-    }
-
-    .nav-item:hover {
-      background: var(--bg-card-hover);
-      color: var(--text-primary);
-    }
-
-    .nav-item:hover svg {
-      opacity: 1;
-    }
-
-    .nav-item.active {
-      background: var(--bg-card-hover);
-      color: var(--text-primary);
-    }
-
-    .nav-item.active svg {
-      opacity: 1;
-      color: var(--accent);
-    }
-
-    /* === Main Content === */
-    main {
-      grid-column: 2;
-      grid-row: 2;
-      position: relative;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      background: radial-gradient(circle at top right, #1a1a1a 0%, var(--bg-root) 40%);
-    }
-
-    /* === Status Toast === */
-    .status-bar {
-      position: absolute;
-      bottom: 32px;
-      right: 32px;
-      padding: 12px 20px;
-      background: #111;
-      border: 1px solid var(--border-subtle);
-      border-radius: 99px;
-      font-size: 13px;
-      font-weight: 500;
-      color: var(--text-primary);
-      transform: translateY(100px);
-      transition: transform 0.4s var(--ease);
-      z-index: 900;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      opacity: 0;
-    }
-
-    .status-bar::before {
-      content: '';
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-    }
-
-    .status-bar.visible {
-      transform: translateY(0);
-      opacity: 1;
-    }
-
-    .status-bar.success::before {
-      background: var(--success);
-      box-shadow: 0 0 10px var(--success);
-    }
-
-    .status-bar.error::before {
-      background: var(--error);
-      box-shadow: 0 0 10px var(--error);
-    }
-
-    .status-bar.info::before {
-      background: var(--accent);
-    }
-
-    /* === Panels === */
-    .panel {
-      display: none;
-      height: 100%;
-      padding: 48px 64px;
-      overflow-y: auto;
-      max-width: 1400px;
-      margin: 0 auto;
-      width: 100%;
-      animation: fadeUp 0.5s var(--ease);
-    }
-
-    .panel.active {
-      display: flex;
-      flex-direction: column;
-    }
-
-    /* Nodes panel: 固定头部 + 列表区滚动 */
-    #panel-nodes {
-      overflow: hidden;
-    }
-
-    #panel-nodes .nodes-table-card {
-      padding: 0;
-      flex: 1;
-      min-height: 0;
-      overflow: auto;
-      background: transparent;
-      border: none;
-      box-shadow: none;
-      border-radius: 0;
-    }
-
-    #panel-nodes .nodes-table-card:hover {
-      transform: none;
-      box-shadow: none;
-    }
-
-    #panel-nodes #nodes-table thead th {
-      position: sticky;
-      top: 0;
-      background: var(--bg-card);
-      z-index: 1;
-    }
-
-    #nodes-table {
-      border-collapse: separate;
-      border-spacing: 0;
-    }
-
-    #nodes-table thead {
-      display: none;
-    }
-
-    #nodes-table td {
-      border-bottom: none;
-      padding: 0;
-    }
-
-    #nodes-table tr:hover td {
-      background: transparent;
-      color: inherit;
-    }
-
-    #nodes-table tbody tr.node-group-row td {
-      background: transparent;
-      color: var(--text-primary);
-      font-weight: 700;
-      font-size: 13px;
-      letter-spacing: 0.02em;
-      padding: 16px 0 6px;
-      border-top: 3px solid var(--border-highlight);
-      border-bottom: none;
-    }
-
-    #nodes-table tbody tr.node-group-row:first-child td {
-      border-top: none;
-    }
-
-    #nodes-table tbody tr.node-group-row .node-group-label {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      padding: 6px 12px;
-      border-radius: 12px;
-      background: var(--bg-card);
-    }
-
-    #nodes-table tbody tr.node-group-row .node-group-pill {
-      display: inline-flex;
-      align-items: center;
-      padding: 2px 8px;
-      border-radius: 999px;
-      background: var(--accent);
-      color: var(--bg-root);
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-    }
-
-    #nodes-table tbody tr.node-group-row .node-group-name {
-      font-weight: 700;
-    }
-
-    #nodes-table tbody tr.node-group-row .node-group-count {
-      margin-left: auto;
-      font-size: 11px;
-      padding: 2px 8px;
-      border-radius: 999px;
-      border: 1px solid var(--border-highlight);
-      background: var(--bg-card);
-      color: var(--text-secondary);
-      font-weight: 600;
-    }
-
-    #nodes-table tbody tr.node-card-row td {
-      padding: 0;
-    }
-
-    #nodes-table tbody tr.node-card-row .node-card {
-      background: transparent;
-      border: none;
-      border-radius: 0;
-      border-top: 1px solid var(--border-subtle);
-      padding: 14px 4px 14px 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    #nodes-table tbody tr.node-group-row + tr.node-card-row .node-card {
-      border-top: none;
-    }
-
-    #nodes-table tbody tr.node-card-row .node-card-top {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
-    #nodes-table tbody tr.node-card-row .node-card-title {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-
-    #nodes-table tbody tr.node-card-row .node-card-name {
-      font-weight: 600;
-      color: var(--text-primary);
-      font-size: 14px;
-    }
-
-    #nodes-table tbody tr.node-card-row .node-card-protocol {
-      font-size: 11px;
-      font-weight: 700;
-      padding: 2px 8px;
-      border-radius: 999px;
-      background: var(--bg-secondary);
-      color: var(--text-secondary);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-    }
-
-    #nodes-table tbody tr.node-card-row .node-card-meta {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
-      color: var(--text-tertiary);
-      font-size: 12px;
-    }
-
-    #nodes-table tbody tr.node-card-row .node-card-addr {
-      color: var(--text-secondary);
-      font-family: var(--font-mono);
-      font-size: 12px;
-    }
-
-    #nodes-table tbody tr.node-card-row .node-card-id {
-      color: var(--text-tertiary);
-      font-family: var(--font-mono);
-      font-size: 11px;
-    }
-
-    #nodes-table tbody tr.node-card-row .node-card-stats {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      flex-wrap: wrap;
-    }
-
-    #nodes-table tbody tr.node-card-row .node-card-stat {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 12px;
-      color: var(--text-secondary);
-    }
-
-    #nodes-table tbody tr.node-card-row .node-card-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-
-    /* Logs panel: 固定工具栏 + 内容区滚动 */
-    #panel-logs {
-      overflow: hidden;
-    }
-
-    #panel-logs .panel-header {
-      margin-bottom: 24px;
-    }
-
-    #panel-logs .log-tabs {
-      flex: 0 0 auto;
-      margin-bottom: 16px;
-    }
-
-    #panel-logs .log-card {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-
-    .log-toolbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .log-meta {
-      color: var(--text-secondary);
-      font-family: var(--font-mono);
-      font-size: 12px;
-    }
-
-    .log-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .log-actions .log-autoscroll {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      white-space: nowrap;
-      padding-left: 10px;
-      margin-left: 2px;
-      border-left: 1px solid var(--border-subtle);
-    }
-
-    .log-actions .log-label {
-      color: var(--text-secondary);
-      font-size: 12px;
-    }
-
-    .log-container {
-      flex: 1;
-      min-height: 0;
-      background: rgba(0, 0, 0, 0.25);
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-sm);
-      padding: 12px;
-      overflow: auto;
-    }
-
-    .log-container pre {
-      margin: 0;
-      font-family: var(--font-mono);
-      font-size: 12px;
-      line-height: 1.4;
-      white-space: pre;
-      color: var(--text-primary);
-    }
-
-    @keyframes fadeUp {
-      from {
-        opacity: 0;
-        transform: translateY(10px);
+import { createAPI, utils } from './vea-sdk.esm.js';
+    const { formatTime, formatBytes, formatInterval, escapeHtml, parseNumber, parseList, sleep } = utils;
+
+    (function () {
+      const menu = document.getElementById("menu");
+      const panels = document.querySelectorAll(".panel");
+      const statusBar = document.getElementById("status");
+      let currentPanel = "panel-home";
+      let statusTimer = null;
+
+      const api = createAPI('http://127.0.0.1:19080');
+
+      function showStatus(message, type = "info", delay = 3200) {
+        if (!message) {
+          statusBar.classList.remove("visible", "success", "error", "info");
+          statusBar.textContent = "";
+          return;
+        }
+        statusBar.textContent = message;
+        statusBar.classList.remove("success", "error", "info");
+        statusBar.classList.add("visible", type);
+        if (statusTimer) {
+          clearTimeout(statusTimer);
+        }
+        if (delay > 0) {
+          statusTimer = setTimeout(() => {
+            statusBar.classList.remove("visible");
+          }, delay);
+        }
       }
 
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    .panel-header {
-      margin-bottom: 48px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-end;
-    }
-
-    .panel-title h2 {
-      font-size: 32px;
-      font-weight: 600;
-      color: var(--text-primary);
-      margin-bottom: 8px;
-      letter-spacing: -0.02em;
-    }
-
-    .panel-title p {
-      color: var(--text-secondary);
-      font-size: 15px;
-      max-width: 500px;
-      line-height: 1.5;
-    }
-
-    /* === Cards === */
-    .card {
-      background: var(--bg-card);
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-md);
-      padding: 24px;
-      transition: all 0.3s var(--ease);
-      position: relative;
-      overflow: hidden;
-    }
-
-    .text-truncate {
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 200px;
-      display: inline-block;
-      vertical-align: bottom;
-    }
-
-    .card:hover {
-      border-color: var(--border-highlight);
-      transform: translateY(-2px);
-      background: var(--bg-card-hover);
-      box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.3);
-    }
-
-    /* === Dashboard Hero === */
-    .dashboard-hero {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 60px 0 80px;
-      position: relative;
-    }
-
-    .status-ring-container {
-      position: relative;
-      width: 140px;
-      height: 140px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-bottom: 32px;
-    }
-
-    .status-ring-bg {
-      position: absolute;
-      inset: 0;
-      border-radius: 50%;
-      border: 1px solid var(--border-subtle);
-      background: radial-gradient(circle, rgba(255, 255, 255, 0.02) 0%, transparent 70%);
-    }
-
-    #proxy-toggle {
-      width: 100px;
-      height: 100px;
-      border-radius: 50%;
-      background: var(--text-primary);
-      color: var(--bg-root);
-      border: none;
-      font-size: 32px;
-      cursor: pointer;
-      transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 10;
-      box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.1);
-    }
-
-    #proxy-toggle:hover {
-      transform: scale(1.05);
-      box-shadow: 0 0 0 8px rgba(255, 255, 255, 0.1);
-    }
-
-    #proxy-toggle:active {
-      transform: scale(0.95);
-    }
-
-    #proxy-toggle.active {
-      background: var(--success);
-      color: #fff;
-      box-shadow: 0 0 0 8px rgba(39, 201, 63, 0.2), 0 0 30px rgba(39, 201, 63, 0.4);
-    }
-
-    .hero-status-text {
-      text-align: center;
-    }
-
-    #proxy-status {
-      font-size: 28px;
-      font-weight: 600;
-      color: var(--text-primary);
-      margin-bottom: 8px;
-      letter-spacing: -0.03em;
-    }
-
-    #proxy-status-desc {
-      font-size: 15px;
-      color: var(--text-tertiary);
-    }
-
-    .route-selector {
-      margin-top: 12px;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 12px;
-      color: var(--text-secondary);
-    }
-
-    .route-selector select {
-      background: var(--bg-secondary);
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-sm);
-      color: var(--text-primary);
-      padding: 6px 10px;
-    }
-
-    /* === Metrics Grid === */
-    .metrics-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 24px;
-      max-width: 900px;
-      margin: 0 auto;
-      width: 100%;
-    }
-
-    .metric-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-md);
-      padding: 24px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      transition: 0.2s;
-      backdrop-filter: blur(10px);
-    }
-
-    .metric-card:hover {
-      border-color: var(--border-highlight);
-      transform: translateY(-2px);
-      background: var(--bg-card-hover);
-      box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
-    }
-
-    .metric-label {
-      font-size: 12px;
-      color: var(--text-tertiary);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .metric-value {
-      font-size: 24px;
-      font-weight: 500;
-      color: var(--text-primary);
-      font-family: var(--font-mono);
-    }
-
-    /* === Node Info === */
-    .info-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 16px 0;
-      border-bottom: 1px solid var(--border-subtle);
-    }
-
-    .info-row:last-child {
-      border-bottom: none;
-    }
-
-    .info-label {
-      color: var(--text-secondary);
-      font-size: 13px;
-    }
-
-    .info-value {
-      color: var(--text-primary);
-      font-family: var(--font-mono);
-      font-size: 13px;
-    }
-
-    /* === Node List === */
-    .node-grid {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      padding-bottom: 24px;
-    }
-
-    .node-row {
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 12px;
-      padding: 12px 16px;
-      transition: all 0.2s ease;
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      align-items: center;
-      gap: 16px;
-      cursor: pointer;
-      backdrop-filter: blur(10px);
-    }
-
-    .node-row:hover {
-      background: rgba(255, 255, 255, 0.05);
-      border-color: rgba(255, 255, 255, 0.15);
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-    }
-
-	    .node-row.active {
-	      background: rgba(255, 255, 255, 0.08);
-	      border-color: rgba(255, 255, 255, 0.35);
-	      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22), 0 8px 32px rgba(0, 0, 0, 0.4);
-	    }
-
-    .node-row-main {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      min-width: 0;
-    }
-
-    .node-row-title {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      min-width: 0;
-    }
-
-    .node-row-name {
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--text-primary);
-      line-height: 1.4;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .node-row-meta {
-      font-size: 12px;
-      color: var(--text-tertiary);
-      font-family: var(--font-mono);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .node-row-protocol {
-      font-size: 10px;
-      padding: 2px 8px;
-      border-radius: 12px;
-      background: rgba(255, 255, 255, 0.05);
-      color: var(--text-secondary);
-      text-transform: uppercase;
-      font-weight: 600;
-      letter-spacing: 0.5px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      flex-shrink: 0;
-    }
-
-    .node-row-metrics {
-      display: flex;
-      gap: 12px;
-      align-items: center;
-    }
-
-    .node-metric {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      color: var(--text-secondary);
-      cursor: pointer;
-      transition: color 0.2s;
-    }
-
-    .node-metric:hover {
-      color: var(--text-primary);
-    }
-
-    .node-metric svg {
-      opacity: 0.6;
-    }
-
-    .node-metric-value {
-      font-family: var(--font-mono);
-      font-weight: 500;
-    }
-
-    .node-metric-value.good {
-      color: #4ade80;
-    }
-
-    .node-metric-value.fair {
-      color: #fbbf24;
-    }
-
-    .node-metric-value.poor {
-      color: #f87171;
-    }
-
-
-    /* === Buttons & Inputs === */
-    button {
-      font-size: 13px;
-      padding: 8px 16px;
-      background: transparent;
-      border: 1px solid var(--border-subtle);
-      color: var(--text-primary);
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      transition: var(--ease);
-    }
-
-    button:hover {
-      background: var(--bg-card-hover);
-      border-color: var(--text-secondary);
-    }
-
-    button.primary {
-      background: var(--text-primary);
-      color: #000;
-      border-color: var(--text-primary);
-      font-weight: 600;
-    }
-
-	    button.primary:hover {
-	      background: #fff;
-	      box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
-	      transform: translateY(-1px);
-	    }
-
-	    .mini-btn {
-	      padding: 6px 10px;
-	      font-size: 12px;
-	    }
-
-	    .mini-select {
-	      width: auto;
-	      padding: 6px 10px;
-	      font-size: 12px;
-	    }
-
-	    input,
-	    select,
-	    textarea {
-	      background: rgba(0, 0, 0, 0.2);
-      border: 1px solid var(--border-subtle);
-      color: var(--text-primary);
-      padding: 12px 16px;
-      font-size: 14px;
-      width: 100%;
-      border-radius: var(--radius-sm);
-      outline: none;
-      transition: var(--ease);
-      font-family: var(--font-mono);
-    }
-
-    input:focus,
-    select:focus,
-    textarea:focus {
-      border-color: var(--text-secondary);
-      background: rgba(0, 0, 0, 0.4);
-    }
-
-    /* === Tables === */
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-    }
-
-    th {
-      text-align: left;
-      color: var(--text-tertiary);
-      font-weight: 500;
-      padding: 16px;
-      border-bottom: 1px solid var(--border-subtle);
-      text-transform: uppercase;
-      font-size: 11px;
-      letter-spacing: 0.05em;
-    }
-
-    td {
-      padding: 16px;
-      border-bottom: 1px solid var(--border-subtle);
-      color: var(--text-secondary);
-    }
-
-    tr:hover td {
-      background: var(--bg-card-hover);
-      color: var(--text-primary);
-    }
-
-    /* === Modal === */
-    .modal {
-      display: none;
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.6);
-      backdrop-filter: blur(8px);
-      z-index: 200;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .modal.open {
-      display: flex;
-    }
-
-    .modal-content {
-      background: #0f0f0f;
-      border: 1px solid var(--border-subtle);
-      padding: 40px;
-      width: 520px;
-      border-radius: var(--radius-lg);
-      box-shadow: 0 40px 80px rgba(0, 0, 0, 0.5);
-      position: relative;
-    }
-
-    .modal-backdrop {
-      position: absolute;
-      inset: 0;
-      z-index: -1;
-    }
-
-    /* === Toggle Switch === */
-    .toggle-switch {
-      position: relative;
-      display: inline-block;
-      width: 40px;
-      height: 22px;
-      cursor: pointer;
-    }
-
-    .toggle-switch input {
-      opacity: 0;
-      width: 0;
-      height: 0;
-    }
-
-    .toggle-slider {
-      position: absolute;
-      cursor: pointer;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-color: var(--bg-secondary);
-      border: 1px solid var(--border-subtle);
-      transition: var(--ease);
-      border-radius: 22px;
-    }
-
-    .toggle-slider:before {
-      position: absolute;
-      content: "";
-      height: 16px;
-      width: 16px;
-      left: 2px;
-      bottom: 2px;
-      background-color: var(--text-tertiary);
-      transition: var(--ease);
-      border-radius: 50%;
-    }
-
-    .toggle-switch input:checked+.toggle-slider {
-      background-color: var(--success);
-      border-color: var(--success);
-    }
-
-    .toggle-switch input:checked+.toggle-slider:before {
-      background-color: white;
-      transform: translateX(18px);
-    }
-
-    .toggle-switch input:disabled+.toggle-slider {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    /* === Switch (Alias for toggle-switch) === */
-    .switch {
-      position: relative;
-      display: inline-block;
-      width: 40px;
-      height: 22px;
-      cursor: pointer;
-    }
-
-    .switch input {
-      opacity: 0;
-      width: 0;
-      height: 0;
-    }
-
-    .slider {
-      position: absolute;
-      cursor: pointer;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-color: var(--bg-secondary);
-      border: 1px solid var(--border-subtle);
-      transition: var(--ease);
-      border-radius: 22px;
-    }
-
-    .slider:before {
-      position: absolute;
-      content: "";
-      height: 16px;
-      width: 16px;
-      left: 2px;
-      bottom: 2px;
-      background-color: var(--text-tertiary);
-      transition: var(--ease);
-      border-radius: 50%;
-    }
-
-    .switch input:checked+.slider {
-      background-color: var(--success);
-      border-color: var(--success);
-    }
-
-    .switch input:checked+.slider:before {
-      background-color: white;
-      transform: translateX(18px);
-    }
-
-    .switch input:disabled+.slider {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    /* === Progress Bar === */
-    .install-progress {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .progress-bar {
-      width: 100%;
-      height: 6px;
-      background: var(--bg-secondary);
-      border-radius: 3px;
-      overflow: hidden;
-    }
-
-    .progress-fill {
-      height: 100%;
-      background: linear-gradient(90deg, var(--success), #4ade80);
-      border-radius: 3px;
-      transition: width 0.3s ease;
-    }
-
-    .progress-text {
-      font-size: 11px;
-      color: var(--text-secondary);
-    }
-
-    /* === Icons === */
-    .icon {
-      display: inline-block;
-      width: 1em;
-      height: 1em;
-      stroke-width: 2;
-      stroke: currentColor;
-      fill: none;
-    }
-
-    /* === Toolbar === */
-    .node-toolbar {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 32px;
-      align-items: center;
-    }
-
-    .node-tabs {
-      display: flex;
-      gap: 8px;
-      overflow-x: auto;
-      padding-bottom: 4px;
-      flex: 1;
-    }
-
-    .node-tab {
-      padding: 6px 16px;
-      border-radius: 99px;
-      font-size: 12px;
-      white-space: nowrap;
-      cursor: pointer;
-      color: var(--text-secondary);
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid transparent;
-      transition: 0.2s;
-    }
-
-    .node-tab:hover {
-      background: rgba(255, 255, 255, 0.1);
-      color: var(--text-primary);
-    }
-
-    .node-tab.active {
-      background: var(--text-primary);
-      color: #000;
-      font-weight: 600;
-    }
-
-    .add-node-button {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      background: var(--text-primary);
-      color: #000;
-      font-size: 20px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border: none;
-      transition: 0.2s;
-    }
-
-    .add-node-button:hover {
-      transform: scale(1.1);
-      box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
-    }
-
-    /* Form Grid */
-    .form-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 24px;
-    }
-
-    .form-grid label {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      font-size: 13px;
-      color: var(--text-secondary);
-      font-weight: 500;
-    }
-
-    .form-actions {
-      grid-column: 1 / -1;
-      display: flex;
-      justify-content: flex-end;
-      gap: 12px;
-      margin-top: 16px;
-    }
-
-    /* Settings Navigation */
-    .settings-nav-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 16px;
-      background: transparent;
-      border: none;
-      border-radius: var(--radius-md);
-      color: var(--text-secondary);
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      text-align: left;
-    }
-
-    .settings-nav-item:hover {
-      background: var(--bg-secondary);
-      color: var(--text-primary);
-    }
-
-    .settings-nav-item.active {
-      background: var(--accent);
-      color: var(--bg-root);
-    }
-
-    .settings-nav-item svg {
-      flex-shrink: 0;
-      opacity: 0.9;
-      stroke-width: 2.5;
-    }
-
-    .settings-nav-item:hover svg {
-      opacity: 1;
-    }
-
-    .settings-nav-item.active svg {
-      opacity: 1;
-    }
-
-    .settings-content {
-      display: none;
-    }
-
-    .settings-content.active {
-      display: block;
-    }
-
-    /* Core tab styles */
-    .core-tab.active {
-      border-bottom-color: var(--primary) !important;
-      color: var(--text-primary) !important;
-    }
-
-    .core-content {
-      display: none;
-    }
-
-    .core-content.active {
-      display: block;
-    }
-
-    /* Custom Scrollbar */
-    ::-webkit-scrollbar {
-      width: 8px;
-      height: 8px;
-    }
-
-    ::-webkit-scrollbar-track {
-      background: transparent;
-    }
-
-    ::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 4px;
-      transition: background 0.2s ease;
-    }
-
-    ::-webkit-scrollbar-thumb:hover {
-      background: rgba(255, 255, 255, 0.2);
-    }
-
-    ::-webkit-scrollbar-thumb:active {
-      background: rgba(255, 255, 255, 0.3);
-    }
-
-    /* Firefox */
-    * {
-      scrollbar-width: thin;
-      scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
-    }
-
-    /* ===== Chain List Editor ===== */
-    .chain-list-container {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-      padding: 24px 32px;
-      max-width: 900px;
-      margin: 0 auto;
-    }
-
-    .chain-list-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 24px;
-      gap: 24px;
-    }
-
-    .chain-list-title h3 {
-      font-size: 22px;
-      font-weight: 600;
-      color: var(--text-primary);
-      margin: 0 0 4px 0;
-    }
-
-    .chain-list-title p {
-      font-size: 13px;
-      color: var(--text-secondary);
-      margin: 0;
-    }
-
-    .chain-list-actions {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-
-    .chain-list-actions .route-selector {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 13px;
-      color: var(--text-secondary);
-    }
-
-    .chain-list-actions .route-selector select {
-      padding: 6px 12px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: var(--radius-sm);
-      background: rgba(255, 255, 255, 0.05);
-      color: var(--text-primary);
-      font-size: 13px;
-    }
-
-    /* 规则列表 */
-    .chain-rules-list {
-      flex: 1;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      padding-bottom: 16px;
-    }
-
-    .chain-rules-empty {
-      text-align: center;
-      padding: 48px 24px;
-      color: var(--text-tertiary);
-      font-size: 14px;
-    }
-
-    /* 规则项 */
-    .chain-rule-item {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 12px 16px;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: var(--radius-md);
-      transition: border-color 0.2s, box-shadow 0.2s, opacity 0.2s;
-      backdrop-filter: blur(10px);
-    }
-
-    .chain-rule-item:hover {
-      border-color: rgba(255, 255, 255, 0.15);
-    }
-
-    .chain-rule-item.dragging {
-      opacity: 0.5;
-      border-color: var(--accent);
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-    }
-
-    .chain-rule-item.drag-over {
-      border-color: var(--accent);
-      background: rgba(59, 130, 246, 0.1);
-    }
-
-    .chain-rule-item.disabled {
-      opacity: 0.5;
-    }
-
-    .chain-rule-drag {
-      cursor: grab;
-      color: var(--text-tertiary);
-      font-size: 16px;
-      padding: 4px;
-      user-select: none;
-    }
-
-    .chain-rule-drag:active {
-      cursor: grabbing;
-    }
-
-    .chain-rule-main {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .chain-rule-target {
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--text-primary);
-      margin-bottom: 2px;
-    }
-
-    .chain-rule-target.direct { color: #4ade80; }
-    .chain-rule-target.block { color: #f87171; }
-
-    .chain-rule-info {
-      font-size: 12px;
-      color: var(--text-secondary);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .chain-rule-meta {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .chain-rule-actions {
-      display: flex;
-      gap: 4px;
-    }
-
-    .chain-rule-actions button {
-      width: 28px;
-      height: 28px;
-      border: none;
-      background: transparent;
-      color: var(--text-secondary);
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      font-size: 14px;
-      transition: background 0.15s, color 0.15s;
-    }
-
-    .chain-rule-actions button:hover {
-      background: rgba(255, 255, 255, 0.1);
-      color: var(--text-primary);
-    }
-
-    .chain-rule-actions button.delete:hover {
-      color: #f87171;
-    }
-
-    /* 工具栏 */
-    .chain-list-toolbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 16px 0;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
-      margin-top: 8px;
-    }
-
-    .chain-list-toolbar .toolbar-status {
-      font-size: 12px;
-      color: var(--text-tertiary);
-    }
-
-    .chain-list-toolbar .toolbar-status.dirty {
-      color: #fbbf24;
-    }
-
-    .toolbar-actions {
-      display: flex;
-      gap: 8px;
-    }
-
-    /* 按钮样式 */
-    .chain-btn {
-      padding: 8px 16px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: var(--radius-sm);
-      background: rgba(255, 255, 255, 0.05);
-      color: var(--text-primary);
-      font-size: 13px;
-      cursor: pointer;
-      transition: background 0.15s, border-color 0.15s;
-    }
-
-    .chain-btn:hover {
-      background: rgba(255, 255, 255, 0.1);
-      border-color: rgba(255, 255, 255, 0.2);
-    }
-
-    .chain-btn.primary {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: var(--bg-root);
-    }
-
-    .chain-btn.primary:hover {
-      background: var(--accent-hover, #2563eb);
-      border-color: var(--accent-hover, #2563eb);
-      color: white;
-    }
-
-    .chain-btn.danger {
-      background: transparent;
-      border-color: #f87171;
-      color: #f87171;
-    }
-
-    .chain-btn.danger:hover {
-      background: #f87171;
-      color: white;
-    }
-
-    /* 规则编辑弹窗 */
-    .chain-rule-dialog {
-      display: none;
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.6);
-      z-index: 1000;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .chain-rule-dialog.open {
-      display: flex;
-    }
-
-    .chain-rule-dialog-content {
-      background: var(--bg-card);
-      border-radius: 12px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
-      width: 90%;
-      max-width: 500px;
-      max-height: 85vh;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-
-    .chain-rule-dialog-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 16px 20px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    }
-
-    .chain-rule-dialog-header h4 {
-      margin: 0;
-      font-size: 16px;
-      font-weight: 600;
-      color: var(--text-primary);
-    }
-
-    .chain-rule-dialog-close {
-      width: 28px;
-      height: 28px;
-      border: none;
-      background: transparent;
-      color: var(--text-secondary);
-      font-size: 20px;
-      cursor: pointer;
-      border-radius: var(--radius-sm);
-    }
-
-    .chain-rule-dialog-close:hover {
-      background: rgba(255, 255, 255, 0.1);
-      color: var(--text-primary);
-    }
-
-    .chain-rule-dialog-body {
-      flex: 1;
-      overflow-y: auto;
-      padding: 20px;
-    }
-
-    .chain-form-group {
-      margin-bottom: 16px;
-    }
-
-    .chain-form-group label {
-      display: block;
-      font-size: 13px;
-      font-weight: 500;
-      color: var(--text-secondary);
-      margin-bottom: 6px;
-    }
-
-    .chain-form-group input,
-    .chain-form-group select,
-    .chain-form-group textarea {
-      width: 100%;
-      padding: 8px 12px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: var(--radius-sm);
-      background: rgba(255, 255, 255, 0.05);
-      color: var(--text-primary);
-      font-size: 13px;
-      box-sizing: border-box;
-    }
-
-    .chain-form-group textarea {
-      resize: vertical;
-      font-family: var(--font-mono);
-      font-size: 12px;
-    }
-
-    .rule-chain-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .rule-chain-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .rule-chain-item select {
-      flex: 1;
-    }
-
-    .rule-chain-item button {
-      width: 28px;
-      height: 28px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      background: rgba(255, 255, 255, 0.05);
-      color: var(--text-secondary);
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      transition: background 0.15s, color 0.15s, border-color 0.15s;
-    }
-
-    .rule-chain-item button:hover {
-      background: rgba(255, 255, 255, 0.1);
-      border-color: rgba(255, 255, 255, 0.2);
-      color: var(--text-primary);
-    }
-
-    .rule-chain-item button.danger {
-      background: transparent;
-      border-color: #f87171;
-      color: #f87171;
-    }
-
-    .rule-chain-item button.danger:hover {
-      background: #f87171;
-      color: white;
-    }
-
-    .rule-chain-hint {
-      margin-top: 6px;
-      font-size: 12px;
-      color: var(--text-tertiary);
-      line-height: 1.4;
-    }
-
-    .chain-route-section {
-      margin-top: 16px;
-      padding-top: 16px;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
-    }
-
-    .chain-section-title {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text-primary);
-      margin-bottom: 12px;
-    }
-
-    .rule-template-picker {
-      display: flex;
-      gap: 8px;
-    }
-
-    .rule-template-picker select {
-      flex: 1;
-    }
-
-    .chain-rule-dialog-footer {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 16px 20px;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
-    }
-
-    /* 槽位管理弹窗 */
-    .slot-manager-hint {
-      font-size: 12px;
-      color: var(--text-tertiary);
-      line-height: 1.4;
-      margin-bottom: 12px;
-    }
-
-    .slot-manager-list {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-
-    .slot-manager-item {
-      padding: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: var(--radius-sm);
-      background: rgba(255, 255, 255, 0.05);
-    }
-
-    .slot-manager-item-header {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 10px;
-    }
-
-    .slot-manager-item-title {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text-primary);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .slot-manager-item-id {
-      font-family: var(--font-mono);
-      font-size: 12px;
-      color: var(--text-tertiary);
-      flex-shrink: 0;
-    }
-
-    .slot-manager-item-fields {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .slot-manager-item-fields .chain-form-group {
-      flex: 1;
-      min-width: 200px;
-      margin-bottom: 0;
-    }
-
-    /* Toggle switch */
-    .chain-toggle {
-      position: relative;
-      display: inline-block;
-      width: 40px;
-      height: 22px;
-    }
-
-    .chain-toggle input {
-      opacity: 0;
-      width: 0;
-      height: 0;
-    }
-
-    .chain-toggle-slider {
-      position: absolute;
-      cursor: pointer;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(255, 255, 255, 0.15);
-      border-radius: 22px;
-      transition: 0.2s;
-    }
-
-    .chain-toggle-slider:before {
-      position: absolute;
-      content: "";
-      height: 16px;
-      width: 16px;
-      left: 3px;
-      bottom: 3px;
-      background: white;
-      border-radius: 50%;
-      transition: 0.2s;
-    }
-
-    .chain-toggle input:checked + .chain-toggle-slider {
-      background: var(--accent);
-    }
-
-    .chain-toggle input:checked + .chain-toggle-slider:before {
-      background: var(--bg-root);
-      transform: translateX(18px);
-    }
-  </style>
-</head>
-
-<body>
-  <!-- Titlebar -->
-  <div class="titlebar">
-    <div class="titlebar-title">
-      <div class="logo-dot"></div>
-      Vea
-    </div>
-    <div class="titlebar-controls">
-      <div class="window-ctrl" id="minimize-btn"></div>
-      <div class="window-ctrl" id="maximize-btn"></div>
-      <div class="window-ctrl close" id="close-btn"></div>
-    </div>
-  </div>
-
-  <!-- Sidebar -->
-  <aside class="sidebar" id="menu">
-    <div class="sidebar-section-title">主要</div>
-    <button class="nav-item active" data-target="panel-home">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="3" y="3" width="7" height="7"></rect>
-        <rect x="14" y="3" width="7" height="7"></rect>
-        <rect x="14" y="14" width="7" height="7"></rect>
-        <rect x="3" y="14" width="7" height="7"></rect>
-      </svg>
-      控制台
-    </button>
-    <button class="nav-item" data-target="panel1">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
-      </svg>
-	      FRouter
-	    </button>
-	    <button class="nav-item" data-target="panel2">
-	      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-	        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-	        <polyline points="14 2 14 8 20 8"></polyline>
-	        <line x1="16" y1="13" x2="8" y2="13"></line>
-	        <line x1="16" y1="17" x2="8" y2="17"></line>
-	        <polyline points="10 9 9 9 8 9"></polyline>
-	      </svg>
-	      订阅
-	    </button>
-	    <button class="nav-item" data-target="panel-nodes">
-	      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-	        <circle cx="12" cy="12" r="3"></circle>
-	        <path d="M12 5v4"></path>
-	        <path d="M12 15v4"></path>
-	        <path d="M5 12h4"></path>
-	        <path d="M15 12h4"></path>
-	      </svg>
-	      节点
-	    </button>
-
-	    <div class="sidebar-section-title" style="margin-top: 24px;">系统</div>
-	    <button class="nav-item" data-target="panel3">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-        <path
-          d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
-        </path>
-        <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-        <line x1="12" y1="22.08" x2="12" y2="12"></line>
-      </svg>
-	      组件
-	    </button>
-
-	    <button class="nav-item" data-target="panel-logs">
-	      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-	        <polyline points="4 17 10 11 4 5"></polyline>
-	        <line x1="12" y1="19" x2="20" y2="19"></line>
-	      </svg>
-	      日志
-	    </button>
-
-	    <button class="nav-item" data-target="panel-settings">
-	      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-	        <circle cx="12" cy="12" r="3"></circle>
-        <path
-          d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
-        </path>
-      </svg>
-      设置
-    </button>
-  </aside>
-
-  <!-- Main Content -->
-  <main>
-    <div id="status" class="status-bar"></div>
-
-    <!-- Dashboard -->
-    <section id="panel-home" class="panel active">
-      <div class="dashboard-hero">
-        <div class="status-ring-container">
-          <div class="status-ring-bg"></div>
-          <button id="proxy-toggle" data-mode="">
-            <svg viewBox="0 0 24 24" width="32" height="32" stroke="currentColor" stroke-width="2.5" fill="none"
-              stroke-linecap="round" stroke-linejoin="round">
-              <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
-              <line x1="12" y1="2" x2="12" y2="12"></line>
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      <div class="metrics-grid">
-        <div class="metric-card">
-          <div class="metric-label">
-            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
-              <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
-            </svg>
-            延迟
-          </div>
-          <div class="metric-value" id="home-node-latency">--</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">
-            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
-              <polyline points="17 1 21 5 17 9"></polyline>
-              <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
-              <polyline points="7 23 3 19 7 15"></polyline>
-              <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
-            </svg>
-            速度
-          </div>
-          <div class="metric-value" id="home-node-speed">--</div>
-        </div>
-	        <div class="metric-card" id="tun-status-card">
-	          <div class="metric-label">
-	            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
-	              <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-	              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-	            </svg>
-	            TUN 模式
-	          </div>
-	          <div style="display:flex; align-items:center; gap:12px;">
-	            <div class="metric-value" id="tun-status-value" style="cursor:pointer;" title="点击查看详情">--</div>
-	            <label class="toggle-switch" title="启用/禁用 TUN 模式">
-	              <input type="checkbox" id="tun-toggle">
-	              <span class="toggle-slider"></span>
-	            </label>
-	          </div>
-	          <div id="tun-permission-hint" style="display:none; margin-top:8px; font-size:11px; color:var(--warning); line-height:1.4;"></div>
-	        </div>
-	        <div class="metric-card" id="engine-select-card">
-	          <div class="metric-label">
-	            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
-	              <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
-	              <rect x="9" y="9" width="6" height="6"></rect>
-	            </svg>
-	            内核偏好
-	          </div>
-	          <select id="engine-select" title="选择内核偏好（需要时会重启内核）">
-	            <option value="auto" data-label="自动">自动</option>
-	            <option value="singbox" data-label="sing-box">sing-box</option>
-	            <option value="clash" data-label="Clash">Clash</option>
-	          </select>
-	        </div>
-	        <div class="metric-card" id="ip-geo-card" style="grid-column: span 2;">
-	          <div class="metric-label">
-	            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
-	              <circle cx="12" cy="12" r="10"></circle>
-	              <line x1="2" y1="12" x2="22" y2="12"></line>
-              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">
-              </path>
-            </svg>
-            当前 IP
-          </div>
-          <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
-            <div class="metric-value" id="ip-geo-ip" style="font-family:var(--font-mono); font-size:15px;">--</div>
-            <div id="ip-geo-location" style="font-size:12px; color:var(--text-secondary);">--</div>
-            <button id="ip-geo-refresh"
-              style="padding:4px 8px; font-size:11px; background:var(--bg-secondary); border:1px solid var(--border-subtle); border-radius:4px; color:var(--text-secondary); cursor:pointer;">
-              <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none"
-                style="vertical-align:middle;">
-                <polyline points="23 4 23 10 17 10"></polyline>
-                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
-              </svg>
-            </button>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Chain Editor (Route Rules List) -->
-    <section id="panel-chain" class="panel">
-      <div class="chain-list-container">
-        <!-- 头部 -->
-        <div class="chain-list-header">
-          <div class="chain-list-title">
-            <h3>路由规则</h3>
-            <p>拖拽调整优先级，位置越靠前优先级越高</p>
-          </div>
-          <div class="chain-list-actions">
-            <div class="route-selector">
-              <span>当前 FRouter</span>
-              <select id="chain-route-select"></select>
-            </div>
-            <button id="chain-manage-slots" class="chain-btn">槽位管理</button>
-            <button id="chain-add-rule" class="chain-btn primary">+ 添加规则</button>
-          </div>
-        </div>
-
-        <!-- 可排序规则列表 -->
-        <div id="chain-rules-list" class="chain-rules-list">
-          <div class="chain-rules-empty">暂无路由规则，点击"添加规则"创建</div>
-        </div>
-
-        <!-- 工具栏 -->
-        <div class="chain-list-toolbar">
-          <span class="toolbar-status" id="chain-status">已保存</span>
-          <div class="toolbar-actions">
-            <button class="chain-btn" id="chain-back">返回</button>
-            <button class="chain-btn" id="chain-reset">重置</button>
-            <button class="chain-btn primary" id="chain-save">保存</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 规则编辑弹窗 -->
-      <div class="chain-rule-dialog" id="rule-edit-dialog">
-        <div class="chain-rule-dialog-content">
-          <div class="chain-rule-dialog-header">
-            <h4 id="rule-dialog-title">编辑规则</h4>
-            <button class="chain-rule-dialog-close" id="rule-dialog-close">&times;</button>
-          </div>
-
-          <div class="chain-rule-dialog-body">
-            <div class="chain-form-group">
-              <label>规则类型</label>
-              <select id="rule-type">
-                <option value="">无条件（默认路径）</option>
-                <option value="route">路由规则</option>
-              </select>
-            </div>
-
-            <!-- 路由规则区域 -->
-            <div id="rule-route-section" class="chain-route-section" style="display:none;">
-              <div class="chain-section-title">路由规则</div>
-
-              <!-- 模板选择器 -->
-              <div class="chain-form-group">
-                <label>快速应用模板</label>
-                <div class="rule-template-picker">
-                  <select id="rule-template-category">
-                    <option value="all">全部分类</option>
-                  </select>
-                  <select id="rule-template-select">
-                    <option value="">选择模板...</option>
-                  </select>
-                </div>
-              </div>
-
-              <div class="chain-form-group">
-                <label>匹配域名</label>
-                <textarea id="rule-domains" rows="5" placeholder="每行一个，支持 geosite:cn、domain:example.com 等格式"></textarea>
-              </div>
-              <div class="chain-form-group">
-                <label>匹配 IP</label>
-                <textarea id="rule-ips" rows="5" placeholder="每行一个，支持 geoip:cn、192.168.0.0/16 等格式"></textarea>
-              </div>
-            </div>
-
-            <div class="chain-form-group">
-              <label>匹配后去向</label>
-              <select id="rule-to">
-                <option value="direct">不代理（直连）</option>
-                <option value="block">阻断</option>
-              </select>
-            </div>
-
-            <div class="chain-form-group" id="rule-chain-group" style="display:none;">
-              <label>链式代理（后续节点）</label>
-              <div id="rule-chain-list" class="rule-chain-list"></div>
-              <button class="chain-btn" id="rule-chain-add" type="button">+ 添加节点</button>
-              <div class="rule-chain-hint">第一跳在“匹配后去向”里选择，这里从第 2 跳开始添加。</div>
-            </div>
-
-            <div class="chain-form-group">
-              <label>启用</label>
-              <label class="chain-toggle">
-                <input type="checkbox" id="rule-enabled" checked>
-                <span class="chain-toggle-slider"></span>
-              </label>
-            </div>
-
-            <div class="chain-form-group">
-              <label>描述</label>
-              <input type="text" id="rule-description" placeholder="可选：规则描述">
-            </div>
-          </div>
-
-          <div class="chain-rule-dialog-footer">
-            <button class="chain-btn danger" id="rule-delete" style="display:none;">删除</button>
-            <div style="flex:1;"></div>
-            <button class="chain-btn" id="rule-cancel">取消</button>
-            <button class="chain-btn primary" id="rule-save">保存</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 槽位管理弹窗 -->
-      <div class="chain-rule-dialog" id="slot-manager-dialog">
-        <div class="chain-rule-dialog-content">
-          <div class="chain-rule-dialog-header">
-            <h4>槽位管理</h4>
-            <button class="chain-rule-dialog-close" id="slot-manager-close">&times;</button>
-          </div>
-
-          <div class="chain-rule-dialog-body">
-            <div class="slot-manager-hint">
-              槽位是占位符，可绑定到实际节点；未绑定时将按“穿透”处理（该槽位会被编译时跳过）。
-            </div>
-            <div id="slot-manager-list" class="slot-manager-list"></div>
-          </div>
-
-          <div class="chain-rule-dialog-footer">
-            <button class="chain-btn" id="slot-manager-add" type="button">+ 添加槽位</button>
-            <div style="flex:1;"></div>
-            <button class="chain-btn" id="slot-manager-cancel" type="button">取消</button>
-            <button class="chain-btn primary" id="slot-manager-save" type="button">确定</button>
-          </div>
-        </div>
-      </div>
-    </section>
-
-	    <!-- FRouters -->
-	    <section id="panel1" class="panel">
-	      <div class="panel-header">
-	        <div class="panel-title">
-	          <h2>FRouter</h2>
-	          <p>管理和监控你的 FRouter 配置。</p>
-	        </div>
-	        <div class="panel-actions">
-          <span id="core-state" style="font-size:12px; color:var(--text-secondary); margin-right:16px;">核心：
-            未知</span>
-	          <button id="node-refresh">刷新 FRouter</button>
-	        </div>
-	      </div>
-
-      <div class="node-toolbar">
-        <div id="node-tabs" class="node-tabs"></div>
-        <button id="node-bulk-ping">全部测延迟</button>
-        <button id="node-bulk-speed">全部测速</button>
-        <button class="add-node-button" id="node-add-button">+</button>
-      </div>
-	      <div id="node-grid" class="node-grid">
-	        <div class="card" style="text-align:center; color:var(--text-secondary);">暂无 FRouter</div>
-	      </div>
-	    </section>
-
-    <!-- Configs -->
-	    <section id="panel2" class="panel">
-	      <div class="panel-header">
-	        <div class="panel-title">
-	          <h2>订阅</h2>
-	          <p>管理订阅源和更新间隔。</p>
-	        </div>
-	        <div class="panel-actions">
-	          <button id="config-add-button" class="primary">添加订阅源</button>
-	          <button id="config-refresh">同步</button>
-	        </div>
-	      </div>
-	      <div class="card" style="padding:0;">
-	        <table id="config-table">
-	          <thead>
-	            <tr>
-	              <th>名称</th>
-	              <th>格式</th>
-	              <th>更新间隔</th>
-	              <th>最后同步</th>
-	              <th>状态</th>
-	              <th style="text-align:right">操作</th>
-	            </tr>
-	          </thead>
-	          <tbody></tbody>
-	        </table>
-	      </div>
-	    </section>
-
-	    <!-- Nodes -->
-	    <section id="panel-nodes" class="panel">
-	      <div class="panel-header">
-	        <div class="panel-title">
-	          <h2>节点</h2>
-	          <p>查看与测量全局节点（独立于 FRouter）。</p>
-	        </div>
-        <div class="panel-actions">
-          <button id="nodes-bulk-ping">全部测延迟</button>
-          <button id="nodes-bulk-speed">全部测速</button>
-          <button id="nodes-add-button" class="primary">添加节点</button>
-        </div>
-      </div>
-	      <div class="card nodes-table-card">
-	        <table id="nodes-table">
-	          <thead>
-	            <tr>
-	              <th>名称</th>
-	              <th>协议</th>
-	              <th>地址</th>
-	              <th>延迟</th>
-	              <th>速度</th>
-	              <th style="text-align:right">操作</th>
-	            </tr>
-	          </thead>
-	          <tbody>
-	            <tr>
-	              <td colspan="6" style="text-align:center; color:var(--text-secondary); padding:24px;">暂无节点</td>
-	            </tr>
-	          </tbody>
-	        </table>
-	      </div>
-	    </section>
-
-    <!-- Components -->
-	    <section id="panel3" class="panel">
-	      <div class="panel-header">
-	        <div class="panel-title">
-	          <h2>组件</h2>
-          <p>核心系统依赖和版本。</p>
-        </div>
-        <div class="panel-actions">
-          <button id="app-check-update-btn">检查应用更新</button>
-          <button id="component-refresh">刷新</button>
-        </div>
-      </div>
-      <div class="card" style="padding:0;">
-        <table id="component-table">
-          <thead>
-            <tr>
-              <th>名称</th>
-              <th>类型</th>
-              <th>版本</th>
-              <th>路径</th>
-              <th>日期</th>
-              <th>状态</th>
-              <th style="text-align:right">操作</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </section>
-
-    <!-- Logs -->
-	    <section id="panel-logs" class="panel">
-		      <div class="panel-header">
-		        <div class="panel-title">
-		          <h2>日志</h2>
-		          <p>内核（sing-box / Clash）与应用（后端）运行日志（独立于终端输出）。</p>
-		        </div>
-		      </div>
-
-	      <div class="node-tabs log-tabs" id="log-tabs">
-	        <div class="node-tab active" data-log-tab="kernel">系统日志</div>
-	        <div class="node-tab" data-log-tab="app">应用日志</div>
-	      </div>
-
-	      <div class="card log-card" id="kernel-log-card">
-	        <div class="log-toolbar">
-	          <div class="log-meta" id="kernel-log-meta">-</div>
-	          <div class="log-actions">
-	            <button class="mini-btn" id="kernel-log-refresh">刷新</button>
-            <button class="mini-btn" id="kernel-log-copy">复制</button>
-            <div class="log-autoscroll">
-              <span class="log-label">自动滚动</span>
-              <label class="chain-toggle">
-                <input type="checkbox" id="kernel-log-autoscroll" checked>
-                <span class="chain-toggle-slider"></span>
-              </label>
-            </div>
-          </div>
-        </div>
-	        <div class="log-container" id="kernel-log-container">
-	          <pre id="kernel-log-content"></pre>
-	        </div>
-	      </div>
-
-	      <div class="card log-card" id="app-log-card" style="display:none;">
-	        <div class="log-toolbar">
-	          <div class="log-meta" id="app-log-meta">-</div>
-	          <div class="log-actions">
-	            <button class="mini-btn" id="app-log-refresh">刷新</button>
-            <button class="mini-btn" id="app-log-copy">复制</button>
-            <div class="log-autoscroll">
-              <span class="log-label">自动滚动</span>
-              <label class="chain-toggle">
-                <input type="checkbox" id="app-log-autoscroll" checked>
-                <span class="chain-toggle-slider"></span>
-              </label>
-            </div>
-          </div>
-        </div>
-        <div class="log-container" id="app-log-container">
-          <pre id="app-log-content"></pre>
-        </div>
-	      </div>
-	    </section>
-
-    <!-- Settings -->
-    <section id="panel-settings" class="panel">
-      <div class="panel-header">
-        <div class="panel-title">
-          <h2>设置</h2>
-          <p>应用偏好与配置。</p>
-        </div>
-        <div class="panel-actions">
-          <button id="settings-import-btn">导入设置</button>
-          <button id="settings-export-btn">导出设置</button>
-          <button id="settings-reset-btn">恢复默认</button>
-        </div>
-      </div>
-
-      <div style="display:flex; gap:24px;">
-        <!-- 左侧导航 -->
-        <div class="settings-nav" style="flex:0 0 200px; display:flex; flex-direction:column; gap:4px;">
-          <button class="settings-nav-item active" data-settings-tab="general">
-            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-linecap="round"
-              stroke-linejoin="round">
-              <circle cx="12" cy="12" r="3"></circle>
-              <path d="M12 1v6m0 6v6m9-9h-6m-6 0H3m15.4 6.4l-4.2-4.2m-6 0L3.6 7.6m12.8 12.8l-4.2-4.2m-6 0l-4.6 4.6">
-              </path>
-            </svg>
-            外观
-          </button>
-          <button class="settings-nav-item" data-settings-tab="proxy">
-            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-linecap="round"
-              stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="2" y1="12" x2="22" y2="12"></line>
-              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">
-              </path>
-            </svg>
-            系统代理
-          </button>
-          <button class="settings-nav-item" data-settings-tab="network">
-            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-linecap="round"
-              stroke-linejoin="round">
-              <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-            </svg>
-            TUN
-          </button>
-          <button class="settings-nav-item" data-settings-tab="singbox">
-            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-linecap="round"
-              stroke-linejoin="round">
-              <path
-                d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
-              </path>
-            </svg>
-            sing-box
-          </button>
-          <button class="settings-nav-item" data-settings-tab="advanced">
-            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-linecap="round"
-              stroke-linejoin="round">
-              <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
-              <path d="M2 17l10 5 10-5M2 12l10 5 10-5"></path>
-            </svg>
-            高级
-          </button>
-        </div>
-
-        <!-- 右侧内容区 -->
-        <div style="flex:1; min-width:0;">
-          <!-- 外观设置 -->
-          <div class="settings-content active" id="settings-general"></div>
-
-          <!-- 系统代理设置 -->
-          <div class="settings-content" id="settings-proxy" style="display:none;"></div>
-
-          <!-- TUN 设置 -->
-          <div class="settings-content" id="settings-network" style="display:none;"></div>
-
-          <!-- sing-box 设置 -->
-          <div class="settings-content" id="settings-singbox" style="display:none;"></div>
-
-          <!-- 高级设置 -->
-          <div class="settings-content" id="settings-advanced" style="display:none;"></div>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <div id="node-modal" class="modal">
-    <div class="modal-backdrop"></div>
-    <div class="modal-content"
-      style="max-width: 900px; max-height: 90vh; overflow-y: auto; transform: scale(0.95); transform-origin: center;">
-      <button id="node-modal-close" class="modal-close"
-        style="position:absolute; top:24px; right:24px; background:none; border:none; color:var(--text-secondary); font-size:20px; cursor:pointer;">×</button>
-      <form id="node-form" class="form-grid">
-        <h3 style="grid-column:1/-1; margin-bottom:16px; font-size:18px; font-weight:600; color:var(--text-primary);">
-          添加 FRouter</h3>
-
-        <div
-          style="grid-column:1/-1; padding:12px 14px; background:var(--bg-secondary); border-radius:8px; font-size:12px; color:var(--text-secondary); line-height:1.6;">
-          这里只创建一个空的 FRouter（含 1 个配置槽）。节点/订阅请在「订阅」面板里拉取或更新。
-        </div>
-
-        <!-- Basic Settings -->
-        <div
-          style="display:none; grid-column:1/-1; font-weight:600; font-size:14px; color:var(--text-primary); margin-top:12px; padding-bottom:8px; border-bottom:1px solid var(--border-color);">
-          入口配置</div>
-        <label style="grid-column:1/-1;"><span>FRouter 名称 *</span><input name="name" type="text"
-            placeholder="例如: 香港线路01" required></label>
-        <div style="display:none">
-          <label><span>入口地址 *</span><input name="address" type="text" placeholder="example.com 或 IP"></label>
-          <label><span>入口端口 *</span><input name="port" type="number" placeholder="443"></label>
-          <label>
-            <span>协议 *</span>
-            <select name="protocol" id="protocol-select">
-              <option value="">选择协议</option>
-              <option value="shadowsocks">Shadowsocks</option>
-              <option value="vmess">VMess</option>
-              <option value="vless">VLESS</option>
-              <option value="trojan">Trojan</option>
-              <option value="http">HTTP</option>
-              <option value="socks5">SOCKS5</option>
-            </select>
-          </label>
-
-          <!-- Shadowsocks Specific -->
-          <div id="ss-fields"
-            style="display:none; grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-            <label>
-              <span>加密方式</span>
-              <select name="ss_method">
-                <option value="aes-256-gcm">aes-256-gcm</option>
-                <option value="aes-128-gcm">aes-128-gcm</option>
-                <option value="chacha20-ietf-poly1305">chacha20-ietf-poly1305</option>
-                <option value="2022-blake3-aes-256-gcm">2022-blake3-aes-256-gcm</option>
-                <option value="2022-blake3-aes-128-gcm">2022-blake3-aes-128-gcm</option>
-              </select>
-            </label>
-            <label><span>密码</span><input name="ss_password" type="text" placeholder="密码"></label>
-          </div>
-
-          <!-- VMess/VLESS Specific -->
-          <div id="vmess-fields"
-            style="display:none; grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-            <label><span>UUID</span><input name="vmess_uuid" type="text"
-                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"></label>
-            <label>
-              <span>AlterID (VMess)</span>
-              <input name="vmess_alterid" type="number" value="0" placeholder="0">
-            </label>
-            <label>
-              <span>加密方式</span>
-              <select name="vmess_security">
-                <option value="auto">auto</option>
-                <option value="aes-128-gcm">aes-128-gcm</option>
-                <option value="chacha20-poly1305">chacha20-poly1305</option>
-                <option value="none">none</option>
-              </select>
-            </label>
-            <label>
-              <span>流控 (VLESS)</span>
-              <select name="vless_flow">
-                <option value="">无</option>
-                <option value="xtls-rprx-vision">xtls-rprx-vision</option>
-                <option value="xtls-rprx-vision-udp443">xtls-rprx-vision-udp443</option>
-              </select>
-            </label>
-          </div>
-
-          <!-- Trojan Specific -->
-          <div id="trojan-fields" style="display:none; grid-column:1/-1;">
-            <label><span>密码</span><input name="trojan_password" type="text" placeholder="密码"></label>
-          </div>
-
-          <!-- HTTP/SOCKS5 Specific -->
-          <div id="proxy-fields"
-            style="display:none; grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-            <label><span>用户名</span><input name="proxy_username" type="text" placeholder="可选"></label>
-            <label><span>密码</span><input name="proxy_password" type="text" placeholder="可选"></label>
-          </div>
-
-          <!-- Network Settings -->
-          <div
-            style="grid-column:1/-1; font-weight:600; font-size:14px; color:var(--text-primary); margin-top:16px; padding-bottom:8px; border-bottom:1px solid var(--border-color);">
-            传输设置</div>
-          <label>
-            <span>传输协议</span>
-            <select name="network" id="network-select">
-              <option value="tcp">TCP</option>
-              <option value="ws">WebSocket</option>
-              <option value="h2">HTTP/2</option>
-              <option value="grpc">gRPC</option>
-              <option value="quic">QUIC</option>
-            </select>
-          </label>
-          <label>
-            <span>TLS</span>
-            <select name="tls">
-              <option value="">不启用</option>
-              <option value="tls">TLS</option>
-              <option value="xtls">XTLS</option>
-            </select>
-          </label>
-
-          <!-- WebSocket Settings -->
-          <div id="ws-fields"
-            style="display:none; grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-            <label style="grid-column:1/-1"><span>WebSocket 路径</span><input name="ws_path" type="text"
-                placeholder="/path"></label>
-            <label style="grid-column:1/-1"><span>Host</span><input name="ws_host" type="text"
-                placeholder="example.com"></label>
-          </div>
-
-          <!-- HTTP/2 Settings -->
-          <div id="h2-fields"
-            style="display:none; grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-            <label style="grid-column:1/-1"><span>HTTP/2 路径</span><input name="h2_path" type="text"
-                placeholder="/path"></label>
-            <label style="grid-column:1/-1"><span>Host</span><input name="h2_host" type="text"
-                placeholder="example.com"></label>
-          </div>
-
-          <!-- gRPC Settings -->
-          <div id="grpc-fields" style="display:none; grid-column:1/-1;">
-            <label><span>gRPC ServiceName</span><input name="grpc_service" type="text" placeholder="ServiceName"></label>
-          </div>
-
-          <!-- TLS Settings -->
-          <div id="tls-fields"
-            style="display:none; grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-            <label style="grid-column:1/-1"><span>SNI</span><input name="tls_sni" type="text"
-                placeholder="留空使用服务器地址"></label>
-            <label style="grid-column:1/-1"><span>指纹 (Fingerprint)</span>
-              <select name="tls_fingerprint">
-                <option value="">不设置</option>
-                <option value="chrome">Chrome</option>
-                <option value="firefox">Firefox</option>
-                <option value="safari">Safari</option>
-                <option value="edge">Edge</option>
-                <option value="random">随机</option>
-              </select>
-            </label>
-          </div>
-        </div>
-
-        <!-- Other Settings -->
-        <div
-          style="display:none; grid-column:1/-1; font-weight:600; font-size:14px; color:var(--text-primary); margin-top:16px; padding-bottom:8px; border-bottom:1px solid var(--border-color);">
-          其他设置</div>
-        <label style="grid-column:1/-1"><span>FRouter 标签</span><input name="tags" type="text"
-            placeholder="多个标签用逗号分隔, 例如: 香港,IPLC,游戏"></label>
-
-        <div class="form-actions">
-          <button type="button" id="node-modal-reset">重置</button>
-          <button type="submit" class="primary">创建 FRouter</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <div id="nodes-modal" class="modal">
-    <div class="modal-backdrop"></div>
-    <div class="modal-content" style="max-width: 760px; max-height: 90vh; overflow-y: auto;">
-      <button id="nodes-modal-close" class="modal-close"
-        style="position:absolute; top:24px; right:24px; background:none; border:none; color:var(--text-secondary); font-size:20px; cursor:pointer;">×</button>
-      <form id="nodes-form" class="form-grid" novalidate>
-        <h3 id="nodes-modal-title" style="grid-column:1/-1; margin-bottom:16px; font-size:18px; font-weight:600; color:var(--text-primary);">
-          添加节点</h3>
-
-        <label id="nodes-sharelink-row" style="grid-column:1/-1;">
-          <span>分享链接 (可选)</span>
-          <textarea name="shareLink" style="height:72px;" placeholder="vless:// / vmess:// / trojan:// / ss:// (支持 base64 订阅内容)"></textarea>
-        </label>
-
-        <label><span>节点名称 *</span><input name="name" type="text" required placeholder="例如: 香港01"></label>
-        <label><span>服务器地址 *</span><input name="address" type="text" required placeholder="example.com 或 IP"></label>
-        <label><span>端口 *</span><input name="port" type="number" min="1" max="65535" required placeholder="443"></label>
-        <label>
-          <span>协议 *</span>
-          <select name="protocol" id="nodes-protocol-select" required>
-            <option value="shadowsocks">Shadowsocks</option>
-            <option value="vmess">VMess</option>
-            <option value="vless">VLESS</option>
-            <option value="trojan">Trojan</option>
-          </select>
-        </label>
-        <label style="grid-column:1/-1;"><span>标签</span><input name="tags" type="text"
-            placeholder="多个标签用逗号分隔, 例如: 香港,游戏"></label>
-
-        <div
-          style="grid-column:1/-1; font-weight:600; font-size:14px; color:var(--text-primary); margin-top:8px; padding-bottom:8px; border-bottom:1px solid var(--border-color);">
-          认证信息</div>
-
-        <div id="nodes-ss-fields"
-          style="grid-column:1/-1; display:none; grid-template-columns:1fr 1fr; gap:16px;">
-          <label>
-            <span>加密方式</span>
-            <select name="ss_method">
-              <option value="aes-256-gcm">aes-256-gcm</option>
-              <option value="aes-128-gcm">aes-128-gcm</option>
-              <option value="chacha20-ietf-poly1305">chacha20-ietf-poly1305</option>
-              <option value="2022-blake3-aes-256-gcm">2022-blake3-aes-256-gcm</option>
-              <option value="2022-blake3-aes-128-gcm">2022-blake3-aes-128-gcm</option>
-            </select>
-          </label>
-          <label><span>密码</span><input name="ss_password" type="text" placeholder="密码"></label>
-        </div>
-
-        <div id="nodes-vmess-fields"
-          style="grid-column:1/-1; display:none; grid-template-columns:1fr 1fr; gap:16px;">
-          <label><span>UUID</span><input name="vmess_uuid" type="text"
-              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"></label>
-          <label>
-            <span>AlterID (VMess)</span>
-            <input name="vmess_alterid" type="number" value="0" placeholder="0">
-          </label>
-          <label>
-            <span>加密方式</span>
-            <select name="vmess_security">
-              <option value="auto">auto</option>
-              <option value="aes-128-gcm">aes-128-gcm</option>
-              <option value="chacha20-poly1305">chacha20-poly1305</option>
-              <option value="none">none</option>
-            </select>
-          </label>
-          <label>
-            <span>流控 (VLESS)</span>
-            <select name="vless_flow">
-              <option value="">无</option>
-              <option value="xtls-rprx-vision">xtls-rprx-vision</option>
-              <option value="xtls-rprx-vision-udp443">xtls-rprx-vision-udp443</option>
-            </select>
-          </label>
-        </div>
-
-        <div id="nodes-trojan-fields" style="grid-column:1/-1; display:none;">
-          <label><span>密码</span><input name="trojan_password" type="text" placeholder="密码"></label>
-        </div>
-
-        <div
-          style="grid-column:1/-1; font-weight:600; font-size:14px; color:var(--text-primary); margin-top:8px; padding-bottom:8px; border-bottom:1px solid var(--border-color);">
-          传输设置</div>
-        <label>
-          <span>传输协议</span>
-          <select name="network" id="nodes-network-select">
-            <option value="tcp">TCP</option>
-            <option value="ws">WebSocket</option>
-            <option value="http">HTTP</option>
-            <option value="h2">HTTP/2</option>
-            <option value="grpc">gRPC</option>
-          </select>
-        </label>
-        <label>
-          <span>TLS</span>
-          <select name="tls" id="nodes-tls-select">
-            <option value="">不启用</option>
-            <option value="tls">TLS</option>
-          </select>
-        </label>
-
-        <div id="nodes-ws-fields"
-          style="grid-column:1/-1; display:none; grid-template-columns:1fr 1fr; gap:16px;">
-          <label style="grid-column:1/-1"><span>WebSocket 路径</span><input name="ws_path" type="text"
-              placeholder="/path"></label>
-          <label style="grid-column:1/-1"><span>Host</span><input name="ws_host" type="text"
-              placeholder="example.com"></label>
-        </div>
-
-        <div id="nodes-http-fields"
-          style="grid-column:1/-1; display:none; grid-template-columns:1fr 1fr; gap:16px;">
-          <label style="grid-column:1/-1"><span>HTTP 路径</span><input name="h2_path" type="text"
-              placeholder="/path"></label>
-          <label style="grid-column:1/-1"><span>Host</span><input name="h2_host" type="text"
-              placeholder="example.com"></label>
-        </div>
-
-        <div id="nodes-grpc-fields" style="grid-column:1/-1; display:none;">
-          <label><span>gRPC ServiceName</span><input name="grpc_service" type="text" placeholder="ServiceName"></label>
-        </div>
-
-        <div id="nodes-tls-fields"
-          style="grid-column:1/-1; display:none; grid-template-columns:1fr 1fr; gap:16px;">
-          <label style="grid-column:1/-1"><span>SNI</span><input name="tls_sni" type="text"
-              placeholder="留空使用服务器地址"></label>
-          <label style="grid-column:1/-1"><span>指纹 (Fingerprint)</span>
-            <select name="tls_fingerprint">
-              <option value="">不设置</option>
-              <option value="chrome">Chrome</option>
-              <option value="firefox">Firefox</option>
-              <option value="safari">Safari</option>
-              <option value="edge">Edge</option>
-              <option value="random">随机</option>
-            </select>
-          </label>
-          <label style="grid-column:1/-1"><span>证书校验</span>
-            <select name="tls_insecure">
-              <option value="false">严格校验</option>
-              <option value="true">跳过校验</option>
-            </select>
-          </label>
-        </div>
-
-        <div class="form-actions">
-          <button type="button" id="nodes-modal-reset">重置</button>
-          <button type="submit" class="primary">创建节点</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <div id="config-modal" class="modal">
-    <div class="modal-backdrop"></div>
-    <div class="modal-content">
-      <button id="config-modal-close" class="modal-close"
-        style="position:absolute; top:24px; right:24px; background:none; border:none; color:var(--text-secondary); font-size:20px; cursor:pointer;">×</button>
-      <form id="config-form" class="form-grid">
-        <h3 id="config-modal-title" style="grid-column:1/-1; margin-bottom:16px; font-size:18px; font-weight:600; color:var(--text-primary);">
-          添加订阅</h3>
-        <label><span>名称</span><input name="name" type="text" required placeholder="例如: My Server"></label>
-        <label style="grid-column:1/-1"><span>订阅链接</span><input name="sourceUrl" type="url" required
-            placeholder="https://..."></label>
-        <label><span>更新间隔 (分钟，0=关闭)</span><input name="autoUpdateInterval" type="number" min="0" value="60"></label>
-        <label style="grid-column:1/-1"><span>配置内容 (可选)</span><textarea name="payload"
-            style="height:80px;"></textarea></label>
-        <div class="form-actions">
-          <button type="button" id="config-modal-reset">重置</button>
-          <button type="submit" class="primary">保存订阅</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <script src="../settings-schema.js"></script>
-  <!-- Rule Templates (保留) -->
-  <script src="../chain-editor/rule-templates.js"></script>
-  <script type="module">
-	    import { createAPI, utils } from '../sdk/dist/vea-sdk.esm.js';
-	    const { formatTime, formatBytes, formatInterval, escapeHtml, parseNumber, parseList, sleep } = utils;
-
-	    const statusBar = document.getElementById("status");
-	    let statusTimer = null;
-
-	    function showStatus(message, type = "info", delay = 3200) {
-	      if (!statusBar) return;
-	      if (!message) {
-	        statusBar.classList.remove("visible", "success", "error", "info");
-	        statusBar.textContent = "";
-	        return;
-	      }
-	      statusBar.textContent = message;
-	      statusBar.classList.remove("success", "error", "info");
-	      statusBar.classList.add("visible", type);
-	      if (statusTimer) {
-	        clearTimeout(statusTimer);
-	      }
-	      if (delay > 0) {
-	        statusTimer = setTimeout(() => {
-	          statusBar.classList.remove("visible");
-	        }, delay);
-	      }
-	    }
-
-	    (function () {
-	      const menu = document.getElementById("menu");
-	      const panels = document.querySelectorAll(".panel");
-	      let currentPanel = "panel-home";
-
-	      const api = createAPI('http://127.0.0.1:19080');
-
-	      const SYSTEM_PROXY_DEFAULTS = ["localhost", "127.0.0.0/8", "::1"];
-	      let systemProxySettings = {
-	        enabled: false,
+      const SYSTEM_PROXY_DEFAULTS = ["localhost", "127.0.0.0/8", "::1"];
+      let systemProxySettings = {
+        enabled: false,
         ignoreHosts: [...SYSTEM_PROXY_DEFAULTS],
       };
       let frouterTags = [];
@@ -3713,9 +890,6 @@
             : "核心：已停止";
         }
 
-        // TUN 卡片的主状态应跟随“运行态”（/proxy/status），而不是能力检查（/tun/check）。
-        updateTUNUI(tunStatusCache || {});
-
         if (!proxyToggle) {
           return;
         }
@@ -3733,7 +907,7 @@
       }
 
       // TUN status management
-      var tunStatusCache = null;
+      let tunStatusCache = null;
 
       async function checkTUNStatus({ notify = false } = {}) {
         try {
@@ -3742,15 +916,15 @@
           updateTUNUI(tunStatusCache);
           if (notify) {
             const text = status.configured
-              ? `TUN 能力已配置 (${status.platform})`
-              : `TUN 能力未配置 (${status.platform})`;
+              ? `TUN 模式已配置 (${status.platform})`
+              : `TUN 模式未配置 (${status.platform})`;
             showStatus(text, status.configured ? "success" : "info");
           }
         } catch (err) {
           tunStatusCache = { configured: false, error: err.message };
           updateTUNUI(tunStatusCache);
           if (notify) {
-            showStatus(`检查 TUN 能力失败：${err.message}`, "error", 6000);
+            showStatus(`检查 TUN 状态失败：${err.message}`, "error", 6000);
           }
         }
       }
@@ -4028,7 +1202,7 @@
           tunSettingsCache = { enabled: updated && updated.inboundMode === "tun" };
           updateTUNToggle(tunSettingsCache || { enabled: false });
 
-          // 启用 TUN 时先关闭系统代理，避免重启期间系统代理短暂指向“黑洞”导致断网。
+          // 启用 TUN 时系统代理应该关闭（否则系统会指向一个不存在的本地端口）。
           if (enabled) {
             try {
               const response = await api.put("/settings/system-proxy", {
@@ -4102,70 +1276,22 @@
 
         if (!tunCard || !tunValue) return;
 
-        if (!status || typeof status !== "object") {
-          status = {};
-        }
-
-        // 主状态：以“运行态”为准（/proxy/status）
-        const busy = Boolean(coreStatus && coreStatus.busy);
-        const coreRunning = Boolean(coreStatus && coreStatus.running);
-        const inboundMode = coreStatus && coreStatus.inboundMode ? String(coreStatus.inboundMode) : "";
-        const isTunMode = inboundMode === "tun";
-
-        if (busy) {
-          tunValue.textContent = "处理中";
-          tunValue.style.color = "var(--warning)";
-        } else if (isTunMode && coreRunning) {
-          tunValue.textContent = "运行中";
-          tunValue.style.color = "var(--success)";
-        } else if (isTunMode && !coreRunning) {
-          tunValue.textContent = "已启用";
-          tunValue.style.color = "var(--warning)";
-        } else {
-          tunValue.textContent = "未启用";
-          tunValue.style.color = "var(--text-secondary)";
-        }
-
-        // tooltip：补充能力检查（/tun/check），但不覆盖主状态
-        const platform = status.platform || "unknown";
         const configured = Boolean(status.configured);
-        const engineLabel = coreRunning && coreStatus && coreStatus.engine
-          ? `（${componentDisplayName(coreStatus.engine)}）`
-          : "";
-        const runText = busy
-          ? "运行状态：处理中"
-          : isTunMode
-            ? (coreRunning ? `运行状态：运行中${engineLabel}` : "运行状态：已启用（未运行）")
-            : (coreRunning ? `运行状态：未启用（当前 ${inboundMode || "unknown"}）` : "运行状态：未启用");
-        const capText = status.error
-          ? `能力检查失败：${status.error}`
-          : (configured ? `能力：已配置 (${platform})` : `能力：未配置 (${platform})`);
-        tunCard.title = `${runText} | ${capText}`;
+        const platform = status.platform || "unknown";
 
-        // Windows 非管理员：在 TUN 区域给出明确提示
-        const winNeedAdmin = !status.error && platform === "windows" && !configured && !(isTunMode && coreRunning);
-        const winHintText = "Windows 下启用 TUN 需要管理员权限：请右键 Vea → 以管理员身份运行。";
-
-        const homeHint = document.getElementById("tun-permission-hint");
-        if (homeHint) {
-          if (winNeedAdmin) {
-            homeHint.textContent = winHintText;
-            homeHint.style.display = "block";
-          } else {
-            homeHint.textContent = "";
-            homeHint.style.display = "none";
-          }
-        }
-
-        const settingsHint = document.getElementById("tun-permission-hint-settings");
-        if (settingsHint) {
-          if (winNeedAdmin) {
-            settingsHint.textContent = winHintText;
-            settingsHint.style.display = "block";
-          } else {
-            settingsHint.textContent = "";
-            settingsHint.style.display = "none";
-          }
+        if (status.error) {
+          tunValue.textContent = "检查失败";
+          tunValue.style.color = "var(--error)";
+          tunCard.title = `错误：${status.error}`;
+        } else if (configured) {
+          tunValue.textContent = "已配置";
+          tunValue.style.color = "var(--success)";
+          tunCard.title = `TUN 模式已在 ${platform} 上配置`;
+        } else {
+          tunValue.textContent = "未配置";
+          tunValue.style.color = "var(--warning)";
+          const setupCmd = status.setupCommand || "查看文档";
+          tunCard.title = `点击查看配置方法：${setupCmd}`;
         }
 
         // 更新设置面板中的 TUN 状态
@@ -4192,25 +1318,7 @@
 
       async function showTUNStatusDialog() {
         showStatus("正在检查 TUN 状态...", "info");
-        await refreshCoreStatus();
-        await checkTUNStatus();
-
-        const cap = tunStatusCache || {};
-        const platform = cap.platform || "unknown";
-        const capText = cap.error
-          ? `能力检查失败：${cap.error}`
-          : (cap.configured ? `能力：已配置 (${platform})` : `能力：未配置 (${platform})`);
-
-        const busy = Boolean(coreStatus && coreStatus.busy);
-        const running = Boolean(coreStatus && coreStatus.running);
-        const inboundMode = coreStatus && coreStatus.inboundMode ? String(coreStatus.inboundMode) : "";
-        const runText = busy
-          ? "运行状态：处理中"
-          : inboundMode === "tun"
-            ? (running ? "运行状态：运行中" : "运行状态：已启用（未运行）")
-            : (running ? `运行状态：未启用（当前 ${inboundMode || "unknown"}）` : "运行状态：未启用");
-
-        showStatus(`TUN ${runText}；${capText}`, cap.error ? "warn" : "info", 6000);
+        await checkTUNStatus({ notify: true });
       }
 
       // 配置 TUN - 直接调用 API
@@ -4446,7 +1554,7 @@
 	          title = n.lastSpeedError;
 	        } else if (n && typeof n.lastSpeedMbps === "number" && n.lastSpeedMbps > 0) {
 	          const fixed = n.lastSpeedMbps >= 10 ? n.lastSpeedMbps.toFixed(1) : n.lastSpeedMbps.toFixed(2);
-	          value = `${fixed} MB/s`;
+	          value = `${fixed} Mbps`;
 	          if (n.lastSpeedMbps > 5) cls = "good";
 	          else if (n.lastSpeedMbps > 1) cls = "fair";
 	          else cls = "poor";
@@ -4660,7 +1768,7 @@
 	              speedClass = "poor";
 	            } else if (typeof frouter.lastSpeedMbps === "number" && frouter.lastSpeedMbps > 0) {
               const fixed = frouter.lastSpeedMbps >= 10 ? frouter.lastSpeedMbps.toFixed(1) : frouter.lastSpeedMbps.toFixed(2);
-              speedValue = `${fixed} MB/s`;
+              speedValue = `${fixed} Mbps`;
               if (frouter.lastSpeedMbps > 5) speedClass = "good";
               else if (frouter.lastSpeedMbps > 1) speedClass = "fair";
               else speedClass = "poor";
@@ -4694,67 +1802,36 @@
           .join("");
       }
 
-	      async function loadConfigs({ notify = false } = {}) {
-	        try {
-	          const configs = await api.get("/configs");
-	          configsCache = Array.isArray(configs) ? configs : [];
-	          renderConfigs(configsCache);
-	          renderOrUpdateNodesPanel(nodesCache);
-	          if (notify) {
-	            showStatus("配置列表已刷新", "success");
-	          }
-	        } catch (err) {
-	          showStatus(`加载配置失败：${err.message}`, "error", 6000);
-	        }
-	      }
+      async function loadConfigs({ notify = false } = {}) {
+        try {
+          const configs = await api.get("/configs");
+          configsCache = Array.isArray(configs) ? configs : [];
+          renderConfigs(configsCache);
+          renderOrUpdateNodesPanel(nodesCache);
+          if (notify) {
+            showStatus("配置列表已刷新", "success");
+          }
+        } catch (err) {
+          showStatus(`加载配置失败：${err.message}`, "error", 6000);
+        }
+      }
 
-	      async function waitForConfigSync(configId, baselineLastSyncedAt, { timeoutMs = 20000, intervalMs = 700 } = {}) {
-	        if (!configId) return null;
-	        const baselineMs = Date.parse(baselineLastSyncedAt || "") || 0;
-	        const start = Date.now();
-	        while (Date.now() - start < timeoutMs) {
-	          await sleep(intervalMs);
-	          let configs;
-	          try {
-	            configs = await api.get("/configs");
-	          } catch (err) {
-	            continue;
-	          }
-	          const cfg = Array.isArray(configs)
-	            ? configs.find((item) => item && item.id === configId)
-	            : null;
-	          if (!cfg) return null;
-	          const syncedMs = Date.parse(cfg.lastSyncedAt || "") || 0;
-	          if (syncedMs > baselineMs) {
-	            return cfg;
-	          }
-	        }
-	        return null;
-	      }
-
-	      function renderConfigs(configs) {
-	        const tbody = document.querySelector("#config-table tbody");
-	        if (!Array.isArray(configs) || configs.length === 0) {
-	          tbody.innerHTML = '<tr><td colspan="6" class="empty">暂无配置</td></tr>';
-	          return;
-	        }
-	        tbody.innerHTML = configs
-	          .map((cfg) => {
-	            const syncErr = cfg.lastSyncError || "";
-	            const lastSyncedAt = cfg.lastSyncedAt || "";
-	            const parsedLastSyncedAt = new Date(lastSyncedAt);
-	            const lastSyncedAtMs = parsedLastSyncedAt.getTime();
-	            const neverSynced = !lastSyncedAt || Number.isNaN(lastSyncedAtMs) || lastSyncedAtMs <= 0;
-	            let syncState = '<span class="badge">正常</span>';
-	            if (syncErr) {
-	              syncState = `<span class="badge error text-truncate" title="${escapeHtml(syncErr)}">失败：${escapeHtml(syncErr)}</span>`;
-	            } else if (neverSynced) {
-	              syncState = '<span class="badge warn">未同步</span>';
-	            }
-	            const source = cfg.sourceUrl ? `<br /><div class="muted text-truncate" title="${escapeHtml(cfg.sourceUrl)}">${escapeHtml(cfg.sourceUrl)}</div>` : "";
-	            return `
-	          <tr data-id="${escapeHtml(cfg.id)}">
-		            <td>${escapeHtml(cfg.name)}${source}</td>
+      function renderConfigs(configs) {
+        const tbody = document.querySelector("#config-table tbody");
+        if (!Array.isArray(configs) || configs.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" class="empty">暂无配置</td></tr>';
+          return;
+        }
+        tbody.innerHTML = configs
+          .map((cfg) => {
+            const syncErr = cfg.lastSyncError || "";
+            const syncState = syncErr
+              ? `<span class="badge error text-truncate" title="${escapeHtml(syncErr)}">失败：${escapeHtml(syncErr)}</span>`
+              : '<span class="badge">正常</span>';
+            const source = cfg.sourceUrl ? `<br /><div class="muted text-truncate" title="${escapeHtml(cfg.sourceUrl)}">${escapeHtml(cfg.sourceUrl)}</div>` : "";
+            return `
+          <tr data-id="${escapeHtml(cfg.id)}">
+	            <td>${escapeHtml(cfg.name)}${source}</td>
 	            <td><span class="badge">${escapeHtml(cfg.format)}</span></td>
 	            <td>${formatInterval(cfg.autoUpdateInterval)}</td>
 	            <td>${formatTime(cfg.lastSyncedAt)}</td>
@@ -4840,7 +1917,7 @@
         speedEl.title = "";
         if (typeof speedMbps === "number") {
           const fixed = speedMbps >= 10 ? speedMbps.toFixed(1) : speedMbps.toFixed(2);
-          speedEl.textContent = `${fixed} MB/s`;
+          speedEl.textContent = `${fixed} Mbps`;
         } else {
           speedEl.textContent = "--";
         }
@@ -5114,8 +2191,6 @@
           this.edges = [];
           this.detourEdges = [];
           this.slots = [];
-          this.slotManagerDraft = null;
-          this.positions = {};
           this.nodes = [];
           this.dirty = false;
           this.draggedItem = null;
@@ -5153,7 +2228,6 @@
             this.edges = allEdges.filter(e => (e?.from || '') === 'local');
             this.detourEdges = allEdges.filter(e => (e?.from || '') !== 'local');
             this.slots = Array.isArray(data.slots) ? data.slots : [];
-            this.positions = (data && typeof data.positions === 'object' && data.positions) ? data.positions : {};
             this.sortEdgesByPriority();
             this.render();
             this.dirty = false;
@@ -5163,7 +2237,6 @@
             this.edges = [];
             this.detourEdges = [];
             this.slots = [];
-            this.positions = {};
             this.render();
           }
         }
@@ -5534,28 +2607,6 @@
             if (e.target?.dataset?.action !== 'chain-remove') return;
             e.target.closest('.rule-chain-item')?.remove();
           });
-
-          // 槽位管理
-          this.container.querySelector('#chain-manage-slots')?.addEventListener('click', () => {
-            this.openSlotManager();
-          });
-
-          const slotDialog = this.container.querySelector('#slot-manager-dialog');
-          if (slotDialog) {
-            slotDialog.addEventListener('click', (e) => {
-              if (e.target === slotDialog) this.cancelSlotManager();
-            });
-          }
-          this.container.querySelector('#slot-manager-close')?.addEventListener('click', () => this.cancelSlotManager());
-          this.container.querySelector('#slot-manager-cancel')?.addEventListener('click', () => this.cancelSlotManager());
-          this.container.querySelector('#slot-manager-save')?.addEventListener('click', () => this.applySlotManager());
-          this.container.querySelector('#slot-manager-add')?.addEventListener('click', () => this.addSlotInManager());
-
-          const slotList = this.container.querySelector('#slot-manager-list');
-          if (slotList) {
-            slotList.addEventListener('input', (e) => this.onSlotManagerInput(e));
-            slotList.addEventListener('change', (e) => this.onSlotManagerChange(e));
-          }
         }
 
         onDragStart(e) {
@@ -5745,232 +2796,6 @@
           }
         }
 
-        cloneSlots(slots) {
-          const all = Array.isArray(slots) ? slots : [];
-          return all.map((s) => ({
-            id: s?.id != null ? String(s.id) : '',
-            name: s?.name != null ? String(s.name) : '',
-            boundNodeId: s?.boundNodeId != null ? String(s.boundNodeId) : ''
-          }));
-        }
-
-        refreshRuleDialogSlotOptions() {
-          const dialog = this.container.querySelector('#rule-edit-dialog');
-          if (!dialog || !dialog.classList.contains('open')) return;
-
-          const toSelect = this.container.querySelector('#rule-to');
-          if (toSelect) {
-            this.fillRuleToSelect(toSelect, toSelect.value || 'direct');
-          }
-
-          const hopSelects = Array.from(this.container.querySelectorAll('#rule-chain-list .rule-chain-hop'));
-          hopSelects.forEach((sel) => this.fillChainHopSelect(sel, sel?.value || ''));
-        }
-
-        nextNumericSlotID(slots) {
-          const all = Array.isArray(slots) ? slots : [];
-          const used = new Set(
-            all
-              .map(s => (s?.id == null ? '' : String(s.id).trim()))
-              .filter(Boolean)
-          );
-
-          let maxN = 0;
-          for (const id of used) {
-            const m = id.match(/^slot-(\d+)$/);
-            if (!m) continue;
-            const n = parseInt(m[1], 10);
-            if (!Number.isFinite(n)) continue;
-            if (n > maxN) maxN = n;
-          }
-
-          let next = maxN + 1;
-          while (used.has(`slot-${next}`)) next += 1;
-          return `slot-${next}`;
-        }
-
-        openSlotManager() {
-          this.slotManagerDraft = this.cloneSlots(this.slots);
-          this.renderSlotManager();
-          this.container.querySelector('#slot-manager-dialog')?.classList.add('open');
-        }
-
-        closeSlotManager() {
-          this.slotManagerDraft = null;
-          this.container.querySelector('#slot-manager-dialog')?.classList.remove('open');
-        }
-
-        cancelSlotManager() {
-          this.closeSlotManager();
-        }
-
-        addSlotInManager() {
-          if (!Array.isArray(this.slotManagerDraft)) {
-            this.slotManagerDraft = this.cloneSlots(this.slots);
-          }
-
-          const id = this.nextNumericSlotID(this.slotManagerDraft);
-          const suffix = id.slice('slot-'.length);
-          this.slotManagerDraft.push({
-            id,
-            name: `槽位 ${suffix}`,
-            boundNodeId: ''
-          });
-          this.renderSlotManager();
-        }
-
-        onSlotManagerInput(e) {
-          const input = e.target?.closest('input.slot-name-input');
-          if (!input) return;
-          const item = input.closest('.slot-manager-item');
-          if (!item) return;
-
-          const idx = parseInt(item.dataset.slotIndex || '', 10);
-          if (!Number.isFinite(idx)) return;
-          if (!Array.isArray(this.slotManagerDraft) || !this.slotManagerDraft[idx]) return;
-
-          this.slotManagerDraft[idx].name = input.value || '';
-          const id = (this.slotManagerDraft[idx].id || '').toString();
-          const titleEl = item.querySelector('.slot-manager-item-title');
-          if (titleEl) {
-            titleEl.textContent = (input.value || '').trim() || id || '槽位';
-          }
-        }
-
-        onSlotManagerChange(e) {
-          const select = e.target?.closest('select.slot-bound-select');
-          if (!select) return;
-          const item = select.closest('.slot-manager-item');
-          if (!item) return;
-
-          const idx = parseInt(item.dataset.slotIndex || '', 10);
-          if (!Number.isFinite(idx)) return;
-          if (!Array.isArray(this.slotManagerDraft) || !this.slotManagerDraft[idx]) return;
-
-          this.slotManagerDraft[idx].boundNodeId = select.value || '';
-        }
-
-        applySlotManager() {
-          const draft = Array.isArray(this.slotManagerDraft) ? this.slotManagerDraft : [];
-          const nodes = Array.isArray(this.nodes) ? this.nodes : [];
-          const nodeIDs = new Set(nodes.map(n => (n?.id == null ? '' : String(n.id).trim())).filter(Boolean));
-
-          const problems = [];
-          const seen = new Set();
-          for (const s of draft) {
-            const id = (s?.id == null ? '' : String(s.id).trim());
-            if (!id) {
-              problems.push('槽位 ID 不能为空');
-              continue;
-            }
-            if (!id.startsWith('slot-')) {
-              problems.push(`槽位 ${id} 的 ID 必须以 slot- 开头`);
-              continue;
-            }
-            if (seen.has(id)) {
-              problems.push(`槽位 ID 重复: ${id}`);
-              continue;
-            }
-            seen.add(id);
-
-            const bound = (s?.boundNodeId == null ? '' : String(s.boundNodeId).trim());
-            if (bound && !nodeIDs.has(bound)) {
-              problems.push(`槽位 ${id} 绑定的节点不存在: ${bound}`);
-              continue;
-            }
-          }
-
-          if (problems.length > 0) {
-            showStatus(`槽位配置无效：${problems[0]}`, 'error', 5000);
-            return;
-          }
-
-          this.slots = draft.map((s) => ({
-            id: (s?.id == null ? '' : String(s.id).trim()),
-            name: (s?.name == null ? '' : String(s.name).trim()),
-            boundNodeId: (s?.boundNodeId == null ? '' : String(s.boundNodeId).trim())
-          }));
-
-          this.render();
-          this.markDirty();
-          this.refreshRuleDialogSlotOptions();
-          this.closeSlotManager();
-        }
-
-        renderSlotManager() {
-          const list = this.container.querySelector('#slot-manager-list');
-          if (!list) return;
-
-          const slots = Array.isArray(this.slotManagerDraft) ? this.slotManagerDraft : [];
-          if (slots.length === 0) {
-            list.innerHTML = '<div class="chain-rules-empty">暂无槽位，点击“添加槽位”创建</div>';
-            return;
-          }
-
-          const nodes = Array.isArray(this.nodes) ? [...this.nodes] : [];
-          const nodesByID = new Map();
-          nodes.forEach((n) => {
-            const id = n?.id;
-            if (id) nodesByID.set(String(id), n);
-          });
-          const groups = typeof groupNodesBySubscription === 'function' ? groupNodesBySubscription(nodes) : [];
-          const optionHtml = (val, label, selected) =>
-            `<option value="${escapeHtml(val)}"${selected ? ' selected' : ''}>${escapeHtml(label)}</option>`;
-
-          const buildBoundOptions = (bound) => {
-            const current = (bound == null ? '' : String(bound)).trim();
-            let html = '';
-            if (current && !nodesByID.has(current)) {
-              html += optionHtml(current, `未知: ${current}`, true);
-            }
-            html += optionHtml('', '未绑定（穿透）', !current);
-
-            for (const group of groups) {
-              const groupOptions = [];
-              for (const n of (group?.nodes || [])) {
-                const id = n?.id;
-                if (!id) continue;
-                groupOptions.push(optionHtml(String(id), n?.name || id, String(id) === current));
-              }
-              if (groupOptions.length > 0) {
-                html += `<optgroup label="${escapeHtml(group?.label || '节点')}">${groupOptions.join('')}</optgroup>`;
-              }
-            }
-
-            return html;
-          };
-
-          list.innerHTML = slots
-            .map((s, idx) => {
-              const id = s?.id != null ? String(s.id) : '';
-              const name = s?.name != null ? String(s.name) : '';
-              const bound = s?.boundNodeId != null ? String(s.boundNodeId) : '';
-              const title = name.trim() || id.trim() || '槽位';
-
-              return `
-                <div class="slot-manager-item" data-slot-index="${idx}">
-                  <div class="slot-manager-item-header">
-                    <div class="slot-manager-item-title">${escapeHtml(title)}</div>
-                    <div class="slot-manager-item-id">${escapeHtml(id)}</div>
-                  </div>
-                  <div class="slot-manager-item-fields">
-                    <div class="chain-form-group">
-                      <label>名称</label>
-                      <input type="text" class="slot-name-input" value="${escapeHtml(name)}" placeholder="槽位名称">
-                    </div>
-                    <div class="chain-form-group">
-                      <label>绑定节点</label>
-                      <select class="slot-bound-select">
-                        ${buildBoundOptions(bound)}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              `;
-            })
-            .join('');
-        }
-
         async saveGraph() {
           try {
             const path = this.frouterId
@@ -5980,7 +2805,7 @@
             const data = {
               edges: [...this.edges, ...this.detourEdges],
               slots: this.slots,
-              positions: this.positions || {}
+              positions: {}
             };
 
             await this.api.put(path, data);
@@ -6006,41 +2831,28 @@
           }
         }
 
-	        initRuleTemplates() {
-	          const categorySelect = this.container.querySelector('#rule-template-category');
-	          const templateSelect = this.container.querySelector('#rule-template-select');
-	          const applyBtn = this.container.querySelector('#rule-template-apply');
+        initRuleTemplates() {
+          const categorySelect = this.container.querySelector('#rule-template-category');
+          const templateSelect = this.container.querySelector('#rule-template-select');
+          const applyBtn = this.container.querySelector('#rule-template-apply');
 
-	          if (!categorySelect || !templateSelect) return;
+          if (!categorySelect || !templateSelect) return;
 
-	          const templateAPIOk = typeof getTemplateCategories === 'function'
-	            && typeof getTemplatesByCategory === 'function'
-	            && typeof getTemplateById === 'function';
-	
-	          if (!templateAPIOk) {
-	            categorySelect.disabled = true;
-	            templateSelect.disabled = true;
-	            if (applyBtn) applyBtn.disabled = true;
-	            templateSelect.innerHTML = '<option value="">默认模板未加载</option>';
-	            showStatus('默认规则模板未加载（可能是发布包缺少资源）', 'error', 4800);
-	            return;
-	          }
-	
-	          const categories = getTemplateCategories();
-	          categorySelect.innerHTML = '<option value="all">全部分类</option>';
-	          for (const cat of categories) {
-	            const opt = document.createElement('option');
-	            opt.value = cat.id;
-	            opt.textContent = `${cat.icon} ${cat.name}`;
+          const categories = typeof getTemplateCategories === 'function' ? getTemplateCategories() : [];
+          categorySelect.innerHTML = '<option value="all">全部分类</option>';
+          for (const cat of categories) {
+            const opt = document.createElement('option');
+            opt.value = cat.id;
+            opt.textContent = `${cat.icon} ${cat.name}`;
             categorySelect.appendChild(opt);
           }
 
-	          const updateTemplateSelect = (categoryId) => {
-	            const templates = getTemplatesByCategory(categoryId);
-	            templateSelect.innerHTML = '<option value="">选择模板...</option>';
-	            for (const tmpl of templates) {
-	              const opt = document.createElement('option');
-	              opt.value = tmpl.id;
+          const updateTemplateSelect = (categoryId) => {
+            const templates = typeof getTemplatesByCategory === 'function' ? getTemplatesByCategory(categoryId) : [];
+            templateSelect.innerHTML = '<option value="">选择模板...</option>';
+            for (const tmpl of templates) {
+              const opt = document.createElement('option');
+              opt.value = tmpl.id;
               opt.textContent = `${tmpl.icon} ${tmpl.name}`;
               opt.title = tmpl.description;
               templateSelect.appendChild(opt);
@@ -6050,14 +2862,14 @@
           updateTemplateSelect('all');
           categorySelect.addEventListener('change', (e) => updateTemplateSelect(e.target.value));
 
-	          const applyTemplate = (templateId) => {
-	            if (!templateId) return;
+          const applyTemplate = (templateId) => {
+            if (!templateId) return;
 
-	            const template = getTemplateById(templateId);
-	            if (!template || !template.rule) {
-	              showStatus('模板数据无效', 'error', 2000);
-	              return;
-	            }
+            const template = typeof getTemplateById === 'function' ? getTemplateById(templateId) : null;
+            if (!template || !template.rule) {
+              showStatus('模板数据无效', 'error', 2000);
+              return;
+            }
 
             const toSelect = this.container.querySelector('#rule-to');
             if (toSelect && (template.action === 'direct' || template.action === 'block')) {
@@ -6327,7 +3139,7 @@
 	          if (!id) return;
 
 	          const action = button.dataset.action;
-          try {
+	          try {
             if (action === "ping-node") {
               await api.post(`/nodes/${id}/ping`, {});
               showStatus("节点延迟任务已提交", "info");
@@ -6349,7 +3161,7 @@
                 loadNodes();
 	              }
 	            }, 1200);
-          } catch (err) {
+	          } catch (err) {
 	            showStatus(`节点操作失败：${err.message}`, "error", 6000);
 	          }
 	        });
@@ -7136,32 +3948,22 @@
             showStatus("请填写源/订阅链接", "error", 5000);
             return;
           }
-		          try {
-		            let createdConfig = null;
-		            if (isEdit) {
-		              await api.put(`/configs/${editingConfig.id}`, payload);
-		              showStatus("配置已更新", "success");
-		            } else {
-		              createdConfig = await api.post("/configs/import", payload);
-		              form.reset();
-		              showStatus("订阅已添加，正在后台拉取节点…", "success", 4200);
-		            }
-		            closeConfigModal();
-		            await Promise.all([loadConfigs(), loadFRouters(), loadNodes()]);
-		            if (!isEdit && createdConfig && createdConfig.id) {
-		              const synced = await waitForConfigSync(createdConfig.id, createdConfig.lastSyncedAt);
-		              if (!synced) {
-		                showStatus("后台同步耗时较长，可稍后点击“拉取节点”刷新", "info", 4500);
-		              } else if (synced.lastSyncError) {
-		                showStatus(`订阅同步失败：${synced.lastSyncError}`, "error", 6000);
-		              }
-		              await Promise.all([loadConfigs(), loadFRouters(), loadNodes()]);
-		            }
-		          } catch (err) {
-		            showStatus(`${isEdit ? "更新" : "添加"}配置失败：${err.message}`, "error", 6000);
-		          }
-		        });
-	      }
+          try {
+            if (isEdit) {
+              await api.put(`/configs/${editingConfig.id}`, payload);
+              showStatus("配置已更新", "success");
+            } else {
+              await api.post("/configs/import", payload);
+              form.reset();
+              showStatus("配置添加成功", "success");
+            }
+            closeConfigModal();
+            await Promise.all([loadConfigs(), loadFRouters(), loadNodes()]);
+          } catch (err) {
+            showStatus(`${isEdit ? "更新" : "添加"}配置失败：${err.message}`, "error", 6000);
+          }
+        });
+      }
 
       function getSelectedFRouterIds() {
         if (!nodeGrid) return [];
@@ -7331,6 +4133,293 @@
         advanced: 'settings-advanced'
       };
 
+      let themeCatalog = [];
+
+      function getThemesBaseHref() {
+        const href = window.location.href;
+        const marker = '/themes/';
+        const idx = href.lastIndexOf(marker);
+        if (idx === -1) return '';
+        return href.slice(0, idx + marker.length);
+      }
+
+      function getCurrentThemeEntry() {
+        const href = window.location.href;
+        const marker = '/themes/';
+        const idx = href.lastIndexOf(marker);
+        if (idx === -1) return '';
+        const rel = href.slice(idx + marker.length).split(/[?#]/)[0];
+        try {
+          return decodeURI(rel);
+        } catch {
+          return rel;
+        }
+      }
+
+      function normalizeEntry(entry) {
+        return String(entry || '').trim().replace(/^\/+/, '');
+      }
+
+      function resolveThemeHref(entry) {
+        const base = getThemesBaseHref();
+        const rel = normalizeEntry(entry);
+        if (!base || !rel) return '';
+        try {
+          return new URL(rel, base).toString();
+        } catch {
+          return base + rel;
+        }
+      }
+
+      function getCurrentThemeIdFromLocation(themes) {
+        const entry = normalizeEntry(getCurrentThemeEntry());
+        if (!entry) return '';
+        const picked = themes.find((t) => t && normalizeEntry(t.entry) === entry);
+        return picked && typeof picked.id === 'string' ? picked.id : '';
+      }
+
+      async function fetchThemes() {
+        try {
+          const payload = await api.get('/themes');
+          const themes = payload && Array.isArray(payload.themes) ? payload.themes : [];
+          return themes.filter((t) => t && typeof t.id === 'string' && t.id && t.hasIndex && typeof t.entry === 'string' && t.entry);
+        } catch (err) {
+          console.warn('[Theme] 加载主题列表失败:', err.message);
+          return [];
+        }
+      }
+
+      function themeLabel(theme) {
+        const id = String(theme && theme.id ? theme.id : '').trim();
+        if (!id) return '';
+
+        const packLabel = String(theme && (theme.packName || theme.packId) ? (theme.packName || theme.packId) : '').trim();
+        const subId = id.includes('/') ? id.split('/').pop() : id;
+        const name = String(theme && theme.name ? theme.name : '').trim();
+
+        if (packLabel) {
+          return `${packLabel} / ${name || subId || id}`;
+        }
+
+        if (id === 'dark') return '深色主题';
+        if (id === 'light') return '浅色主题';
+        return name || id;
+      }
+
+      function applyThemeOptions(themeSelect, themes) {
+        const current = String(themeSelect.value || '').trim();
+        themeSelect.innerHTML = '';
+
+        const sorted = [...themes].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+        for (const theme of sorted) {
+          const id = String(theme.id || '').trim();
+          if (!id) continue;
+          const label = themeLabel(theme) || id;
+
+          const opt = document.createElement('option');
+          opt.value = id;
+          opt.textContent = label;
+          themeSelect.appendChild(opt);
+        }
+
+        if (current) {
+          themeSelect.value = current;
+        }
+      }
+
+      async function downloadThemeZip(exportId) {
+        const url = `${api.client.baseURL}/themes/${encodeURIComponent(exportId)}/export`;
+        const resp = await fetch(url);
+        if (!resp.ok) {
+          let error = `HTTP ${resp.status}`;
+          try {
+            const data = await resp.json();
+            if (data && data.error) error = data.error;
+          } catch {}
+          throw new Error(error);
+        }
+
+        const blob = await resp.blob();
+        const link = document.createElement('a');
+        const objectUrl = URL.createObjectURL(blob);
+        link.href = objectUrl;
+        link.download = `${exportId}.zip`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      }
+
+      async function uploadThemeZip(file) {
+        const url = `${api.client.baseURL}/themes/import`;
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const resp = await fetch(url, { method: 'POST', body: formData });
+        if (!resp.ok) {
+          let error = `HTTP ${resp.status}`;
+          try {
+            const data = await resp.json();
+            if (data && data.error) error = data.error;
+          } catch {}
+          throw new Error(error);
+        }
+        return resp.json();
+      }
+
+      async function switchTheme(themeId) {
+        const next = String(themeId || '').trim();
+        if (!next) return;
+
+        let themes = themeCatalog && themeCatalog.length > 0 ? themeCatalog : await fetchThemes();
+        themeCatalog = themes;
+
+        const current = getCurrentThemeIdFromLocation(themes);
+        if (current && next === current) return;
+
+        settingsManager.set('theme', next);
+        const saved = await settingsManager.saveToAPI(api.client.baseURL);
+        if (!saved.success) {
+          showStatus(`保存主题失败：${saved.error || 'unknown error'}`, 'error', 6000);
+          return;
+        }
+
+        let picked = themes.find((t) => t && t.id === next);
+        if (!picked) {
+          themes = await fetchThemes();
+          themeCatalog = themes;
+          picked = themes.find((t) => t && t.id === next);
+        }
+        const href = picked && picked.entry ? resolveThemeHref(picked.entry) : '';
+        if (!href) {
+          showStatus(`无法解析主题入口：${next}`, 'error', 6000);
+          return;
+        }
+
+        showStatus('正在切换主题...', 'info', 1200);
+        window.location.href = href;
+      }
+
+      function ensureThemeActions(themeSelect) {
+        const label = themeSelect.closest('label');
+        if (!label) return;
+
+        if (document.getElementById('theme-actions')) {
+          return;
+        }
+
+        const actions = document.createElement('div');
+        actions.id = 'theme-actions';
+        actions.style.cssText = 'grid-column:1/-1; display:flex; gap:10px; align-items:center; margin-top:8px; flex-wrap:wrap;';
+        actions.innerHTML = `\n          <button type=\"button\" id=\"theme-import-btn\">导入主题(.zip)</button>\n          <button type=\"button\" id=\"theme-export-btn\">导出当前主题(.zip)</button>\n          <span style=\"font-size:12px; color:var(--text-tertiary);\">仅导入你信任的主题包（包含可执行代码）</span>\n        `;
+
+        label.insertAdjacentElement('afterend', actions);
+
+        const importBtn = document.getElementById('theme-import-btn');
+        const exportBtn = document.getElementById('theme-export-btn');
+
+        if (importBtn) {
+          importBtn.addEventListener('click', () => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.zip';
+            input.onchange = async (e) => {
+              const file = e.target.files && e.target.files[0];
+              if (!file) return;
+              try {
+                showStatus('正在导入主题...', 'info', 2000);
+                const result = await uploadThemeZip(file);
+                const themeId = result && result.themeId ? String(result.themeId) : '';
+                showStatus(`主题已导入：${themeId || 'unknown'}`, 'success', 3000);
+
+                // 导入后刷新列表并可直接切换到新主题
+                await setupThemeManager();
+                if (themeId) {
+                  const themeSelect = document.querySelector('[data-key="theme"]');
+                  if (themeSelect) themeSelect.value = themeId;
+                }
+              } catch (err) {
+                showStatus(`导入主题失败：${err.message}`, 'error', 6000);
+              }
+            };
+            input.click();
+          });
+        }
+
+        if (exportBtn) {
+          exportBtn.addEventListener('click', async () => {
+            try {
+              let themes = themeCatalog && themeCatalog.length > 0 ? themeCatalog : await fetchThemes();
+              themeCatalog = themes;
+
+              const entry = normalizeEntry(getCurrentThemeEntry());
+              let currentTheme = themes.find((t) => t && normalizeEntry(t.entry) === entry);
+              if (!currentTheme) {
+                const selected = String(themeSelect.value || '').trim();
+                currentTheme = themes.find((t) => t && t.id === selected);
+              }
+
+              const exportId = currentTheme && currentTheme.packId ? String(currentTheme.packId) : (currentTheme && currentTheme.id ? String(currentTheme.id) : '');
+              if (!exportId) {
+                showStatus('无法识别当前主题', 'error', 6000);
+                return;
+              }
+
+              showStatus('正在导出主题...', 'info', 2000);
+              await downloadThemeZip(exportId);
+              showStatus('主题已导出', 'success', 2000);
+            } catch (err) {
+              showStatus(`导出主题失败：${err.message}`, 'error', 6000);
+            }
+          });
+        }
+      }
+
+      async function setupThemeManager() {
+        const themeSelect = document.querySelector('[data-key="theme"]');
+        if (!themeSelect) return;
+
+        if (!themeSelect.dataset.themeManagerBound) {
+          themeSelect.dataset.themeManagerBound = '1';
+          themeSelect.addEventListener('change', async (e) => {
+            try {
+              await switchTheme(e.target.value);
+            } catch (err) {
+              showStatus(`切换主题失败：${err.message}`, 'error', 6000);
+            }
+          });
+        }
+
+        ensureThemeActions(themeSelect);
+
+        const themes = await fetchThemes();
+        themeCatalog = themes;
+        if (themes.length > 0) {
+          applyThemeOptions(themeSelect, themes);
+        }
+
+        const current = getCurrentThemeIdFromLocation(themes);
+        if (current) {
+          themeSelect.value = current;
+        }
+      }
+
+      async function maybeRedirectToSavedTheme() {
+        const desired = String(settingsManager.get('theme') || '').trim();
+        if (!desired) return;
+
+        const themes = await fetchThemes();
+        themeCatalog = themes;
+        const current = getCurrentThemeIdFromLocation(themes);
+        if (current && desired === current) return;
+
+        const picked = themes.find((t) => t && t.id === desired);
+        const href = picked && picked.entry ? resolveThemeHref(picked.entry) : '';
+        if (!href) return;
+
+        window.location.href = href;
+      }
+
       // 渲染所有设置类别
       function renderAllSettings() {
         for (const [categoryId, containerId] of Object.entries(categoryToContainerId)) {
@@ -7340,10 +4429,12 @@
             settingsRenderer.bindEvents(container);
           }
         }
+        setupThemeManager();
 
         // TUN：配置按钮（renderAllSettings 会重建 DOM）
         const tunSetupBtn = document.getElementById("tun-setup-btn");
-        if (tunSetupBtn) {
+        if (tunSetupBtn && !tunSetupBtn.dataset.bound) {
+          tunSetupBtn.dataset.bound = "1";
           tunSetupBtn.addEventListener("click", () => {
             setupTUN();
           });
@@ -7352,18 +4443,6 @@
         // 重新渲染后刷新一次 TUN UI（避免状态面板显示为默认值）
         if (tunStatusCache) {
           updateTUNUI(tunStatusCache);
-        }
-
-        // 特殊处理：主题选择器事件绑定
-        const themeSelect = document.querySelector('[data-key="theme"]');
-        if (themeSelect) {
-          themeSelect.addEventListener('change', (e) => {
-            switchTheme(e.target.value);
-          });
-          // 设置当前主题
-          const currentFile = window.location.pathname.split('/').pop();
-          const currentTheme = currentFile.includes('light') ? 'light' : 'dark';
-          themeSelect.value = currentTheme;
         }
       }
 
@@ -7457,14 +4536,20 @@
 
         const inboundMode = currentCfg && currentCfg.inboundMode ? currentCfg.inboundMode : "mixed";
 
-        // 端口在 TUN / 非 TUN 下都会生效（需要重启内核应用）。
-        try {
-          if (inboundMode === "tun") {
+        // TUN 模式下端口不生效，但仍可提前保存到配置中（切回非 TUN 时生效）。
+        if (inboundMode === "tun") {
+          try {
             await api.put("/proxy/config", { inboundPort: normalized });
-          } else {
-            // 非 TUN：强制保持 mixed（系统代理场景需要 HTTP + SOCKS）
-            await api.put("/proxy/config", { inboundMode: "mixed", inboundPort: normalized });
+            showStatus("已保存代理端口（当前为 TUN 模式，切回非 TUN 后生效）", "info", 4000);
+          } catch (err) {
+            showStatus(`保存代理端口失败：${err.message}`, "error", 6000);
           }
+          return;
+        }
+
+        // 非 TUN：强制保持 mixed（系统代理场景需要 HTTP + SOCKS）
+        try {
+          await api.put("/proxy/config", { inboundMode: "mixed", inboundPort: normalized });
         } catch (err) {
           showStatus(`保存代理端口失败：${err.message}`, "error", 6000);
           return;
@@ -7553,6 +4638,7 @@
         await settingsManager.loadFromAPI(api.client.baseURL);
         await syncProxyPortFromBackend();
         renderAllSettings();
+        await maybeRedirectToSavedTheme();
       })();
 
       const componentTable = document.getElementById("component-table");
@@ -7609,10 +4695,10 @@
       loadNodes();
       loaders[currentPanel]?.();
       ensureFRoutersPolling();
-	    })();
+    })();
 
-	    // 窗口控制按钮事件
-	    if (window.electronAPI) {
+    // 窗口控制按钮事件
+    if (window.electronAPI) {
       document.getElementById('minimize-btn').addEventListener('click', () => {
         window.electronAPI.minimizeWindow();
       });
@@ -7624,114 +4710,5 @@
       document.getElementById('close-btn').addEventListener('click', () => {
         window.electronAPI.closeWindow();
       });
-
-      // 应用更新（手动检查）
-      const checkUpdateBtn = document.getElementById('app-check-update-btn')
-      if (checkUpdateBtn && typeof window.electronAPI.checkForUpdates === 'function') {
-        let lastProgressInt = null
-
-        if (typeof window.electronAPI.onUpdateEvent === 'function') {
-          window.electronAPI.onUpdateEvent((payload) => {
-            if (!payload || !payload.type) return
-
-            if (payload.type === 'checking-for-update') {
-              showStatus('正在从 GitHub Releases 检查应用更新（稳定版）...', 'info', 3500)
-              return
-            }
-
-            if (payload.type === 'update-not-available') {
-              const v = payload.info && payload.info.version ? payload.info.version : ''
-              showStatus(v ? `已是最新版本（${v}）` : (payload.message || '已是最新版本'), 'success', 3500)
-              checkUpdateBtn.disabled = false
-              lastProgressInt = null
-              return
-            }
-
-            if (payload.type === 'update-available') {
-              const v = payload.info && payload.info.version ? payload.info.version : ''
-              showStatus(v ? `发现应用新版本 ${v}，正在下载...` : (payload.message || '发现应用新版本，正在下载...'), 'info', 5000)
-              return
-            }
-
-            if (payload.type === 'download-progress' && payload.progress && typeof payload.progress.percent === 'number') {
-              const percent = Math.max(0, Math.min(100, payload.progress.percent))
-              const percentInt = Math.floor(percent)
-              if (lastProgressInt !== percentInt) {
-                lastProgressInt = percentInt
-                showStatus(`正在下载应用更新：${percentInt}%`, 'info', 1500)
-              }
-              return
-            }
-
-            if (payload.type === 'update-downloaded') {
-              const v = payload.info && payload.info.version ? payload.info.version : ''
-              showStatus(v ? `应用更新 ${v} 已下载，正在退出并安装...` : (payload.message || '应用更新已下载，正在退出并安装...'), 'success', 5000)
-              return
-            }
-
-            if (payload.type === 'error') {
-              const msg = payload.message ? `应用更新失败：${payload.message}` : '应用更新失败'
-              showStatus(msg, 'error', 6000)
-              checkUpdateBtn.disabled = false
-              lastProgressInt = null
-            }
-          })
-        }
-
-        checkUpdateBtn.addEventListener('click', async () => {
-          checkUpdateBtn.disabled = true
-          try {
-            showStatus('正在检查应用更新（稳定版）...', 'info', 3500)
-            const result = await window.electronAPI.checkForUpdates()
-            if (result && result.supported === false) {
-              const msg = result.message ? `无法自动更新：${result.message}` : '无法自动更新：当前环境不支持应用内自动更新'
-              showStatus(msg, 'info', 6500)
-              checkUpdateBtn.disabled = false
-              return
-            }
-            if (result && result.started === false && result.message) {
-              showStatus(result.message, 'info', 4000)
-              checkUpdateBtn.disabled = false
-            }
-          } catch (err) {
-            showStatus(`应用更新检查失败：${err.message}`, 'error', 6500)
-            checkUpdateBtn.disabled = false
-          }
-        })
-      }
     }
-
-    // Theme settings - Switch between HTML files
-    // Theme selector
-    const themeSelector = document.getElementById("theme-selector");
-
-    function switchTheme(theme) {
-      localStorage.setItem("theme", theme);
-      const file = theme === "dark" ? "dark.html" : "light.html";
-      window.location.href = file;
-    }
-
-    // Get current theme from filename
-    const currentFile = window.location.pathname.split('/').pop();
-    const currentTheme = currentFile.includes('light') ? 'light' : 'dark';
-
-    // Check if saved theme is different from current loaded theme
-    const savedTheme = localStorage.getItem("theme") || "dark";
-    if (savedTheme !== currentTheme) {
-      // Auto-redirect to saved theme
-      switchTheme(savedTheme);
-    }
-
-    // Set selector value to current theme
-    if (themeSelector) {
-      themeSelector.value = currentTheme;
-
-      // Listen for theme changes
-      themeSelector.addEventListener("change", (e) => {
-        switchTheme(e.target.value);
-      });
-    }
-  </script>
-</body>
-
-</html>
+  

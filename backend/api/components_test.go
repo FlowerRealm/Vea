@@ -46,7 +46,7 @@ func TestGETComponents_SeedsDefaultComponents(t *testing.T) {
 	componentSvc := component.NewService(context.Background(), componentRepo)
 	geoSvc := geo.NewService(geoRepo)
 
-	facade := service.NewFacade(nodeSvc, frouterSvc, configSvc, proxySvc, componentSvc, geoSvc, repos)
+	facade := service.NewFacade(nodeSvc, frouterSvc, configSvc, proxySvc, componentSvc, geoSvc, nil, repos)
 	router := NewRouter(facade)
 
 	req := httptest.NewRequest(http.MethodGet, "/components", nil)

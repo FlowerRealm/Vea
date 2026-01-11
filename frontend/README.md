@@ -38,9 +38,17 @@ frontend/
 ├── main.js                 # Electron 主进程
 ├── preload.js              # preload 脚本
 ├── settings-schema.js       # 前端设置 schema + 渲染器
-├── theme/                  # 主题文件（UI）
-│   ├── dark.html          # 深色主题
-│   └── light.html         # 浅色主题
+├── theme/                  # 内置主题包（会复制到 userData/themes/）
+│   ├── dark/
+│   │   ├── index.html
+│   │   ├── css/
+│   │   ├── js/
+│   │   └── fonts/
+│   └── light/
+│       ├── index.html
+│       ├── css/
+│       ├── js/
+│       └── fonts/
 ├── assets/                 # 图标/托盘资源
 ├── package.json           # NPM 配置
 ├── electron-builder.yml   # 打包配置
@@ -55,9 +63,10 @@ frontend/
   - 管理进程生命周期
 
 - **主题文件 (theme/)**：
-  - 自包含的HTML主题文件（HTML/CSS/JS）
-  - 通过 ES Module 导入 SDK
-  - 直接调用 HTTP API (localhost:19080)
+  - 目录化主题包（入口 `index.html`，拆分 `css/`、`js/`、`fonts/`）
+  - 运行时从 `userData/themes/<entry>` 加载（入口由后端 `/themes` 返回的 `entry` 决定；单主题等价于 `<themeId>/index.html`）
+  - 支持“主题包（manifest）”：`userData/themes/<packId>/manifest.json` 可描述多个子主题，入口由 `entry`（相对 `themes/`）指定
+  - 主题内通过 `/themes` 接口动态加载列表，并提供 ZIP 导入/导出
 
 - **后端服务**：
   - Go 编译的 Vea 服务
@@ -70,7 +79,9 @@ frontend/
    - Electron 主进程启动
    - Spawn Go 后端服务进程
    - 等待服务健康检查通过（最多 10 秒）
-   - 创建窗口并加载 UI
+   - 初始化 `userData/themes/`（缺少内置主题时从 app resources 复制）
+   - 读取后端前端设置 `theme`（默认 `dark`）
+   - 创建窗口并加载 `userData/themes/<entry>`（由 `/themes` 解析）
 
 2. **通信模式**：
    - Theme UI → SDK → HTTP → Go Backend
@@ -105,7 +116,7 @@ curl http://localhost:19080/health
 
 ### 修改 UI
 
-编辑 `frontend/theme/dark.html` 或 `light.html`，重启 Electron 即可看到效果。
+编辑 `frontend/theme/dark/index.html`（或 `css/`、`js/`）以及 `frontend/theme/light/index.html`，重启 Electron 即可看到效果。
 
 ### 修改主进程逻辑
 

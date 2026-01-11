@@ -12,6 +12,8 @@
 ### 新增
 - 增加核心组件卸载能力：新增 `POST /components/:id/uninstall`，并在前端组件面板提供“卸载”按钮（代理运行中会拒绝卸载正在使用的引擎）。
 - 支持 Clash YAML 订阅解析：解析 `proxies` 并结合 `proxy-groups`/`rules` 自动生成订阅 FRouter（用于将订阅路由语义落到 Vea 的 `ChainProxySettings`）。
+- 主题包（目录化 + ZIP 导入/导出）：主题以 `index.html` 为入口的目录形式存在；后端新增 `/themes`（list/import/export/delete）；Electron 启动从 userData/themes 加载并在缺失时复制内置主题；主题内提供“导入主题(.zip)”与“导出当前主题(.zip)”。
+- 主题包支持 `manifest.json`（单包多子主题）：在 `userData/themes/<packId>/manifest.json` 中描述包信息与子主题入口；`GET /themes` 展开子主题并返回 `entry`，用于切换与启动加载。
 - 增加应用内“检查更新”能力：支持 Windows/macOS 从 GitHub Releases 获取最新稳定版并自动下载、安装与重启（Issue #24）。
 
 ### 变更
@@ -59,6 +61,7 @@
 - 修复订阅创建后台首次同步失败但 fallback payload 解析成功时日志语义误导的问题：日志会明确标注 fallback 已成功，避免误判为“最终仍失败”。
 - 维护性：系统代理默认端口抽取为常量，避免重复 magic number。
 - 维护性：抽取入站端口 readiness probe 的公共逻辑，减少 TUN 启动流程重复代码。
+- 维护性：主题导出临时文件处理更稳健；主题包 `manifest.json` 校验失败输出告警日志，便于排障。
 
 ## [0.0.1] - 2026-01-05
 
