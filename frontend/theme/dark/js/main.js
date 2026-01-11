@@ -4133,21 +4133,77 @@ import { createAPI, utils } from './vea-sdk.esm.js';
         advanced: 'settings-advanced'
       };
 
-      function getCurrentThemeId() {
-        const parts = window.location.pathname.split('/').filter(Boolean);
-        if (parts.length < 2) return 'dark';
-        return parts[parts.length - 2] || 'dark';
+      let themeCatalog = [];
+
+      function getThemesBaseHref() {
+        const href = window.location.href;
+        const marker = '/themes/';
+        const idx = href.lastIndexOf(marker);
+        if (idx === -1) return '';
+        return href.slice(0, idx + marker.length);
+      }
+
+      function getCurrentThemeEntry() {
+        const href = window.location.href;
+        const marker = '/themes/';
+        const idx = href.lastIndexOf(marker);
+        if (idx === -1) return '';
+        const rel = href.slice(idx + marker.length).split(/[?#]/)[0];
+        try {
+          return decodeURI(rel);
+        } catch {
+          return rel;
+        }
+      }
+
+      function normalizeEntry(entry) {
+        return String(entry || '').trim().replace(/^\/+/, '');
+      }
+
+      function resolveThemeHref(entry) {
+        const base = getThemesBaseHref();
+        const rel = normalizeEntry(entry);
+        if (!base || !rel) return '';
+        try {
+          return new URL(rel, base).toString();
+        } catch {
+          return base + rel;
+        }
+      }
+
+      function getCurrentThemeIdFromLocation(themes) {
+        const entry = normalizeEntry(getCurrentThemeEntry());
+        if (!entry) return '';
+        const picked = themes.find((t) => t && normalizeEntry(t.entry) === entry);
+        return picked && typeof picked.id === 'string' ? picked.id : '';
       }
 
       async function fetchThemes() {
         try {
           const payload = await api.get('/themes');
           const themes = payload && Array.isArray(payload.themes) ? payload.themes : [];
-          return themes.filter((t) => t && typeof t.id === 'string' && t.id && t.hasIndex);
+          return themes.filter((t) => t && typeof t.id === 'string' && t.id && t.hasIndex && typeof t.entry === 'string' && t.entry);
         } catch (err) {
           console.warn('[Theme] 加载主题列表失败:', err.message);
           return [];
         }
+      }
+
+      function themeLabel(theme) {
+        const id = String(theme && theme.id ? theme.id : '').trim();
+        if (!id) return '';
+
+        const packLabel = String(theme && (theme.packName || theme.packId) ? (theme.packName || theme.packId) : '').trim();
+        const subId = id.includes('/') ? id.split('/').pop() : id;
+        const name = String(theme && theme.name ? theme.name : '').trim();
+
+        if (packLabel) {
+          return `${packLabel} / ${name || subId || id}`;
+        }
+
+        if (id === 'dark') return '深色主题';
+        if (id === 'light') return '浅色主题';
+        return name || id;
       }
 
       function applyThemeOptions(themeSelect, themes) {
@@ -4158,7 +4214,7 @@ import { createAPI, utils } from './vea-sdk.esm.js';
         for (const theme of sorted) {
           const id = String(theme.id || '').trim();
           if (!id) continue;
-          const label = id === 'dark' ? '深色主题' : id === 'light' ? '浅色主题' : id;
+          const label = themeLabel(theme) || id;
 
           const opt = document.createElement('option');
           opt.value = id;
@@ -4171,8 +4227,8 @@ import { createAPI, utils } from './vea-sdk.esm.js';
         }
       }
 
-      async function downloadThemeZip(themeId) {
-        const url = `${api.client.baseURL}/themes/${encodeURIComponent(themeId)}/export`;
+      async function downloadThemeZip(exportId) {
+        const url = `${api.client.baseURL}/themes/${encodeURIComponent(exportId)}/export`;
         const resp = await fetch(url);
         if (!resp.ok) {
           let error = `HTTP ${resp.status}`;
@@ -4187,7 +4243,7 @@ import { createAPI, utils } from './vea-sdk.esm.js';
         const link = document.createElement('a');
         const objectUrl = URL.createObjectURL(blob);
         link.href = objectUrl;
-        link.download = `${themeId}.zip`;
+        link.download = `${exportId}.zip`;
         document.body.appendChild(link);
         link.click();
         link.remove();
@@ -4215,8 +4271,11 @@ import { createAPI, utils } from './vea-sdk.esm.js';
         const next = String(themeId || '').trim();
         if (!next) return;
 
-        const current = getCurrentThemeId();
-        if (next === current) return;
+        let themes = themeCatalog && themeCatalog.length > 0 ? themeCatalog : await fetchThemes();
+        themeCatalog = themes;
+
+        const current = getCurrentThemeIdFromLocation(themes);
+        if (current && next === current) return;
 
         settingsManager.set('theme', next);
         const saved = await settingsManager.saveToAPI(api.client.baseURL);
@@ -4225,8 +4284,20 @@ import { createAPI, utils } from './vea-sdk.esm.js';
           return;
         }
 
+        let picked = themes.find((t) => t && t.id === next);
+        if (!picked) {
+          themes = await fetchThemes();
+          themeCatalog = themes;
+          picked = themes.find((t) => t && t.id === next);
+        }
+        const href = picked && picked.entry ? resolveThemeHref(picked.entry) : '';
+        if (!href) {
+          showStatus(`无法解析主题入口：${next}`, 'error', 6000);
+          return;
+        }
+
         showStatus('正在切换主题...', 'info', 1200);
-        window.location.href = `../${encodeURIComponent(next)}/index.html`;
+        window.location.href = href;
       }
 
       function ensureThemeActions(themeSelect) {
@@ -4277,10 +4348,25 @@ import { createAPI, utils } from './vea-sdk.esm.js';
 
         if (exportBtn) {
           exportBtn.addEventListener('click', async () => {
-            const current = getCurrentThemeId();
             try {
+              let themes = themeCatalog && themeCatalog.length > 0 ? themeCatalog : await fetchThemes();
+              themeCatalog = themes;
+
+              const entry = normalizeEntry(getCurrentThemeEntry());
+              let currentTheme = themes.find((t) => t && normalizeEntry(t.entry) === entry);
+              if (!currentTheme) {
+                const selected = String(themeSelect.value || '').trim();
+                currentTheme = themes.find((t) => t && t.id === selected);
+              }
+
+              const exportId = currentTheme && currentTheme.packId ? String(currentTheme.packId) : (currentTheme && currentTheme.id ? String(currentTheme.id) : '');
+              if (!exportId) {
+                showStatus('无法识别当前主题', 'error', 6000);
+                return;
+              }
+
               showStatus('正在导出主题...', 'info', 2000);
-              await downloadThemeZip(current);
+              await downloadThemeZip(exportId);
               showStatus('主题已导出', 'success', 2000);
             } catch (err) {
               showStatus(`导出主题失败：${err.message}`, 'error', 6000);
@@ -4307,23 +4393,31 @@ import { createAPI, utils } from './vea-sdk.esm.js';
         ensureThemeActions(themeSelect);
 
         const themes = await fetchThemes();
+        themeCatalog = themes;
         if (themes.length > 0) {
           applyThemeOptions(themeSelect, themes);
         }
 
-        themeSelect.value = getCurrentThemeId();
+        const current = getCurrentThemeIdFromLocation(themes);
+        if (current) {
+          themeSelect.value = current;
+        }
       }
 
       async function maybeRedirectToSavedTheme() {
         const desired = String(settingsManager.get('theme') || '').trim();
-        const current = getCurrentThemeId();
-        if (!desired || desired === current) return;
+        if (!desired) return;
 
         const themes = await fetchThemes();
-        const ok = themes.some((t) => t && t.id === desired && t.hasIndex);
-        if (!ok) return;
+        themeCatalog = themes;
+        const current = getCurrentThemeIdFromLocation(themes);
+        if (current && desired === current) return;
 
-        window.location.href = `../${encodeURIComponent(desired)}/index.html`;
+        const picked = themes.find((t) => t && t.id === desired);
+        const href = picked && picked.entry ? resolveThemeHref(picked.entry) : '';
+        if (!href) return;
+
+        window.location.href = href;
       }
 
       // 渲染所有设置类别

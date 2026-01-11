@@ -24,6 +24,7 @@
 | 202601081505 | remove-xray | 变更 | ✅已完成 | [2026-01/202601081505_remove_xray](2026-01/202601081505_remove_xray/) |
 | 202601082055 | fix-clash-tun-sniffer-quic | 修复 | ✅已完成 | [2026-01/202601082055_fix-clash-tun-sniffer-quic](2026-01/202601082055_fix-clash-tun-sniffer-quic/) |
 | 202601092026 | theme-package | 变更 | ✅已完成 | [2026-01/202601092026_theme-package](2026-01/202601092026_theme-package/) |
+| 202601100601 | theme-pack-manifest | 变更 | ✅已完成 | [2026-01/202601100601_theme-pack-manifest](2026-01/202601100601_theme-pack-manifest/) |
 
 ## 按月归档
 
@@ -47,3 +48,4 @@
 - [202601081505_remove_xray](2026-01/202601081505_remove_xray/) - 移除 Xray 支持，仅保留 sing-box/mihomo(Clash)
 - [202601082055_fix-clash-tun-sniffer-quic](2026-01/202601082055_fix-clash-tun-sniffer-quic/) - 代理服务：mihomo(Clash) TUN 默认开启 sniffer，并默认阻断 QUIC（UDP/443）提升可用性
 - [202601092026_theme-package](2026-01/202601092026_theme-package/) - 主题包：主题目录化 + ZIP 导入/导出；Electron 从 userData/themes 加载；主题页提供导入/导出与切换
+- [202601100601_theme-pack-manifest](2026-01/202601100601_theme-pack-manifest/) - 主题包：支持 `manifest.json`（单包多子主题）；`GET /themes` 返回 `entry` 用于切换与启动加载

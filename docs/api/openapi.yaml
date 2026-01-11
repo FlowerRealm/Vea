@@ -1296,7 +1296,7 @@ components:
       name: id
       in: path
       required: true
-      description: 主题 ID
+      description: 主题目录 ID（目录名；主题包导出/删除时为 packId）
       schema:
         type: string
 
@@ -1307,7 +1307,7 @@ components:
       properties:
         id:
           type: string
-          description: 主题 ID（目录名）
+          description: 主题 ID（单主题为目录名；主题包内子主题为虚拟 ID，如 packId/subThemeId）
         hasIndex:
           type: boolean
           description: 是否包含入口文件 index.html
@@ -1315,6 +1315,18 @@ components:
           type: string
           format: date-time
           description: 主题目录更新时间
+        entry:
+          type: string
+          description: 入口文件相对 userData/themes 的路径（例如 dark/index.html 或 myPack/dark/index.html）
+        name:
+          type: string
+          description: 可选展示名（主题包内子主题的 name）
+        packId:
+          type: string
+          description: 主题包 ID（目录名；当该主题来自 manifest 主题包时存在）
+        packName:
+          type: string
+          description: 主题包展示名（manifest.json 的 name）
 
     ThemeListResponse:
       type: object
@@ -1331,6 +1343,7 @@ components:
       properties:
         themeId:
           type: string
+          description: 安装后建议选中的主题 ID（单主题为目录名；主题包为 packId/subThemeId）
         installed:
           type: boolean
 

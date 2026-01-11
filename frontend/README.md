@@ -64,7 +64,8 @@ frontend/
 
 - **主题文件 (theme/)**：
   - 目录化主题包（入口 `index.html`，拆分 `css/`、`js/`、`fonts/`）
-  - 运行时从 `userData/themes/<themeId>/index.html` 加载（缺少内置主题时从 app resources 复制）
+  - 运行时从 `userData/themes/<entry>` 加载（入口由后端 `/themes` 返回的 `entry` 决定；单主题等价于 `<themeId>/index.html`）
+  - 支持“主题包（manifest）”：`userData/themes/<packId>/manifest.json` 可描述多个子主题，入口由 `entry`（相对 `themes/`）指定
   - 主题内通过 `/themes` 接口动态加载列表，并提供 ZIP 导入/导出
 
 - **后端服务**：
@@ -80,7 +81,7 @@ frontend/
    - 等待服务健康检查通过（最多 10 秒）
    - 初始化 `userData/themes/`（缺少内置主题时从 app resources 复制）
    - 读取后端前端设置 `theme`（默认 `dark`）
-   - 创建窗口并加载 `userData/themes/<themeId>/index.html`
+   - 创建窗口并加载 `userData/themes/<entry>`（由 `/themes` 解析）
 
 2. **通信模式**：
    - Theme UI → SDK → HTTP → Go Backend

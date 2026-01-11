@@ -1010,6 +1010,7 @@ func (r *Router) handleError(c *gin.Context, err error) {
 
 	if errors.Is(err, themesvc.ErrInvalidThemeID) ||
 		errors.Is(err, themesvc.ErrThemeMissingIndex) ||
+		errors.Is(err, themesvc.ErrThemeManifestInvalid) ||
 		errors.Is(err, themesvc.ErrThemeZipInvalid) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

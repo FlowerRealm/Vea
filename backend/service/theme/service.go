@@ -3,6 +3,7 @@ package theme
 import (
 	"archive/zip"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -23,6 +24,8 @@ const (
 	DefaultMaxUnpackedBytes int64 = 200 << 20 // 200 MiB
 	DefaultMaxFiles               = 4000
 	DefaultMaxDepth               = 24
+
+	DefaultMaxManifestBytes int64 = 1 << 20 // 1 MiB
 )
 
 var (
@@ -32,6 +35,8 @@ var (
 
 	ErrThemeZipTooLarge = errors.New("theme zip is too large")
 	ErrThemeZipInvalid  = errors.New("invalid theme zip")
+
+	ErrThemeManifestInvalid = errors.New("invalid theme manifest")
 )
 
 type Options struct {
@@ -55,9 +60,42 @@ type ThemeInfo struct {
 	ID        string    `json:"id"`
 	HasIndex  bool      `json:"hasIndex"`
 	UpdatedAt time.Time `json:"updatedAt,omitempty"`
+
+	// Entry 是入口文件相对 <userData>/themes 的路径（用 '/' 分隔）。
+	// 单主题: "<themeId>/index.html"
+	// 主题包: "<packId>/<sub...>/index.html"（由 manifest.json 控制）
+	Entry string `json:"entry,omitempty"`
+
+	// PackID/PackName 用于标识该主题来自某个主题包（manifest.json）。
+	PackID   string `json:"packId,omitempty"`
+	PackName string `json:"packName,omitempty"`
+
+	// Name 是可选的展示名（例如主题包内子主题的 name）。
+	Name string `json:"name,omitempty"`
 }
 
 var themeIDPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
+
+type themePackManifest struct {
+	SchemaVersion int                  `json:"schemaVersion"`
+	ID            string               `json:"id,omitempty"`
+	Name          string               `json:"name,omitempty"`
+	Description   string               `json:"description,omitempty"`
+	Version       string               `json:"version,omitempty"`
+	Author        string               `json:"author,omitempty"`
+	Homepage      string               `json:"homepage,omitempty"`
+	License       string               `json:"license,omitempty"`
+	Themes        []themePackThemeItem `json:"themes"`
+	DefaultTheme  string               `json:"defaultTheme,omitempty"`
+}
+
+type themePackThemeItem struct {
+	ID          string `json:"id"`
+	Name        string `json:"name,omitempty"`
+	Description string `json:"description,omitempty"`
+	Entry       string `json:"entry"`
+	Preview     string `json:"preview,omitempty"`
+}
 
 func NewService(opts Options) *Service {
 	maxZipBytes := opts.MaxZipBytes
@@ -127,6 +165,16 @@ func (s *Service) List(ctx context.Context) ([]ThemeInfo, error) {
 		}
 
 		dir := filepath.Join(root, id)
+		manifestPath := filepath.Join(dir, "manifest.json")
+		if info, err := os.Stat(manifestPath); err == nil && !info.IsDir() {
+			packThemes, err := s.listThemePack(ctx, id, dir, ent)
+			if err != nil {
+				continue
+			}
+			themes = append(themes, packThemes...)
+			continue
+		}
+
 		indexPath := filepath.Join(dir, "index.html")
 		_, indexErr := os.Stat(indexPath)
 
@@ -139,6 +187,7 @@ func (s *Service) List(ctx context.Context) ([]ThemeInfo, error) {
 			ID:        id,
 			HasIndex:  indexErr == nil,
 			UpdatedAt: updatedAt,
+			Entry:     path.Join(id, "index.html"),
 		})
 	}
 
@@ -190,7 +239,7 @@ func (s *Service) ExportZip(ctx context.Context, id string, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(filepath.Join(themeDir, "index.html")); err != nil {
+	if err := ensureThemeExportable(themeDir); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return ErrThemeNotFound
 		}
@@ -344,14 +393,9 @@ func (s *Service) ImportZip(ctx context.Context, zipPath string) (string, error)
 	}
 
 	staged := filepath.Join(tmpDir, themeID)
-	indexPath := filepath.Join(staged, "index.html")
-	if info, err := os.Stat(indexPath); err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return "", ErrThemeMissingIndex
-		}
+	virtualID, err := validateStagedThemeDir(staged, themeID)
+	if err != nil {
 		return "", err
-	} else if info.IsDir() {
-		return "", ErrThemeMissingIndex
 	}
 
 	target, err := shared.SafeJoin(root, themeID)
@@ -363,6 +407,9 @@ func (s *Service) ImportZip(ctx context.Context, zipPath string) (string, error)
 	if err := os.Rename(staged, target); err != nil {
 		return "", err
 	}
+	if strings.TrimSpace(virtualID) != "" {
+		return virtualID, nil
+	}
 	return themeID, nil
 }
 
@@ -372,6 +419,23 @@ func validateThemeID(id string) error {
 		return ErrInvalidThemeID
 	}
 	return nil
+}
+
+func ensureThemeExportable(themeDir string) error {
+	if _, err := os.Stat(themeDir); err != nil {
+		return err
+	}
+	if _, err := os.Stat(filepath.Join(themeDir, "index.html")); err == nil {
+		return nil
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	if _, err := os.Stat(filepath.Join(themeDir, "manifest.json")); err == nil {
+		return nil
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return fs.ErrNotExist
 }
 
 func detectThemeID(files []*zip.File) (string, error) {
@@ -411,6 +475,179 @@ func detectThemeID(files []*zip.File) (string, error) {
 		return id, nil
 	}
 	return "", fmt.Errorf("%w: empty zip", ErrThemeZipInvalid)
+}
+
+func validateStagedThemeDir(stagedDir string, topID string) (string, error) {
+	manifestPath := filepath.Join(stagedDir, "manifest.json")
+	if info, err := os.Stat(manifestPath); err == nil && !info.IsDir() {
+		manifest, err := readThemePackManifest(manifestPath)
+		if err != nil {
+			return "", err
+		}
+		def := strings.TrimSpace(manifest.DefaultTheme)
+		if def == "" && len(manifest.Themes) > 0 {
+			def = strings.TrimSpace(manifest.Themes[0].ID)
+		}
+		if def == "" {
+			return "", ErrThemeManifestInvalid
+		}
+		found := false
+		for _, item := range manifest.Themes {
+			if err := validateThemeID(item.ID); err != nil {
+				return "", fmt.Errorf("%w: invalid theme id %q", ErrThemeManifestInvalid, item.ID)
+			}
+			entry, err := cleanManifestEntryPath(item.Entry)
+			if err != nil {
+				return "", err
+			}
+			target, err := shared.SafeJoin(stagedDir, filepath.FromSlash(entry))
+			if err != nil {
+				return "", fmt.Errorf("%w: invalid entry %q", ErrThemeManifestInvalid, item.Entry)
+			}
+			info, err := os.Stat(target)
+			if err != nil || info.IsDir() {
+				return "", fmt.Errorf("%w: entry not found %q", ErrThemeManifestInvalid, item.Entry)
+			}
+			if item.ID == def {
+				found = true
+			}
+		}
+		if !found {
+			def = strings.TrimSpace(manifest.Themes[0].ID)
+		}
+		return topID + "/" + def, nil
+	}
+
+	indexPath := filepath.Join(stagedDir, "index.html")
+	if info, err := os.Stat(indexPath); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return "", ErrThemeMissingIndex
+		}
+		return "", err
+	} else if info.IsDir() {
+		return "", ErrThemeMissingIndex
+	}
+	return "", nil
+}
+
+func readThemePackManifest(pathname string) (*themePackManifest, error) {
+	f, err := os.Open(pathname)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() <= 0 || info.Size() > DefaultMaxManifestBytes {
+		return nil, ErrThemeManifestInvalid
+	}
+
+	raw, err := io.ReadAll(io.LimitReader(f, DefaultMaxManifestBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(raw)) > DefaultMaxManifestBytes {
+		return nil, ErrThemeManifestInvalid
+	}
+
+	var manifest themePackManifest
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrThemeManifestInvalid, err)
+	}
+
+	if manifest.SchemaVersion != 1 {
+		return nil, fmt.Errorf("%w: unsupported schemaVersion", ErrThemeManifestInvalid)
+	}
+	if len(manifest.Themes) == 0 {
+		return nil, fmt.Errorf("%w: empty themes", ErrThemeManifestInvalid)
+	}
+
+	return &manifest, nil
+}
+
+func cleanManifestEntryPath(entry string) (string, error) {
+	raw := strings.TrimSpace(entry)
+	if raw == "" {
+		return "", ErrThemeManifestInvalid
+	}
+	if strings.Contains(raw, "\\") {
+		return "", ErrThemeManifestInvalid
+	}
+	if strings.HasPrefix(raw, "/") {
+		return "", ErrThemeManifestInvalid
+	}
+	if strings.Contains(raw, ":") {
+		return "", ErrThemeManifestInvalid
+	}
+
+	clean := path.Clean(raw)
+	clean = strings.TrimPrefix(clean, "./")
+	if clean == "." || clean == "" {
+		return "", ErrThemeManifestInvalid
+	}
+	if clean == ".." || strings.HasPrefix(clean, "../") {
+		return "", ErrThemeManifestInvalid
+	}
+	if path.Base(clean) != "index.html" {
+		return "", ErrThemeManifestInvalid
+	}
+	return clean, nil
+}
+
+func (s *Service) listThemePack(ctx context.Context, packID string, packDir string, ent fs.DirEntry) ([]ThemeInfo, error) {
+	manifestPath := filepath.Join(packDir, "manifest.json")
+	manifest, err := readThemePackManifest(manifestPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var updatedAt time.Time
+	if info, err := ent.Info(); err == nil {
+		updatedAt = info.ModTime()
+	}
+
+	items := make([]ThemeInfo, 0, len(manifest.Themes))
+	for _, theme := range manifest.Themes {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		if err := validateThemeID(theme.ID); err != nil {
+			continue
+		}
+
+		entry, err := cleanManifestEntryPath(theme.Entry)
+		if err != nil {
+			continue
+		}
+
+		target, err := shared.SafeJoin(packDir, filepath.FromSlash(entry))
+		if err != nil {
+			continue
+		}
+
+		info, err := os.Stat(target)
+		if err != nil || info.IsDir() {
+			continue
+		}
+
+		items = append(items, ThemeInfo{
+			ID:        packID + "/" + theme.ID,
+			HasIndex:  true,
+			UpdatedAt: updatedAt,
+			Entry:     path.Join(packID, entry),
+			PackID:    packID,
+			PackName:  strings.TrimSpace(manifest.Name),
+			Name:      strings.TrimSpace(theme.Name),
+		})
+	}
+
+	return items, nil
 }
 
 func cleanZipEntryPath(name string) (string, error) {

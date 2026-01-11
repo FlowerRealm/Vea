@@ -327,11 +327,42 @@ async function loadFrontendThemeSetting() {
   return theme || 'dark'
 }
 
-function resolveThemeEntryPath(userDataDir, themeId) {
+async function resolveThemeEntryPath(userDataDir, themeId) {
   const themesRoot = path.join(userDataDir, 'themes')
-  const candidate = path.join(themesRoot, themeId, 'index.html')
-  if (fs.existsSync(candidate)) {
-    return candidate
+  const wanted = typeof themeId === 'string' ? themeId.trim() : ''
+
+  const toEntryPath = (entry) => {
+    const rel = typeof entry === 'string' ? entry.trim() : ''
+    if (!rel) return ''
+    if (rel.startsWith('/') || rel.includes('\\') || rel.includes(':')) return ''
+    const parts = rel.split('/').filter(Boolean)
+    if (parts.some((p) => p === '.' || p === '..')) return ''
+    return path.join(themesRoot, ...parts)
+  }
+
+  // 优先通过后端 /themes 返回的 entry 解析入口（兼容主题包 manifest 多层目录）。
+  if (wanted) {
+    try {
+      const result = await apiRequest({ path: '/themes', timeout: 2000 })
+      const themes = result.success && result.data && Array.isArray(result.data.themes)
+        ? result.data.themes
+        : []
+      const picked = themes.find((t) => t && typeof t.id === 'string' && t.id === wanted)
+      const entryPath = picked && picked.entry ? toEntryPath(picked.entry) : ''
+      if (entryPath && fs.existsSync(entryPath)) {
+        return entryPath
+      }
+    } catch (e) {
+      console.warn('[Theme] resolve theme entry via /themes failed:', e.message)
+    }
+  }
+
+  // 兼容旧逻辑：themeId 为目录名，入口固定为 index.html。
+  if (wanted) {
+    const legacy = path.join(themesRoot, wanted, 'index.html')
+    if (fs.existsSync(legacy)) {
+      return legacy
+    }
   }
 
   const fallback = path.join(themesRoot, 'dark', 'index.html')
@@ -602,7 +633,7 @@ app.whenReady().then(async () => {
 
   // 启动前读取后端前端设置 theme（默认 dark）
   const themeId = await loadFrontendThemeSetting()
-  startupThemeEntryPath = resolveThemeEntryPath(userDataDir, themeId)
+  startupThemeEntryPath = await resolveThemeEntryPath(userDataDir, themeId)
 
   createWindow()
   createTray()
