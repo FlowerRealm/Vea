@@ -859,11 +859,11 @@ import { createAPI, utils } from './vea-sdk.esm.js';
         }
       }
 
-	      async function refreshCoreStatus({ notify = false } = {}) {
-	        try {
-	          const status = await api.proxy.status();
-	          coreStatus = status || {};
-	          updateCoreUI(coreStatus);
+      async function refreshCoreStatus({ notify = false } = {}) {
+        try {
+          const status = await api.proxy.status();
+          coreStatus = status || {};
+          updateCoreUI(coreStatus);
 
           if (notify && coreStatus.running) {
             showStatus("内核已启动", "success");
@@ -873,156 +873,181 @@ import { createAPI, utils } from './vea-sdk.esm.js';
           if (notify) {
             showStatus(`加载状态失败：${err.message}`, "error");
           }
-	        }
-	      }
+        }
+      }
 
-	      async function handleCoreRestart() {
-	        if (coreRestartInFlight) return;
+      async function getActiveFRouterId() {
+        const selectedFRouter = getCurrentFRouter();
+        let frouterId = selectedFRouter && selectedFRouter.id
+          ? selectedFRouter.id
+          : (coreStatus && coreStatus.frouterId ? coreStatus.frouterId : "");
 
-	        const btn = document.getElementById("core-restart");
-	        if (btn && btn.disabled) return;
+        if (!frouterId) {
+          try {
+            const cfg = await api.get("/proxy/config");
+            frouterId = cfg && typeof cfg.frouterId === "string" ? cfg.frouterId : "";
+          } catch {
+            // ignore
+          }
+        }
 
-	        coreRestartInFlight = true;
-	        if (btn) {
-	          btn.disabled = true;
-	        }
+        return frouterId;
+      }
 
-	        const ignoreHosts = collectIgnoreHosts();
-	        let wasSystemProxyEnabled = false;
-	        let systemProxyDisabled = false;
-	        let wasRunning = false;
+      async function tryDisableSystemProxy(ignoreHosts) {
+        const wasEnabled = Boolean(systemProxySettings && systemProxySettings.enabled);
+        if (!wasEnabled) {
+          return { wasEnabled: false, disabled: false };
+        }
 
-	        try {
-	          let status = null;
-	          try {
-	            status = await api.proxy.status();
-	            coreStatus = status || coreStatus;
-	            updateCoreUI(coreStatus);
-	          } catch {
-	            status = null;
-	          }
+        try {
+          await api.put("/settings/system-proxy", {
+            enabled: false,
+            ignoreHosts,
+          });
+        } catch (err) {
+          showStatus(`关闭系统代理失败：${err.message}`, "error", 6000);
+          return { wasEnabled: true, disabled: false };
+        }
 
-	          if (status && status.busy) {
-	            showStatus("内核正忙，请稍后再试", "warn", 2500);
-	            return;
-	          }
+        await loadSystemProxySettings();
+        return { wasEnabled: true, disabled: true };
+      }
 
-		          wasRunning = Boolean(status && status.running);
+      async function tryRestoreSystemProxy(ignoreHosts, { warn = true } = {}) {
+        try {
+          await api.put("/settings/system-proxy", {
+            enabled: true,
+            ignoreHosts,
+          });
+        } catch (err) {
+          if (warn) {
+            showStatus(`系统代理未能恢复：${err.message}`, "warn", 6000);
+          }
+        }
+        await loadSystemProxySettings();
+      }
 
-		          const selectedFRouter = getCurrentFRouter();
-		          let frouterId = selectedFRouter && selectedFRouter.id
-		            ? selectedFRouter.id
-		            : (coreStatus && coreStatus.frouterId ? coreStatus.frouterId : "");
-		          if (!frouterId) {
-		            try {
-		              const cfg = await api.get("/proxy/config");
-		              frouterId = cfg && typeof cfg.frouterId === "string" ? cfg.frouterId : "";
-		            } catch {
-		              // ignore
-		            }
-		          }
-		          if (!frouterId) {
-		            showStatus("请先选择一个 FRouter", "warn", 4000);
-		            return;
-		          }
+      async function resetAndReloadKernelLogs() {
+        if (currentPanel !== "panel-logs") {
+          return;
+        }
 
-	          wasSystemProxyEnabled = Boolean(systemProxySettings && systemProxySettings.enabled);
-	          if (wasSystemProxyEnabled) {
-	            try {
-	              await api.put("/settings/system-proxy", {
-	                enabled: false,
-	                ignoreHosts,
-	              });
-	              systemProxyDisabled = true;
-	              await loadSystemProxySettings();
-	            } catch (err) {
-	              showStatus(`关闭系统代理失败：${err.message}`, "error", 6000);
-	              return;
-	            }
-	          }
+        kernelLogOffset = 0;
+        kernelLogSession = 0;
+        kernelLogStartedAt = "";
+        const pre = document.getElementById("kernel-log-content");
+        resetKernelLogRender(pre);
+        await loadKernelLogs();
+      }
 
-	          showStatus(wasRunning ? "正在重启内核..." : "正在启动内核...", "info", 2000);
-	          await api.post("/proxy/start", { frouterId });
-	          await sleep(500);
-	          await refreshCoreStatus();
+      async function handleCoreRestart() {
+        if (coreRestartInFlight) return;
 
-	          if (currentPanel === "panel-logs") {
-	            kernelLogOffset = 0;
-	            kernelLogSession = 0;
-	            kernelLogStartedAt = "";
-	            const pre = document.getElementById("kernel-log-content");
-	            resetKernelLogRender(pre);
-	            await loadKernelLogs();
-	          }
+        const btn = document.getElementById("core-restart");
+        if (btn && btn.disabled) return;
 
-	          if (wasSystemProxyEnabled && systemProxyDisabled) {
-	            try {
-	              await api.put("/settings/system-proxy", {
-	                enabled: true,
-	                ignoreHosts,
-	              });
-	            } catch (err) {
-	              showStatus(`系统代理未能恢复：${err.message}`, "warn", 6000);
-	            }
-	            await loadSystemProxySettings();
-	          }
+        coreRestartInFlight = true;
+        if (btn) {
+          btn.disabled = true;
+        }
 
-	          await loadIPGeo();
-	          showStatus(wasRunning ? "内核已重启" : "内核已启动", "success", 2000);
-	        } catch (err) {
-	          showStatus(`重启内核失败：${err.message}`, "error", 6000);
-	          await refreshCoreStatus();
+        const ignoreHosts = collectIgnoreHosts();
+        let wasSystemProxyEnabled = false;
+        let systemProxyDisabled = false;
+        let wasRunning = false;
 
-	          if (wasSystemProxyEnabled && systemProxyDisabled) {
-	            if (coreStatus && coreStatus.running) {
-	              try {
-	                await api.put("/settings/system-proxy", {
-	                  enabled: true,
-	                  ignoreHosts,
-	                });
-	              } catch {
-	                // ignore
-	              }
-	            }
-	            await loadSystemProxySettings();
-	          }
+        try {
+          let status = null;
+          try {
+            status = await api.proxy.status();
+            coreStatus = status || coreStatus;
+            updateCoreUI(coreStatus);
+          } catch {
+            status = null;
+          }
 
-	          await loadIPGeo();
-	        } finally {
-	          coreRestartInFlight = false;
-	          updateCoreUI(coreStatus);
-	        }
-	      }
+          if (status && status.busy) {
+            showStatus("内核正忙，请稍后再试", "warn", 2500);
+            return;
+          }
 
-	      function updateCoreUI(status = {}) {
-	        if (!status || typeof status !== "object") {
-	          status = {};
-	        }
-	        const indicator = document.getElementById("core-state");
-	        const restartBtn = document.getElementById("core-restart");
-	        const proxyToggle = document.getElementById("proxy-toggle");
+          wasRunning = Boolean(status && status.running);
+
+          const frouterId = await getActiveFRouterId();
+          if (!frouterId) {
+            showStatus("请先选择一个 FRouter", "warn", 4000);
+            return;
+          }
+
+          const proxyGuard = await tryDisableSystemProxy(ignoreHosts);
+          wasSystemProxyEnabled = proxyGuard.wasEnabled;
+          systemProxyDisabled = proxyGuard.disabled;
+          if (wasSystemProxyEnabled && !systemProxyDisabled) {
+            return;
+          }
+
+          showStatus(wasRunning ? "正在重启内核..." : "正在启动内核...", "info", 2000);
+          await api.post("/proxy/start", { frouterId });
+          await sleep(500);
+          await refreshCoreStatus();
+
+          await resetAndReloadKernelLogs();
+
+          if (wasSystemProxyEnabled && systemProxyDisabled) {
+            await tryRestoreSystemProxy(ignoreHosts);
+          }
+
+          await loadIPGeo();
+          showStatus(wasRunning ? "内核已重启" : "内核已启动", "success", 2000);
+        } catch (err) {
+          showStatus(`重启内核失败：${err.message}`, "error", 6000);
+          await refreshCoreStatus();
+
+          if (wasSystemProxyEnabled && systemProxyDisabled) {
+            if (coreStatus && coreStatus.running) {
+              await tryRestoreSystemProxy(ignoreHosts, { warn: false });
+            } else {
+              await loadSystemProxySettings();
+            }
+          }
+
+          await loadIPGeo();
+        } finally {
+          coreRestartInFlight = false;
+          updateCoreUI(coreStatus);
+        }
+      }
+
+      function updateCoreUI(status = {}) {
+        if (!status || typeof status !== "object") {
+          status = {};
+        }
+        const indicator = document.getElementById("core-state");
+        const restartBtn = document.getElementById("core-restart");
+        const proxyToggle = document.getElementById("proxy-toggle");
 
         const coreRunning = Boolean(status.running);
         const systemProxyEnabled = Boolean(systemProxySettings && systemProxySettings.enabled);
 
-        // Update core status indicator
         if (indicator) {
           indicator.className = coreRunning ? "badge active" : "badge";
           const engineLabel = coreRunning && status.engine ? componentDisplayName(status.engine) : "";
-	          indicator.textContent = coreRunning
-	            ? `核心：运行中${engineLabel ? `（${engineLabel}）` : ""}`
-	            : "核心：已停止";
-	        }
+          indicator.textContent = coreRunning
+            ? `核心：运行中${engineLabel ? `（${engineLabel}）` : ""}`
+            : "核心：已停止";
+        }
 
-	        if (restartBtn) {
-	          const busy = Boolean(status.busy);
-	          restartBtn.disabled = busy || coreRestartInFlight;
-	          restartBtn.textContent = coreRunning ? "重启内核" : "启动内核";
-	          restartBtn.title = busy ? "内核正忙" : (coreRunning ? "手动重启内核" : "手动启动内核");
-	        }
+        if (restartBtn) {
+          const busy = Boolean(status.busy);
+          restartBtn.disabled = busy || coreRestartInFlight;
+          restartBtn.textContent = coreRunning ? "重启内核" : "启动内核";
+          restartBtn.title = busy ? "内核正忙" : (coreRunning ? "手动重启内核" : "手动启动内核");
+        }
 
-	        // Update proxy toggle button
-	        if (!proxyToggle) return;
+        if (!proxyToggle) {
+          return;
+        }
 
         if (systemProxyEnabled) {
           proxyToggle.dataset.mode = "stop";
