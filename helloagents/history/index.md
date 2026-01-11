@@ -41,6 +41,7 @@
 | 202601100601 | theme-pack-manifest | 变更 | ✅已完成 | [2026-01/202601100601_theme-pack-manifest](2026-01/202601100601_theme-pack-manifest/) |
 | 202601110913 | fix-subscription-fallback-syncstatus | 修复 | ✅已完成 | [2026-01/202601110913_fix-subscription-fallback-syncstatus](2026-01/202601110913_fix-subscription-fallback-syncstatus/) |
 | 202601111002 | fix-review-log-port-probe | 修复 | ✅已完成 | [2026-01/202601111002_fix-review-log-port-probe](2026-01/202601111002_fix-review-log-port-probe/) |
+| 202601111339 | theme-review-followups | 修复 | ✅已完成 | [2026-01/202601111339_theme-review-followups](2026-01/202601111339_theme-review-followups/) |
 
 ## 按月归档
 
@@ -81,3 +82,4 @@
 - [202601100601_theme-pack-manifest](2026-01/202601100601_theme-pack-manifest/) - 主题包：支持 `manifest.json`（单包多子主题）；`GET /themes` 返回 `entry` 用于切换与启动加载
 - [202601110913_fix-subscription-fallback-syncstatus](2026-01/202601110913_fix-subscription-fallback-syncstatus/) - 订阅：创建订阅后台首次同步失败但 fallback 解析成功时清理同步错误，避免 UI 误标红
 - [202601111002_fix-review-log-port-probe](2026-01/202601111002_fix-review-log-port-probe/) - 代码审查跟进：ConfigCreate fallback 日志语义修正；系统代理默认端口常量；TUN readiness probe 去重
+- [202601111339_theme-review-followups](2026-01/202601111339_theme-review-followups/) - 主题包：导入/导出维护性补强（常量复用、临时文件关闭简化、manifest 校验告警日志）

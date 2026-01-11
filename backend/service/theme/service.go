@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -513,7 +514,11 @@ func validateStagedThemeDir(stagedDir string, topID string) (string, error) {
 			}
 		}
 		if !found {
-			def = strings.TrimSpace(manifest.Themes[0].ID)
+			fallback := strings.TrimSpace(manifest.Themes[0].ID)
+			if rawDefault := strings.TrimSpace(manifest.DefaultTheme); rawDefault != "" {
+				log.Printf("[Theme] manifest defaultTheme %q not found in pack %q, fallback to %q", rawDefault, topID, fallback)
+			}
+			def = fallback
 		}
 		return topID + "/" + def, nil
 	}
@@ -618,21 +623,29 @@ func (s *Service) listThemePack(ctx context.Context, packID string, packDir stri
 		}
 
 		if err := validateThemeID(theme.ID); err != nil {
+			log.Printf("[Theme] ignore invalid theme id %q in pack %q: %v", theme.ID, packID, err)
 			continue
 		}
 
 		entry, err := cleanManifestEntryPath(theme.Entry)
 		if err != nil {
+			log.Printf("[Theme] ignore invalid entry %q for theme %q in pack %q: %v", theme.Entry, theme.ID, packID, err)
 			continue
 		}
 
 		target, err := shared.SafeJoin(packDir, filepath.FromSlash(entry))
 		if err != nil {
+			log.Printf("[Theme] ignore unsafe entry %q for theme %q in pack %q: %v", entry, theme.ID, packID, err)
 			continue
 		}
 
 		info, err := os.Stat(target)
 		if err != nil || info.IsDir() {
+			if err != nil {
+				log.Printf("[Theme] ignore missing entry %q for theme %q in pack %q: %v", entry, theme.ID, packID, err)
+			} else {
+				log.Printf("[Theme] ignore entry %q for theme %q in pack %q: entry is a directory", entry, theme.ID, packID)
+			}
 			continue
 		}
 

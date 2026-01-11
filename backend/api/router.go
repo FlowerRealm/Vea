@@ -21,6 +21,8 @@ import (
 	themesvc "vea/backend/service/theme"
 )
 
+const maxThemeZipBytes int64 = themesvc.DefaultMaxZipBytes
+
 type Router struct {
 	service              *service.Facade
 	nodeNotFoundErr      error
@@ -1049,14 +1051,12 @@ func (r *Router) listThemes(c *gin.Context) {
 }
 
 func (r *Router) importTheme(c *gin.Context) {
-	const maxZipBytes = 50 << 20
-
 	file, err := c.FormFile("file")
 	if err != nil {
 		badRequest(c, err)
 		return
 	}
-	if file.Size > maxZipBytes {
+	if file.Size > maxThemeZipBytes {
 		r.handleError(c, themesvc.ErrThemeZipTooLarge)
 		return
 	}
@@ -1076,7 +1076,7 @@ func (r *Router) importTheme(c *gin.Context) {
 	tmpPath := tmp.Name()
 	defer os.Remove(tmpPath)
 
-	written, copyErr := io.Copy(tmp, io.LimitReader(src, maxZipBytes+1))
+	written, copyErr := io.Copy(tmp, io.LimitReader(src, maxThemeZipBytes+1))
 	closeErr := tmp.Close()
 	if copyErr != nil {
 		r.handleError(c, copyErr)
@@ -1086,7 +1086,7 @@ func (r *Router) importTheme(c *gin.Context) {
 		r.handleError(c, closeErr)
 		return
 	}
-	if written > maxZipBytes {
+	if written > maxThemeZipBytes {
 		r.handleError(c, themesvc.ErrThemeZipTooLarge)
 		return
 	}
@@ -1112,14 +1112,13 @@ func (r *Router) exportTheme(c *gin.Context) {
 	}
 	tmpPath := tmp.Name()
 	defer os.Remove(tmpPath)
+	defer tmp.Close()
 
 	if err := r.service.ExportThemeZip(id, tmp); err != nil {
-		tmp.Close()
 		r.handleError(c, err)
 		return
 	}
 	if _, err := tmp.Seek(0, 0); err != nil {
-		tmp.Close()
 		r.handleError(c, err)
 		return
 	}
@@ -1127,8 +1126,9 @@ func (r *Router) exportTheme(c *gin.Context) {
 	c.Header("Content-Type", "application/zip")
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", id+".zip"))
 	c.Status(http.StatusOK)
-	_, _ = io.Copy(c.Writer, tmp)
-	_ = tmp.Close()
+	if _, err := io.Copy(c.Writer, tmp); err != nil {
+		log.Printf("[API] exportTheme: failed to copy zip to response: %v", err)
+	}
 }
 
 func (r *Router) deleteTheme(c *gin.Context) {

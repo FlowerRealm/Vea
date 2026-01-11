@@ -6,7 +6,7 @@
 - 进程管理：启动/停止内核，收集日志与状态
 - 核心组件管理：安装/卸载 sing-box / mihomo 等核心组件
 - 配置/订阅解析：`backend/service/config` 解析分享链接与 Clash YAML（`proxies` + `proxy-groups` + `rules`）；创建时会从 payload 解析 Nodes（即使 `sourceUrl` 为空），订阅型配置可自动生成订阅 FRouter（`sourceConfigId` 关联）；创建订阅的后台首次同步失败时会尝试用创建时的 payload 作为 fallback 解析，成功后会清空同步错误并更新 checksum，避免“节点已生成但订阅仍标红失败”的状态不一致
-- 主题包管理：`backend/service/theme` 提供主题目录扫描与 ZIP 导入/导出（支持主题包 `manifest.json` 展开子主题）
+- 主题包管理：`backend/service/theme` 提供主题目录扫描与 ZIP 导入/导出（支持主题包 `manifest.json` 展开子主题），并在 manifest 校验异常时输出告警日志便于排障
 
 ## 关键目录
 - `backend/api/`：HTTP API
@@ -37,3 +37,4 @@
 - [202601100601_theme-pack-manifest](../../history/2026-01/202601100601_theme-pack-manifest/) - 主题包：支持 `manifest.json`（单包多子主题）；`GET /themes` 返回 `entry` 用于切换与启动加载
 - [202601110913_fix-subscription-fallback-syncstatus](../../history/2026-01/202601110913_fix-subscription-fallback-syncstatus/) - 订阅：创建订阅后台首次同步失败但 fallback 解析成功时清理同步错误，避免 UI 误标红
 - [202601111002_fix-review-log-port-probe](../../history/2026-01/202601111002_fix-review-log-port-probe/) - 代码审查跟进：ConfigCreate fallback 日志语义修正；系统代理默认端口常量；TUN readiness probe 去重
+- [202601111339_theme-review-followups](../../history/2026-01/202601111339_theme-review-followups/) - 主题包：导入/导出维护性补强（常量复用、临时文件关闭简化、manifest 校验告警日志）
