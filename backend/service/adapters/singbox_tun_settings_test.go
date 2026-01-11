@@ -235,3 +235,80 @@ func TestSingBoxAdapter_BuildConfig_TUNIncludesMixedInboundPort(t *testing.T) {
 		t.Fatalf("expected mixed inbound listen_port=%d in tun mode", profile.InboundPort)
 	}
 }
+
+func TestSingBoxAdapter_BuildConfig_TUN_DefaultInterfaceNameOmittedOnNonLinux(t *testing.T) {
+	t.Parallel()
+
+	a := &SingBoxAdapter{}
+	nodes := []domain.Node{
+		{
+			ID:       "n1",
+			Name:     "test-ss",
+			Protocol: domain.ProtocolShadowsocks,
+			Address:  "1.1.1.1",
+			Port:     443,
+			Security: &domain.NodeSecurity{Method: "aes-128-gcm", Password: "pass"},
+		},
+	}
+	frouter := domain.FRouter{
+		ID:   "fr1",
+		Name: "test",
+		ChainProxy: domain.ChainProxySettings{
+			Edges: []domain.ProxyEdge{
+				{
+					ID:       "e-default",
+					From:     domain.EdgeNodeLocal,
+					To:       "n1",
+					Priority: 100,
+					Enabled:  true,
+				},
+			},
+		},
+	}
+
+	profile := domain.ProxyConfig{
+		InboundMode: domain.InboundTUN,
+		TUNSettings: &domain.TUNConfiguration{
+			InterfaceName: "tun0",
+			MTU:           9000,
+			Address:       []string{"172.19.0.1/30"},
+			AutoRoute:     true,
+			StrictRoute:   true,
+			Stack:         "mixed",
+			DNSHijack:     true,
+		},
+	}
+
+	plan, err := nodegroup.CompileProxyPlan(domain.EngineSingBox, profile, frouter, nodes)
+	if err != nil {
+		t.Fatalf("CompileProxyPlan() error: %v", err)
+	}
+
+	b, err := a.BuildConfig(plan, GeoFiles{ArtifactsDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("BuildConfig() error: %v", err)
+	}
+
+	var cfg map[string]any
+	if err := json.Unmarshal(b, &cfg); err != nil {
+		t.Fatalf("json.Unmarshal() error: %v", err)
+	}
+
+	inbounds, ok := cfg["inbounds"].([]any)
+	if !ok || len(inbounds) == 0 {
+		t.Fatalf("expected inbounds, got %T", cfg["inbounds"])
+	}
+	tun, ok := inbounds[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected tun inbound map, got %T", inbounds[0])
+	}
+
+	_, hasInterfaceName := tun["interface_name"]
+	if runtime.GOOS == "linux" {
+		if !hasInterfaceName {
+			t.Fatalf("expected tun.interface_name to exist on linux")
+		}
+	} else if hasInterfaceName {
+		t.Fatalf("expected tun.interface_name to be omitted on %s", runtime.GOOS)
+	}
+}

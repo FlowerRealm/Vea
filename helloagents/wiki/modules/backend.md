@@ -4,6 +4,7 @@
 - 生成运行计划：将 `ProxyConfig + FRouter + Nodes + ChainProxySettings` 编译为可执行的 runtime plan
 - 适配多内核：在 `backend/service/adapters/` 生成 sing-box / mihomo 的配置
 - 进程管理：启动/停止内核，收集日志与状态
+- TUN 就绪判定：Linux 以 `interface_name` 为准等待网卡就绪；Windows/macOS 以 TUN 地址识别实际网卡，避免固定 `tun0` 名称导致误判；sing-box 在非 Linux 默认不强制写死 `interface_name=tun0`
 - 核心组件管理：安装/卸载 sing-box / mihomo 等核心组件
 - 配置/订阅解析：`backend/service/config` 解析分享链接与 Clash YAML（`proxies` + `proxy-groups` + `rules`）；创建时会从 payload 解析 Nodes（即使 `sourceUrl` 为空），订阅型配置可自动生成订阅 FRouter（`sourceConfigId` 关联）；创建订阅的后台首次同步失败时会尝试用创建时的 payload 作为 fallback 解析，成功后会清空同步错误并更新 checksum，避免“节点已生成但订阅仍标红失败”的状态不一致
 - 主题包管理：`backend/service/theme` 提供主题目录扫描与 ZIP 导入/导出（支持主题包 `manifest.json` 展开子主题），并在 manifest 校验异常时输出告警日志便于排障
@@ -13,6 +14,17 @@
 - `backend/service/`：核心业务逻辑
 - `backend/service/adapters/`：内核适配器（本次变更涉及 `clash.go`）
 - `backend/service/theme/`：主题包管理（`/themes`：list/import/export/delete；支持 `manifest.json` 主题包）
+
+## 规范
+
+### 需求: 订阅同步不破坏 FRouter 引用
+**模块:** backend/service/config
+
+订阅“拉取节点”/自动同步在更新节点集合时，应尽量复用“同一节点”的历史 `node.ID`（基于协议/地址/端口/安全/传输/TLS 指纹），避免节点 ID 变化导致 FRouter 的 `slots.boundNodeId`、`edges.to`、`edges.via` 引用断裂并在 UI 显示为“未知: {id}”。
+
+#### 场景: 拉取节点后重启仍正常显示
+- 条件: 已有 FRouter 引用订阅节点（自定义 FRouter 或订阅 FRouter）
+- 预期结果: 同步后 FRouter 引用仍可解析到节点；Clash YAML 订阅生成的 `chainProxy` 会同步重写节点引用以保持一致
 
 ## 变更历史
 - [202601050639_fix-clash-tun-dns](../../history/2026-01/202601050639_fix-clash-tun-dns/) - 修复 Linux 下 mihomo TUN 断网（默认配置对齐主流客户端）
@@ -38,3 +50,6 @@
 - [202601110913_fix-subscription-fallback-syncstatus](../../history/2026-01/202601110913_fix-subscription-fallback-syncstatus/) - 订阅：创建订阅后台首次同步失败但 fallback 解析成功时清理同步错误，避免 UI 误标红
 - [202601111002_fix-review-log-port-probe](../../history/2026-01/202601111002_fix-review-log-port-probe/) - 代码审查跟进：ConfigCreate fallback 日志语义修正；系统代理默认端口常量；TUN readiness probe 去重
 - [202601111339_theme-review-followups](../../history/2026-01/202601111339_theme-review-followups/) - 主题包：导入/导出维护性补强（常量复用、临时文件关闭简化、manifest 校验告警日志）
+- [202601112056_fix-issue43-frouter-node-unknown](../../history/2026-01/202601112056_fix-issue43-frouter-node-unknown/) - 订阅：拉取节点时复用历史节点 ID，避免重启后 FRouter 节点显示未知（Issue #43 / #18）
+- [202601112057_fix-issue37-38](../../history/2026-01/202601112057_fix-issue37-38/) - IP Geo：避免 busy 误判回落直连导致“当前 IP”显示真实出口；TUN 模式在存在入站端口时优先走本地入站探测（Issue #37）
+- [202601112058_fix-issue-41-tun-windows](../../history/2026-01/202601112058_fix-issue-41-tun-windows/) - 代理服务：修复 Windows 下 sing-box TUN 启动因固定 `tun0` 就绪判定失败（Issue #41）

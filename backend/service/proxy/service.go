@@ -246,7 +246,7 @@ func (s *Service) Start(ctx context.Context, cfg domain.ProxyConfig) error {
 
 	// 停止现有代理（现在新配置已经准备好，失败概率大幅降低）。
 	s.stopLocked()
-	if hadPrevious && previousTunInterface != "" {
+	if runtime.GOOS == "linux" && hadPrevious && previousTunInterface != "" {
 		// 避免重启过快导致 tun 设备尚未释放就再次创建，触发 "device or resource busy"。
 		if err := s.waitForTUNAbsent(previousTunInterface, 10*time.Second); err != nil {
 			// 处理历史遗留：曾经用 pkexec 启动过 sing-box 时，后端无法以普通用户态 stop root 进程，
@@ -745,14 +745,34 @@ func (s *Service) startProcess(adapter adapters.CoreAdapter, engine domain.CoreE
 				}
 			}
 
-			if err := s.waitForTUNReadyWithIndex(interfaceName, prevIndex, 10*time.Second); err != nil {
-				// TUN 接口没起来就宣告成功是误导；直接失败并回收进程。
-				_ = adapter.Stop(handle)
-				s.mainHandle = nil
-				s.mainEngine = ""
-				return fmt.Errorf("TUN interface not ready: %w", err)
+			tunIface := ""
+			if runtime.GOOS == "linux" {
+				if err := s.waitForTUNReadyWithIndex(interfaceName, prevIndex, 10*time.Second, done); err != nil {
+					// TUN 接口没起来就宣告成功是误导；直接失败并回收进程。
+					_ = adapter.Stop(handle)
+					s.mainHandle = nil
+					s.mainEngine = ""
+					return fmt.Errorf("TUN interface not ready: %w", err)
+				}
+				tunIface = interfaceName
+			} else {
+				desiredName := strings.TrimSpace(interfaceName)
+				// Windows/macOS 下默认不强制依赖 "tun0"；由内核自动选择实际名称。
+				if desiredName == defaultTunInterfaceName {
+					desiredName = ""
+				}
+				expectedAddrs := expectedTUNAddressesForEngine(engine, cfg)
+				ifaceName, err := s.waitForTUNReadyByAddress(existingIfaces, desiredName, expectedAddrs, 10*time.Second, done)
+				if err != nil {
+					// TUN 接口没起来就宣告成功是误导；直接失败并回收进程。
+					_ = adapter.Stop(handle)
+					s.mainHandle = nil
+					s.mainEngine = ""
+					return fmt.Errorf("TUN interface not ready: %w", err)
+				}
+				tunIface = ifaceName
 			}
-			s.tunIface = interfaceName
+			s.tunIface = tunIface
 
 			// TUN 也可能同时开启本地代理端口（HTTP/SOCKS），这里同样做 readiness probe。
 			if err := s.waitForInboundPortReady(adapter, handle, cfg.InboundPort, 5*time.Second, true); err != nil {
@@ -761,7 +781,7 @@ func (s *Service) startProcess(adapter adapters.CoreAdapter, engine domain.CoreE
 			return nil
 		}
 
-		ifaceName, err := s.waitForNewTUNReady(existingIfaces, 10*time.Second)
+		ifaceName, err := s.waitForNewTUNReady(existingIfaces, 10*time.Second, done)
 		if err != nil {
 			// TUN 接口没起来就宣告成功是误导；直接失败并回收进程。
 			_ = adapter.Stop(handle)
@@ -800,9 +820,16 @@ func (s *Service) waitForInboundPortReady(adapter adapters.CoreAdapter, handle *
 }
 
 // waitForTUNReady 等待 TUN 接口就绪
-func (s *Service) waitForTUNReady(interfaceName string, timeout time.Duration) error {
+func (s *Service) waitForTUNReady(interfaceName string, timeout time.Duration, done <-chan struct{}) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
+		if done != nil {
+			select {
+			case <-done:
+				return errors.New("kernel exited before TUN interface ready")
+			default:
+			}
+		}
 		interfaces, err := net.Interfaces()
 		if err == nil {
 			for _, iface := range interfaces {
@@ -816,17 +843,24 @@ func (s *Service) waitForTUNReady(interfaceName string, timeout time.Duration) e
 	return fmt.Errorf("TUN interface %s not ready after %v", interfaceName, timeout)
 }
 
-func (s *Service) waitForTUNReadyWithIndex(interfaceName string, prevIndex int, timeout time.Duration) error {
+func (s *Service) waitForTUNReadyWithIndex(interfaceName string, prevIndex int, timeout time.Duration, done <-chan struct{}) error {
 	interfaceName = strings.TrimSpace(interfaceName)
 	if interfaceName == "" {
 		return errors.New("interface name is empty")
 	}
 	if prevIndex <= 0 {
-		return s.waitForTUNReady(interfaceName, timeout)
+		return s.waitForTUNReady(interfaceName, timeout, done)
 	}
 
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
+		if done != nil {
+			select {
+			case <-done:
+				return errors.New("kernel exited before TUN interface ready")
+			default:
+			}
+		}
 		interfaces, err := net.Interfaces()
 		if err == nil {
 			for _, iface := range interfaces {
@@ -880,14 +914,166 @@ func isTunInterfaceName(name string) bool {
 	return false
 }
 
+func expectedTUNAddressesForEngine(engine domain.CoreEngineKind, cfg domain.ProxyConfig) []string {
+	if engine == domain.EngineClash {
+		// mihomo/clash 的 TUN 默认地址/网段就是 198.18.0.1/30（参见 adapters/clash.go）。
+		return []string{"198.18.0.1/30"}
+	}
+	if cfg.TUNSettings != nil && len(cfg.TUNSettings.Address) > 0 {
+		return cfg.TUNSettings.Address
+	}
+	return nil
+}
+
+func parseTUNAddressCIDRs(addrs []string) ([]*net.IPNet, error) {
+	nets := []*net.IPNet{}
+	for _, raw := range addrs {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		_, ipNet, err := net.ParseCIDR(raw)
+		if err != nil || ipNet == nil {
+			continue
+		}
+		nets = append(nets, ipNet)
+	}
+	if len(nets) == 0 {
+		return nil, errors.New("tun address is empty or invalid")
+	}
+	return nets, nil
+}
+
+func interfaceHasAnyCIDRAddr(iface net.Interface, nets []*net.IPNet) bool {
+	if len(nets) == 0 {
+		return false
+	}
+	addrs, err := iface.Addrs()
+	if err != nil || len(addrs) == 0 {
+		return false
+	}
+	for _, addr := range addrs {
+		var ip net.IP
+		switch v := addr.(type) {
+		case *net.IPNet:
+			ip = v.IP
+		case *net.IPAddr:
+			ip = v.IP
+		default:
+			continue
+		}
+		if ip == nil {
+			continue
+		}
+		for _, n := range nets {
+			if n != nil && n.Contains(ip) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isNewInterface(existing map[string]int, iface net.Interface) bool {
+	if existing == nil {
+		return true
+	}
+	name := strings.TrimSpace(iface.Name)
+	if name == "" {
+		return false
+	}
+	idx, ok := existing[name]
+	return !ok || idx != iface.Index
+}
+
+func looksLikeTunInterface(name string, flags net.Flags) bool {
+	if flags&net.FlagPointToPoint != 0 {
+		return true
+	}
+	return isTunInterfaceName(name)
+}
+
+// waitForTUNReadyByAddress 在非 Linux 平台用 “地址匹配 + 新网卡” 识别 TUN。
+// 返回实际创建的网卡名（用于诊断/展示；Linux 仍使用固定 interface_name 逻辑）。
+func (s *Service) waitForTUNReadyByAddress(existing map[string]int, desiredName string, addresses []string, timeout time.Duration, done <-chan struct{}) (string, error) {
+	desiredName = strings.TrimSpace(desiredName)
+
+	nets, err := parseTUNAddressCIDRs(addresses)
+	if err != nil {
+		return "", err
+	}
+
+	startedAt := time.Now()
+	deadline := startedAt.Add(timeout)
+
+	fallback := ""
+	for time.Now().Before(deadline) {
+		if done != nil {
+			select {
+			case <-done:
+				return "", errors.New("kernel exited before TUN interface ready")
+			default:
+			}
+		}
+
+		ifaces, err := net.Interfaces()
+		if err == nil {
+			// 1) 若用户显式指定 interfaceName，则优先按名称匹配（兼容非默认名称场景）。
+			if desiredName != "" {
+				for _, iface := range ifaces {
+					if strings.TrimSpace(iface.Name) != desiredName {
+						continue
+					}
+					if interfaceHasAnyCIDRAddr(iface, nets) {
+						return desiredName, nil
+					}
+				}
+			}
+
+			// 2) 优先匹配“新出现的”网卡，避免误命中历史接口（如 Docker/虚拟网卡）。
+			for _, iface := range ifaces {
+				name := strings.TrimSpace(iface.Name)
+				if name == "" {
+					continue
+				}
+				if !interfaceHasAnyCIDRAddr(iface, nets) {
+					continue
+				}
+				if isNewInterface(existing, iface) {
+					return name, nil
+				}
+				// 旧接口仅作为兜底候选：要求更像 TUN，且等待一小段时间优先给“新网卡”机会。
+				if fallback == "" && looksLikeTunInterface(name, iface.Flags) {
+					fallback = name
+				}
+			}
+
+			if fallback != "" && time.Since(startedAt) > 2*time.Second {
+				return fallback, nil
+			}
+		}
+
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	return "", fmt.Errorf("no TUN interface detected after %v", timeout)
+}
+
 // waitForNewTUNReady 等待一个“新出现的”TUN 接口（用于无法指定/无法预知接口名的内核）
-func (s *Service) waitForNewTUNReady(existing map[string]int, timeout time.Duration) (string, error) {
+func (s *Service) waitForNewTUNReady(existing map[string]int, timeout time.Duration, done <-chan struct{}) (string, error) {
 	if existing == nil {
 		existing = map[string]int{}
 	}
 
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
+		if done != nil {
+			select {
+			case <-done:
+				return "", errors.New("kernel exited before TUN interface ready")
+			default:
+			}
+		}
 		interfaces, err := net.Interfaces()
 		if err == nil {
 			for _, iface := range interfaces {

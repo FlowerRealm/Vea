@@ -42,6 +42,13 @@
 | 202601110913 | fix-subscription-fallback-syncstatus | 修复 | ✅已完成 | [2026-01/202601110913_fix-subscription-fallback-syncstatus](2026-01/202601110913_fix-subscription-fallback-syncstatus/) |
 | 202601111002 | fix-review-log-port-probe | 修复 | ✅已完成 | [2026-01/202601111002_fix-review-log-port-probe](2026-01/202601111002_fix-review-log-port-probe/) |
 | 202601111339 | theme-review-followups | 修复 | ✅已完成 | [2026-01/202601111339_theme-review-followups](2026-01/202601111339_theme-review-followups/) |
+| 202601112042 | fix-slot-ui | 修复 | ✅已完成 | [2026-01/202601112042_fix-slot-ui](2026-01/202601112042_fix-slot-ui/) |
+| 202601112055 | fix-ui-theme-contrast | 修复 | ✅已完成 | [2026-01/202601112055_fix-ui-theme-contrast](2026-01/202601112055_fix-ui-theme-contrast/) |
+| 202601112053 | fix-issue42-subscription-label | 修复 | ✅已完成 | [2026-01/202601112053_fix-issue42-subscription-label](2026-01/202601112053_fix-issue42-subscription-label/) |
+| 202601112056 | fix-issue43-frouter-node-unknown | 修复 | ✅已完成 | [2026-01/202601112056_fix-issue43-frouter-node-unknown](2026-01/202601112056_fix-issue43-frouter-node-unknown/) |
+| 202601112057 | fix-issue37-38 | 修复 | ✅已完成 | [2026-01/202601112057_fix-issue37-38](2026-01/202601112057_fix-issue37-38/) |
+| 202601112058 | fix-issue-36-theme-switch | 修复 | ✅已完成 | [2026-01/202601112058_fix-issue-36-theme-switch](2026-01/202601112058_fix-issue-36-theme-switch/) |
+| 202601112058 | fix-issue-41-tun-windows | 修复 | ✅已完成 | [2026-01/202601112058_fix-issue-41-tun-windows](2026-01/202601112058_fix-issue-41-tun-windows/) |
 
 ## 按月归档
 
@@ -83,3 +90,10 @@
 - [202601110913_fix-subscription-fallback-syncstatus](2026-01/202601110913_fix-subscription-fallback-syncstatus/) - 订阅：创建订阅后台首次同步失败但 fallback 解析成功时清理同步错误，避免 UI 误标红
 - [202601111002_fix-review-log-port-probe](2026-01/202601111002_fix-review-log-port-probe/) - 代码审查跟进：ConfigCreate fallback 日志语义修正；系统代理默认端口常量；TUN readiness probe 去重
 - [202601111339_theme-review-followups](2026-01/202601111339_theme-review-followups/) - 主题包：导入/导出维护性补强（常量复用、临时文件关闭简化、manifest 校验告警日志）
+- [202601112042_fix-slot-ui](2026-01/202601112042_fix-slot-ui/) - 主题页：补齐“槽位管理”入口与保存 positions，修复槽位功能不可用（Issue #40）
+- [202601112055_fix-ui-theme-contrast](2026-01/202601112055_fix-ui-theme-contrast/) - 主题页：补齐 `color-scheme`（dark/light），修复 Windows 下下拉/列表控件对比度异常（Issue #39）
+- [202601112053_fix-issue42-subscription-label](2026-01/202601112053_fix-issue42-subscription-label/) - 修复节点面板首次进入订阅名显示为配置 ID（Issue #42）
+- [202601112056_fix-issue43-frouter-node-unknown](2026-01/202601112056_fix-issue43-frouter-node-unknown/) - 订阅：拉取节点时复用历史节点 ID，避免重启后 FRouter 节点显示未知（Issue #43 / #18）
+- [202601112057_fix-issue37-38](2026-01/202601112057_fix-issue37-38/) - 修复“当前 IP”在内核忙碌/切换时误显示真实出口，并修复链路编辑面板只能打开一次（Issue #37/#38）
+- [202601112058_fix-issue-36-theme-switch](2026-01/202601112058_fix-issue-36-theme-switch/) - 主题页：修复 Windows 下切换默认主题报“无法解析主题入口”（Issue #36）
+- [202601112058_fix-issue-41-tun-windows](2026-01/202601112058_fix-issue-41-tun-windows/) - 后端：修复 Windows 下 sing-box TUN 启动因固定 `tun0` 就绪判定失败（Issue #41）

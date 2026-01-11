@@ -88,6 +88,10 @@ func (s *Service) ReplaceNodesForConfig(ctx context.Context, configID string, no
 	return s.repo.ReplaceNodesForConfig(ctx, configID, nodes)
 }
 
+func (s *Service) ListByConfigID(ctx context.Context, configID string) ([]domain.Node, error) {
+	return s.repo.ListByConfigID(ctx, configID)
+}
+
 func (s *Service) ProbeLatencyAsync(id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

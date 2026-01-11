@@ -598,6 +598,161 @@ rules:
 	}
 }
 
+func TestService_SyncNodesFromPayload_ReusesExistingNodeID_PreservesFRouterReferences(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	store := memory.NewStore(events.NewBus())
+	configRepo := memory.NewConfigRepo(store)
+	nodeRepo := memory.NewNodeRepo(store)
+	frouterRepo := memory.NewFRouterRepo(store)
+	nodeSvc := nodes.NewService(context.Background(), nodeRepo)
+	svc := NewService(context.Background(), configRepo, nodeSvc, frouterRepo)
+
+	const configID = "cfg-1"
+	if _, err := configRepo.Create(ctx, domain.Config{
+		ID:     configID,
+		Name:   "cfg-1",
+		Format: domain.ConfigFormatSubscription,
+	}); err != nil {
+		t.Fatalf("create config: %v", err)
+	}
+
+	const existingNodeID = "old-node-id"
+	if _, err := nodeRepo.Create(ctx, domain.Node{
+		ID:             existingNodeID,
+		Name:           "n1",
+		Address:        "example.com",
+		Port:           443,
+		Protocol:       domain.ProtocolVLESS,
+		SourceConfigID: configID,
+		Security: &domain.NodeSecurity{
+			UUID: "11111111-1111-1111-1111-111111111111",
+		},
+		Transport: &domain.NodeTransport{
+			Type: "tcp",
+		},
+		TLS: &domain.NodeTLS{
+			Enabled: true,
+			Type:    "tls",
+		},
+	}); err != nil {
+		t.Fatalf("create node: %v", err)
+	}
+
+	if _, err := frouterRepo.Create(ctx, domain.FRouter{
+		ID:   "fr-1",
+		Name: "fr-1",
+		ChainProxy: domain.ChainProxySettings{
+			Slots: []domain.SlotNode{
+				{ID: "slot-1", Name: "slot", BoundNodeID: existingNodeID},
+			},
+			Edges: []domain.ProxyEdge{
+				{ID: "e1", From: domain.EdgeNodeLocal, To: "slot-1", Priority: 0, Enabled: true},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("create frouter: %v", err)
+	}
+
+	const payload = "vless://11111111-1111-1111-1111-111111111111@example.com:443?security=tls#n1"
+	if err := svc.syncNodesFromPayload(ctx, configID, payload); err != nil {
+		t.Fatalf("sync nodes: %v", err)
+	}
+
+	if _, err := nodeRepo.Get(ctx, existingNodeID); err != nil {
+		t.Fatalf("expected node %s to be preserved, got err=%v", existingNodeID, err)
+	}
+}
+
+func TestService_SyncNodesFromPayload_ClashYAML_ReusesExistingNodeID_RewritesChainProxy(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	store := memory.NewStore(events.NewBus())
+	configRepo := memory.NewConfigRepo(store)
+	nodeRepo := memory.NewNodeRepo(store)
+	frouterRepo := memory.NewFRouterRepo(store)
+	nodeSvc := nodes.NewService(context.Background(), nodeRepo)
+	svc := NewService(context.Background(), configRepo, nodeSvc, frouterRepo)
+
+	const configID = "cfg-1"
+	if _, err := configRepo.Create(ctx, domain.Config{
+		ID:     configID,
+		Name:   "cfg-1",
+		Format: domain.ConfigFormatSubscription,
+	}); err != nil {
+		t.Fatalf("create config: %v", err)
+	}
+
+	const existingNodeID = "old-node-id"
+	if _, err := nodeRepo.Create(ctx, domain.Node{
+		ID:             existingNodeID,
+		Name:           "n1",
+		Address:        "example.com",
+		Port:           443,
+		Protocol:       domain.ProtocolVMess,
+		SourceConfigID: configID,
+		Security: &domain.NodeSecurity{
+			UUID:       "11111111-1111-1111-1111-111111111111",
+			AlterID:    0,
+			Encryption: "auto",
+		},
+	}); err != nil {
+		t.Fatalf("create node: %v", err)
+	}
+
+	const payload = `
+proxies:
+  - name: n1
+    type: vmess
+    server: example.com
+    port: 443
+    uuid: 11111111-1111-1111-1111-111111111111
+    alterId: 0
+    cipher: auto
+rules:
+  - MATCH,n1
+`
+
+	if err := svc.syncNodesFromPayload(ctx, configID, payload); err != nil {
+		t.Fatalf("sync nodes: %v", err)
+	}
+
+	nodesAfter, err := nodeRepo.ListByConfigID(ctx, configID)
+	if err != nil {
+		t.Fatalf("list nodes: %v", err)
+	}
+	if len(nodesAfter) != 1 {
+		t.Fatalf("expected nodes=1 after sync, got %d", len(nodesAfter))
+	}
+	if nodesAfter[0].ID != existingNodeID {
+		t.Fatalf("expected node id preserved=%s, got %s", existingNodeID, nodesAfter[0].ID)
+	}
+
+	frouterID := stableFRouterIDForConfig(configID)
+	frouter, err := frouterRepo.Get(ctx, frouterID)
+	if err != nil {
+		t.Fatalf("get frouter: %v", err)
+	}
+	if len(frouter.ChainProxy.Edges) == 0 {
+		t.Fatalf("expected subscription frouter to have edges")
+	}
+
+	found := false
+	for _, edge := range frouter.ChainProxy.Edges {
+		if edge.From == domain.EdgeNodeLocal && edge.To == existingNodeID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected frouter edges to reference preserved node id %s, got edges=%v", existingNodeID, frouter.ChainProxy.Edges)
+	}
+}
+
 func waitUntil(t *testing.T, timeout time.Duration, cond func() bool) {
 	t.Helper()
 
