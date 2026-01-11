@@ -72,9 +72,16 @@ build: ## 打包 Electron 应用
 	@$(MAKE) -j2 build-backend deps
 	@echo "==> 打包 Electron 应用..."
 	@cp $(OUTPUT_DIR)/$(BINARY_NAME) $(BINARY_NAME)
+	@rm -rf dist/electron
 	@cd frontend && npm run build
+	@echo "==> 收集安装包到 release/..."
+	@mkdir -p release
+	@rm -rf release/*
+	@for ext in deb dmg exe zip; do \
+		cp -f dist/electron/*.$$ext release/ 2>/dev/null || true; \
+	done
 	@echo "==> 应用打包完成"
-	@ls -lh release/
+	@ls -lh release/ || true
 
 clean: ## 清理构建产物
 	@echo "==> 清理构建产物..."
