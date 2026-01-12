@@ -266,49 +266,51 @@ func TestSingBoxAdapter_BuildConfig_TUN_DefaultInterfaceNameOmittedOnNonLinux(t 
 		},
 	}
 
-	profile := domain.ProxyConfig{
-		InboundMode: domain.InboundTUN,
-		TUNSettings: &domain.TUNConfiguration{
-			InterfaceName: "tun0",
-			MTU:           9000,
-			Address:       []string{"172.19.0.1/30"},
-			AutoRoute:     true,
-			StrictRoute:   true,
-			Stack:         "mixed",
-			DNSHijack:     true,
-		},
-	}
-
-	plan, err := nodegroup.CompileProxyPlan(domain.EngineSingBox, profile, frouter, nodes)
-	if err != nil {
-		t.Fatalf("CompileProxyPlan() error: %v", err)
-	}
-
-	b, err := a.BuildConfig(plan, GeoFiles{ArtifactsDir: t.TempDir()})
-	if err != nil {
-		t.Fatalf("BuildConfig() error: %v", err)
-	}
-
-	var cfg map[string]any
-	if err := json.Unmarshal(b, &cfg); err != nil {
-		t.Fatalf("json.Unmarshal() error: %v", err)
-	}
-
-	inbounds, ok := cfg["inbounds"].([]any)
-	if !ok || len(inbounds) == 0 {
-		t.Fatalf("expected inbounds, got %T", cfg["inbounds"])
-	}
-	tun, ok := inbounds[0].(map[string]any)
-	if !ok {
-		t.Fatalf("expected tun inbound map, got %T", inbounds[0])
-	}
-
-	_, hasInterfaceName := tun["interface_name"]
-	if runtime.GOOS == "linux" {
-		if !hasInterfaceName {
-			t.Fatalf("expected tun.interface_name to exist on linux")
+	for _, interfaceName := range []string{"vea", "tun0"} {
+		profile := domain.ProxyConfig{
+			InboundMode: domain.InboundTUN,
+			TUNSettings: &domain.TUNConfiguration{
+				InterfaceName: interfaceName,
+				MTU:           9000,
+				Address:       []string{"172.19.0.1/30"},
+				AutoRoute:     true,
+				StrictRoute:   true,
+				Stack:         "mixed",
+				DNSHijack:     true,
+			},
 		}
-	} else if hasInterfaceName {
-		t.Fatalf("expected tun.interface_name to be omitted on %s", runtime.GOOS)
+
+		plan, err := nodegroup.CompileProxyPlan(domain.EngineSingBox, profile, frouter, nodes)
+		if err != nil {
+			t.Fatalf("CompileProxyPlan() error: %v", err)
+		}
+
+		b, err := a.BuildConfig(plan, GeoFiles{ArtifactsDir: t.TempDir()})
+		if err != nil {
+			t.Fatalf("BuildConfig() error: %v", err)
+		}
+
+		var cfg map[string]any
+		if err := json.Unmarshal(b, &cfg); err != nil {
+			t.Fatalf("json.Unmarshal() error: %v", err)
+		}
+
+		inbounds, ok := cfg["inbounds"].([]any)
+		if !ok || len(inbounds) == 0 {
+			t.Fatalf("expected inbounds, got %T", cfg["inbounds"])
+		}
+		tun, ok := inbounds[0].(map[string]any)
+		if !ok {
+			t.Fatalf("expected tun inbound map, got %T", inbounds[0])
+		}
+
+		_, hasInterfaceName := tun["interface_name"]
+		if runtime.GOOS == "linux" {
+			if !hasInterfaceName {
+				t.Fatalf("expected tun.interface_name to exist on linux")
+			}
+		} else if hasInterfaceName {
+			t.Fatalf("expected tun.interface_name to be omitted on %s", runtime.GOOS)
+		}
 	}
 }

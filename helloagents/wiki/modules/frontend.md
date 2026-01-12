@@ -30,6 +30,15 @@
 #### 场景: 保存不破坏布局
 路由规则面板保存图配置时需携带 `positions`，避免意外清空链路编辑器的布局数据。
 
+### 需求: TUN 接口名默认 vea
+**模块:** frontend/settings-schema
+
+`tun.interfaceName` 默认值为 `vea` 并保持只读，确保与后端默认值一致；Windows/macOS 上该值不代表实际网卡名称（默认不强制写死名称）。
+
+#### 场景: 默认值展示一致
+- 预期结果: 设置面板中 `tun.interfaceName` 默认显示为 `vea`
+- 预期结果: 不暗示 Windows/macOS 上一定会出现名为 `vea` 的网卡
+
 ## 注意事项
 - 槽位 `id` 作为引用标识不开放编辑；仅允许新增、重命名、绑定/解绑，避免规则引用失效。
 - 主题切换入口解析需兼容 Windows `file://` URL 的路径编码/分隔符差异（例如 `%5C`），避免仅用字符串查找推导主题根路径。
@@ -65,3 +74,4 @@
 - [202601112114_refactor-restart-core-button](../../history/2026-01/202601112114_refactor-restart-core-button/) - 主题页（首页）：抽取核心状态/按钮区域内联样式到 CSS；重构 `handleCoreRestart` 并统一缩进
 - [202601112155_pr-review-theme-shared-async](../../history/2026-01/202601112155_pr-review-theme-shared-async/) - 主题页：dark/light 主逻辑抽到共享模块；Electron 主题同步改为异步并注入共享模块，避免主进程同步 IO 阻塞
 - [202601121727_theme-sync-refactor](../../history/2026-01/202601121727_theme-sync-refactor/) - Electron：主题同步逻辑抽离为独立模块，并统一 dark 主题缩进风格
+- [202601121916_default-tun-interface-name-vea](../../history/2026-01/202601121916_default-tun-interface-name-vea/) - 设置：`tun.interfaceName` 默认值从 `tun0` 调整为 `vea`（保持只读）

@@ -87,6 +87,72 @@ func TestClashAdapter_TUNDNSListenAvoidsPort53(t *testing.T) {
 	}
 }
 
+func TestClashAdapter_TUNDeviceOmittedOnNonLinuxForDefaultAndLegacy(t *testing.T) {
+	t.Parallel()
+
+	frouter := domain.FRouter{
+		ID:   "fr1",
+		Name: "test",
+		ChainProxy: domain.ChainProxySettings{
+			Edges: []domain.ProxyEdge{
+				{
+					ID:       "e1",
+					From:     domain.EdgeNodeLocal,
+					To:       domain.EdgeNodeDirect,
+					Priority: 0,
+					Enabled:  true,
+				},
+			},
+		},
+	}
+
+	for _, interfaceName := range []string{"vea", "tun0"} {
+		cfg := domain.ProxyConfig{
+			InboundMode:     domain.InboundTUN,
+			PreferredEngine: domain.EngineClash,
+			FRouterID:       frouter.ID,
+			TUNSettings: &domain.TUNConfiguration{
+				InterfaceName: interfaceName,
+				MTU:           9000,
+				Address:       []string{"198.18.0.1/30"},
+				AutoRoute:     true,
+				StrictRoute:   true,
+				Stack:         "mixed",
+				DNSHijack:     true,
+			},
+		}
+
+		plan, err := nodegroup.CompileProxyPlan(domain.EngineClash, cfg, frouter, nil)
+		if err != nil {
+			t.Fatalf("CompileProxyPlan: %v", err)
+		}
+
+		out, err := (&ClashAdapter{}).BuildConfig(plan, GeoFiles{})
+		if err != nil {
+			t.Fatalf("BuildConfig: %v", err)
+		}
+
+		var m map[string]interface{}
+		if err := yaml.Unmarshal(out, &m); err != nil {
+			t.Fatalf("yaml.Unmarshal: %v", err)
+		}
+
+		tun, _ := m["tun"].(map[string]interface{})
+		if tun == nil {
+			t.Fatalf("expected tun config")
+		}
+
+		_, hasDevice := tun["device"]
+		if runtime.GOOS == "linux" {
+			if !hasDevice {
+				t.Fatalf("expected tun.device to exist on linux")
+			}
+		} else if hasDevice {
+			t.Fatalf("expected tun.device to be omitted on %s", runtime.GOOS)
+		}
+	}
+}
+
 func TestClashAdapter_TUNIncludesMixedPort(t *testing.T) {
 	frouter := domain.FRouter{
 		ID:   "fr1",

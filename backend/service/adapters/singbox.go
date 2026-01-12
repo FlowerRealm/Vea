@@ -228,9 +228,9 @@ func (a *SingBoxAdapter) buildInbounds(profile domain.ProxyConfig) ([]map[string
 		}
 
 		interfaceName := strings.TrimSpace(profile.TUNSettings.InterfaceName)
-		// Windows/macOS 下 tun 设备名不稳定（或不可控）；默认不强制写死为 tun0，交给内核自动选择。
+		// Windows/macOS 下 tun 设备名不稳定（或不可控）；默认不强制写死为 vea（或 legacy tun0），交给内核自动选择。
 		// Linux 保持显式 interface_name，便于后端判断 TUN 是否就绪与做释放等待。
-		if runtime.GOOS != "linux" && interfaceName == "tun0" {
+		if runtime.GOOS != "linux" && (interfaceName == "vea" || interfaceName == "tun0") {
 			interfaceName = ""
 		}
 

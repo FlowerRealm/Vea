@@ -85,15 +85,15 @@ curl -X POST http://localhost:19080/proxy/start \
 ```bash
 curl -X PUT http://localhost:19080/proxy/config \
   -H "Content-Type: application/json" \
-  -d '{
-    "inboundMode": "tun",
-    "preferredEngine": "singbox",
-    "tunSettings": {
-      "interfaceName": "tun0",
-      "mtu": 9000,
-      "address": ["172.19.0.1/30"],
-      "autoRoute": true,
-      "strictRoute": true,
+	  -d '{
+	    "inboundMode": "tun",
+	    "preferredEngine": "singbox",
+	    "tunSettings": {
+	      "interfaceName": "vea",
+	      "mtu": 9000,
+	      "address": ["172.19.0.1/30"],
+	      "autoRoute": true,
+	      "strictRoute": true,
       "stack": "mixed",
       "dnsHijack": true
     }
@@ -160,7 +160,7 @@ curl -X POST http://localhost:19080/proxy/stop
 ```json
 {
   "tunSettings": {
-    "interfaceName": "tun0",
+    "interfaceName": "vea",
     "mtu": 9000,
     "address": ["172.19.0.1/30"],
     "autoRoute": true,
@@ -172,7 +172,7 @@ curl -X POST http://localhost:19080/proxy/stop
 ```
 
 **字段说明**：
-- `interfaceName`: 虚拟网卡名称（默认 `tun0`）
+- `interfaceName`: 虚拟网卡名称（默认 `vea`；Windows/macOS 默认不强制写死名称；旧默认 `tun0` 仍兼容）
 - `mtu`: 最大传输单元（推荐 `9000` 用于性能优化）
 - `address`: TUN 设备 IP 地址
 - `autoRoute`: 自动配置系统路由表
@@ -292,7 +292,7 @@ ls -l <path>
 {
   "inboundMode": "tun",
   "tunSettings": {
-    "interfaceName": "tun0",
+    "interfaceName": "vea",
     "mtu": 9000,
     "address": ["172.19.0.1/30"],
     "autoRoute": true,

@@ -220,7 +220,7 @@ func TestTuneTUNSettingsForEngine_ClashLinux_AdjustsDefaultMTU(t *testing.T) {
 	cfg := domain.ProxyConfig{
 		InboundMode: domain.InboundTUN,
 		TUNSettings: &domain.TUNConfiguration{
-			InterfaceName: "tun0",
+			InterfaceName: "vea",
 			MTU:           9000,
 			Address:       []string{"172.19.0.1/30"},
 			AutoRoute:     true,
@@ -250,7 +250,7 @@ func TestTuneTUNSettingsForEngine_ClashLinux_DoesNotOverrideCustomMTU(t *testing
 	cfg := domain.ProxyConfig{
 		InboundMode: domain.InboundTUN,
 		TUNSettings: &domain.TUNConfiguration{
-			InterfaceName: "tun0",
+			InterfaceName: "vea",
 			MTU:           1500,
 			Address:       []string{"172.19.0.1/30"},
 			AutoRoute:     true,

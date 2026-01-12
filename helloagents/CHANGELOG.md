@@ -20,6 +20,7 @@
 ### 变更
 - 运行期数据与 artifacts 统一写入 userData（开发模式同样）；启动时会将仓库/可执行目录旁遗留的 `data/` 与 `artifacts/` 迁移到 userData 并清理源目录。
 - 打包产物规范化：electron-builder 中间产物输出到 `dist/electron`；本地 `release/` 仅保留安装包；自动更新所需 `latest*.yml/*.blockmap` 由 CI 上传到 GitHub Release；安装包命名统一为 `Vea-版本-系统-架构`；macOS/Windows 不再打包 Linux 管理脚本；Windows 快捷方式名统一为 `Vea`。
+- 默认 TUN 网卡名从 `tun0` 调整为 `vea`：Linux 默认显式使用 `vea`；Windows/macOS 默认不强制写死设备名并兼容 legacy `tun0`（仍按地址判定就绪）。
 
 ### 修复
 - 修复速度单位显示不一致的问题：前端主题/SDK/OpenAPI 将速度单位从 `Mbps` 修正为 `MB/s`（与实际测速计算单位一致）。
