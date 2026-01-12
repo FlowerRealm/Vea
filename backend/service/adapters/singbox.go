@@ -227,6 +227,13 @@ func (a *SingBoxAdapter) buildInbounds(profile domain.ProxyConfig) ([]map[string
 			return nil, fmt.Errorf("TUN mode requires TUNSettings")
 		}
 
+		interfaceName := strings.TrimSpace(profile.TUNSettings.InterfaceName)
+		// Windows/macOS 下 tun 设备名不稳定（或不可控）；默认不强制写死为 tun0，交给内核自动选择。
+		// Linux 保持显式 interface_name，便于后端判断 TUN 是否就绪与做释放等待。
+		if runtime.GOOS != "linux" && interfaceName == "tun0" {
+			interfaceName = ""
+		}
+
 		// sing-box 1.12+ 使用新的地址字段格式
 		stack := profile.TUNSettings.Stack
 		if stack == "" {
@@ -235,7 +242,6 @@ func (a *SingBoxAdapter) buildInbounds(profile domain.ProxyConfig) ([]map[string
 		tun := map[string]interface{}{
 			"type":                       "tun",
 			"tag":                        "tun-in",
-			"interface_name":             profile.TUNSettings.InterfaceName,
 			"mtu":                        profile.TUNSettings.MTU,
 			"address":                    profile.TUNSettings.Address, // 新格式：address 替代 inet4_address
 			"auto_route":                 profile.TUNSettings.AutoRoute,
@@ -243,6 +249,9 @@ func (a *SingBoxAdapter) buildInbounds(profile domain.ProxyConfig) ([]map[string
 			"stack":                      stack,
 			"sniff":                      true,
 			"sniff_override_destination": false,
+		}
+		if interfaceName != "" {
+			tun["interface_name"] = interfaceName
 		}
 
 		if runtime.GOOS == "linux" && profile.TUNSettings.AutoRedirect {
