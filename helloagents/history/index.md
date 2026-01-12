@@ -1,6 +1,6 @@
 # 变更历史索引
 
-本文件记录所有已完成变更的索引，便于追溯和查询。
+本文件记录所有已完成变更与已归档方案包的索引，便于追溯和查询。
 
 ## 索引
 
@@ -51,6 +51,7 @@
 | 202601112058 | fix-issue-36-theme-switch | 修复 | ✅已完成 | [2026-01/202601112058_fix-issue-36-theme-switch](2026-01/202601112058_fix-issue-36-theme-switch/) |
 | 202601112058 | fix-issue-41-tun-windows | 修复 | ✅已完成 | [2026-01/202601112058_fix-issue-41-tun-windows](2026-01/202601112058_fix-issue-41-tun-windows/) |
 | 202601112114 | refactor-restart-core-button | 重构 | ✅已完成 | [2026-01/202601112114_refactor-restart-core-button](2026-01/202601112114_refactor-restart-core-button/) |
+| 202601112135 | default-tun-interface-name-vea | 规划 | [-]未执行 | [2026-01/202601112135_default-tun-interface-name-vea](2026-01/202601112135_default-tun-interface-name-vea/) |
 | 202601112155 | pr-review-theme-shared-async | 重构 | ✅已完成 | [2026-01/202601112155_pr-review-theme-shared-async](2026-01/202601112155_pr-review-theme-shared-async/) |
 
 ## 按月归档
@@ -102,4 +103,5 @@
 - [202601112058_fix-issue-36-theme-switch](2026-01/202601112058_fix-issue-36-theme-switch/) - 主题页：修复 Windows 下切换默认主题报“无法解析主题入口”（Issue #36）
 - [202601112058_fix-issue-41-tun-windows](2026-01/202601112058_fix-issue-41-tun-windows/) - 后端：修复 Windows 下 sing-box TUN 启动因固定 `tun0` 就绪判定失败（Issue #41）
 - [202601112114_refactor-restart-core-button](2026-01/202601112114_refactor-restart-core-button/) - 主题页（首页）：抽取核心状态/按钮区域内联样式到 CSS；重构 `handleCoreRestart` 并统一缩进
+- [202601112135_default-tun-interface-name-vea](2026-01/202601112135_default-tun-interface-name-vea/) - 规划：默认 TUN 网卡名改为 `vea`（已归档，未执行）
 - [202601112155_pr-review-theme-shared-async](2026-01/202601112155_pr-review-theme-shared-async/) - 主题页：dark/light 主逻辑抽到共享模块；Electron 主题同步改为异步并注入共享模块，避免主进程同步 IO 阻塞
