@@ -11,6 +11,9 @@ OUTPUT_DIR ?= dist
 GOARCH ?= $(shell go env GOARCH)
 GOOS ?= $(shell go env GOOS)
 
+# dev 任务默认不主动清理旧进程（避免误杀其他程序）；如需强制清理旧的 Vea 开发进程/释放 19080 端口，可设置 KILL_OLD=1。
+KILL_OLD ?= 0
+
 # 编译参数
 LDFLAGS := -s -w
 BUILD_FLAGS := -trimpath -ldflags "$(LDFLAGS)"
@@ -51,10 +54,18 @@ build-backend: ## 编译 Go 后端
 	@ls -lh $(OUTPUT_DIR)/$(BINARY_NAME)
 
 dev: ## 启动 Electron 开发模式
-	@echo "==> 停止正在运行的 vea 和 electron 进程..."
-	@-pkill -9 -f "vea.*--addr" 2>/dev/null || true
-	@-pkill -9 electron 2>/dev/null || true
-	@-fuser -k 19080/tcp 2>/dev/null || true
+	@if [ "$(KILL_OLD)" = "1" ]; then \
+		echo "==> 清理旧的 Vea 开发进程（释放 19080 端口）..."; \
+		if command -v pkill >/dev/null 2>&1; then \
+			pkill -9 -f "vea.*--addr.*19080" 2>/dev/null || true; \
+		fi; \
+		if command -v fuser >/dev/null 2>&1; then \
+			fuser -k 19080/tcp 2>/dev/null || true; \
+		elif command -v lsof >/dev/null 2>&1; then \
+			pids=$$(lsof -ti tcp:19080 2>/dev/null || true); \
+			if [ -n "$$pids" ]; then kill -9 $$pids 2>/dev/null || true; fi; \
+		fi; \
+	fi
 	@echo "==> 删除旧的二进制文件..."
 	@rm -f vea vea.exe
 	@$(MAKE) -j2 build-backend deps

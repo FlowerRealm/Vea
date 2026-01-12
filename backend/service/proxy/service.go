@@ -23,7 +23,8 @@ import (
 )
 
 const (
-	defaultTunInterfaceName = "tun0"
+	defaultTunInterfaceName = "vea"
+	legacyTunInterfaceName  = "tun0"
 	defaultTunMTU           = 9000
 	defaultTunAddress       = "172.19.0.1/30"
 	defaultTunStack         = "mixed"
@@ -507,7 +508,7 @@ func isLikelyDefaultTUNSettings(cfg *domain.TUNConfiguration) bool {
 	if cfg.MTU != defaultTunMTU {
 		return false
 	}
-	if cfg.InterfaceName != "" && cfg.InterfaceName != defaultTunInterfaceName {
+	if name := strings.TrimSpace(cfg.InterfaceName); name != "" && name != defaultTunInterfaceName && name != legacyTunInterfaceName {
 		return false
 	}
 	if len(cfg.Address) != 1 || strings.TrimSpace(cfg.Address[0]) != defaultTunAddress {
@@ -757,8 +758,10 @@ func (s *Service) startProcess(adapter adapters.CoreAdapter, engine domain.CoreE
 				tunIface = interfaceName
 			} else {
 				desiredName := strings.TrimSpace(interfaceName)
-				// Windows/macOS 下默认不强制依赖 "tun0"；由内核自动选择实际名称。
-				if desiredName == defaultTunInterfaceName {
+				// Windows/macOS 下默认不强制依赖默认网卡名；由内核自动选择实际名称。
+				// - default: vea（新默认）
+				// - legacy: tun0（旧默认）
+				if desiredName == defaultTunInterfaceName || desiredName == legacyTunInterfaceName {
 					desiredName = ""
 				}
 				expectedAddrs := expectedTUNAddressesForEngine(engine, cfg)

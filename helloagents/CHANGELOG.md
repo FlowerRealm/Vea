@@ -15,10 +15,12 @@
 - 主题包（目录化 + ZIP 导入/导出）：主题以 `index.html` 为入口的目录形式存在；后端新增 `/themes`（list/import/export/delete）；Electron 启动从 userData/themes 加载并在缺失时复制内置主题；主题内提供“导入主题(.zip)”与“导出当前主题(.zip)”。
 - 主题包支持 `manifest.json`（单包多子主题）：在 `userData/themes/<packId>/manifest.json` 中描述包信息与子主题入口；`GET /themes` 展开子主题并返回 `entry`，用于切换与启动加载。
 - 增加应用内“检查更新”能力：支持 Windows/macOS 从 GitHub Releases 获取最新稳定版并自动下载、安装与重启（Issue #24）。
+- 主题页（首页）增加“重启内核”按钮：允许手动触发 `POST /proxy/start` 重启/启动内核，并在系统代理启用时自动关闭/恢复以避免断网。
 
 ### 变更
 - 运行期数据与 artifacts 统一写入 userData（开发模式同样）；启动时会将仓库/可执行目录旁遗留的 `data/` 与 `artifacts/` 迁移到 userData 并清理源目录。
 - 打包产物规范化：electron-builder 中间产物输出到 `dist/electron`；本地 `release/` 仅保留安装包；自动更新所需 `latest*.yml/*.blockmap` 由 CI 上传到 GitHub Release；安装包命名统一为 `Vea-版本-系统-架构`；macOS/Windows 不再打包 Linux 管理脚本；Windows 快捷方式名统一为 `Vea`。
+- 默认 TUN 网卡名从 `tun0` 调整为 `vea`：Linux 默认显式使用 `vea`；Windows/macOS 默认不强制写死设备名并兼容 legacy `tun0`（仍按地址判定就绪）。
 
 ### 修复
 - 修复速度单位显示不一致的问题：前端主题/SDK/OpenAPI 将速度单位从 `Mbps` 修正为 `MB/s`（与实际测速计算单位一致）。
@@ -70,6 +72,10 @@
 - 维护性：主题导出临时文件处理更稳健；主题包 `manifest.json` 校验失败输出告警日志，便于排障。
 - 修复首页“当前 IP”在内核忙碌/切换时偶发误显示真实出口 IP 的问题：`GET /ip/geo` busy 场景不再回落直连探测，并在 TUN 模式存在入站端口时优先走本地入站探测（Issue #37）。
 - 修复主题页链路编辑面板在同一窗口会话只能打开一次的问题：再次进入时会刷新图数据（Issue #38）。
+- 修复内置主题升级后不自动更新的问题：在未检测到用户修改时，启动会自动同步最新内置主题到 userData（旧版本首次同步会备份旧目录）。
+- 维护性：主题页（首页）核心状态/按钮区域样式从内联迁移到 CSS；重构 `handleCoreRestart` 拆分辅助函数并统一缩进。
+- 维护性：主题页 dark/light 主逻辑抽到共享模块 `frontend/theme/_shared/js/app.js`；Electron 主题同步改为异步（`fs.promises`）并注入共享模块，避免主进程同步 IO 阻塞且保证导出/导入主题自包含。
+- 维护性：将 Electron 内置主题同步逻辑（`ensureBundledThemes`）抽离为独立模块 `frontend/theme_manager.js`，降低 `frontend/main.js` 复杂度，并统一 dark 主题关键区块缩进风格。
 
 ## [0.0.1] - 2026-01-05
 

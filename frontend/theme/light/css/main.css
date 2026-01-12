@@ -643,6 +643,20 @@
       position: relative;
     }
 
+    .dashboard-actions {
+      margin-top: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    #core-state {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
     .status-ring-container {
       position: relative;
       width: 140px;

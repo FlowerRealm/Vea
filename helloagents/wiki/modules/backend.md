@@ -4,7 +4,7 @@
 - 生成运行计划：将 `ProxyConfig + FRouter + Nodes + ChainProxySettings` 编译为可执行的 runtime plan
 - 适配多内核：在 `backend/service/adapters/` 生成 sing-box / mihomo 的配置
 - 进程管理：启动/停止内核，收集日志与状态
-- TUN 就绪判定：Linux 以 `interface_name` 为准等待网卡就绪；Windows/macOS 以 TUN 地址识别实际网卡，避免固定 `tun0` 名称导致误判；sing-box 在非 Linux 默认不强制写死 `interface_name=tun0`
+- TUN 就绪判定：Linux 以 `interface_name` 为准等待网卡就绪；Windows/macOS 以 TUN 地址识别实际网卡，默认不强制依赖网卡名称（`vea`/legacy `tun0`）
 - 核心组件管理：安装/卸载 sing-box / mihomo 等核心组件
 - 配置/订阅解析：`backend/service/config` 解析分享链接与 Clash YAML（`proxies` + `proxy-groups` + `rules`）；创建时会从 payload 解析 Nodes（即使 `sourceUrl` 为空），订阅型配置可自动生成订阅 FRouter（`sourceConfigId` 关联）；创建订阅的后台首次同步失败时会尝试用创建时的 payload 作为 fallback 解析，成功后会清空同步错误并更新 checksum，避免“节点已生成但订阅仍标红失败”的状态不一致
 - 主题包管理：`backend/service/theme` 提供主题目录扫描与 ZIP 导入/导出（支持主题包 `manifest.json` 展开子主题），并在 manifest 校验异常时输出告警日志便于排障
@@ -25,6 +25,28 @@
 #### 场景: 拉取节点后重启仍正常显示
 - 条件: 已有 FRouter 引用订阅节点（自定义 FRouter 或订阅 FRouter）
 - 预期结果: 同步后 FRouter 引用仍可解析到节点；Clash YAML 订阅生成的 `chainProxy` 会同步重写节点引用以保持一致
+
+### 需求: 默认 TUN 网卡名为 vea
+**模块:** backend/service/proxy, backend/service/adapters
+
+将默认 TUN 网卡名从 `tun0` 调整为 `vea`，并确保后端默认值与配置生成策略一致。
+
+#### 场景: Linux 默认创建 vea
+- 条件: Linux + InboundMode=TUN，且用户未显式配置 `tun.interfaceName`
+- 预期结果: 默认 `interfaceName=vea`，生成配置显式写入 `interface_name/device=vea` 并按名称等待就绪
+
+#### 场景: Windows/macOS 默认不强制名称
+- 条件: Windows/macOS + InboundMode=TUN，且 `tun.interfaceName` 为默认 `vea`
+- 预期结果: 配置生成不写死设备名；TUN 就绪判定按地址识别实际网卡
+
+### 需求: 兼容旧配置 tun0
+**模块:** backend/service/proxy, backend/service/adapters
+
+历史配置 `tun.interfaceName=tun0` 在 Windows/macOS 视为 legacy 默认占位值：默认不强制写死名称，并继续按地址判定就绪。
+
+#### 场景: Windows/macOS 旧配置仍可用
+- 条件: Windows/macOS + InboundMode=TUN，且 `tun.interfaceName=tun0`
+- 预期结果: 配置生成不写死设备名；TUN 就绪判定按地址识别实际网卡
 
 ## 变更历史
 - [202601050639_fix-clash-tun-dns](../../history/2026-01/202601050639_fix-clash-tun-dns/) - 修复 Linux 下 mihomo TUN 断网（默认配置对齐主流客户端）
@@ -53,3 +75,4 @@
 - [202601112056_fix-issue43-frouter-node-unknown](../../history/2026-01/202601112056_fix-issue43-frouter-node-unknown/) - 订阅：拉取节点时复用历史节点 ID，避免重启后 FRouter 节点显示未知（Issue #43 / #18）
 - [202601112057_fix-issue37-38](../../history/2026-01/202601112057_fix-issue37-38/) - IP Geo：避免 busy 误判回落直连导致“当前 IP”显示真实出口；TUN 模式在存在入站端口时优先走本地入站探测（Issue #37）
 - [202601112058_fix-issue-41-tun-windows](../../history/2026-01/202601112058_fix-issue-41-tun-windows/) - 代理服务：修复 Windows 下 sing-box TUN 启动因固定 `tun0` 就绪判定失败（Issue #41）
+- [202601121916_default-tun-interface-name-vea](../../history/2026-01/202601121916_default-tun-interface-name-vea/) - 代理服务：默认 TUN 网卡名从 `tun0` 调整为 `vea`，并兼容 Windows/macOS 默认不强制设备名与 legacy `tun0`

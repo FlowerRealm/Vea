@@ -65,7 +65,7 @@ const SETTINGS_SCHEMA = {
           key: "tun.interfaceName",
           type: "text",
           label: "接口名称",
-          default: "tun0",
+          default: "vea",
           readonly: true
         },
         {

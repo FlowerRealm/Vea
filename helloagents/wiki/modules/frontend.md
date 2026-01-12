@@ -8,6 +8,7 @@
 
 ## 关键目录
 - `frontend/`：Electron 入口与 UI
+- `frontend/theme_manager.js`：内置主题同步逻辑（复制到 `userData/themes`、marker+hash 判定是否覆盖、注入 `_shared` 共享模块）；由 `frontend/main.js` 启动阶段调用
 - `frontend/sdk/`：JS SDK（构建产物已提交）
 - `frontend/theme/<themeId>/`：内置主题包（入口 `index.html`）
 - `frontend/theme/*/css/main.css`：内置主题需声明 `color-scheme`（dark/light），避免 Windows 下 `<select>` 等原生控件弹出层沿用系统配色导致对比度异常
@@ -28,6 +29,15 @@
 
 #### 场景: 保存不破坏布局
 路由规则面板保存图配置时需携带 `positions`，避免意外清空链路编辑器的布局数据。
+
+### 需求: TUN 接口名默认 vea
+**模块:** frontend/settings-schema
+
+`tun.interfaceName` 默认值为 `vea` 并保持只读，确保与后端默认值一致；Windows/macOS 上该值不代表实际网卡名称（默认不强制写死名称）。
+
+#### 场景: 默认值展示一致
+- 预期结果: 设置面板中 `tun.interfaceName` 默认显示为 `vea`
+- 预期结果: 不暗示 Windows/macOS 上一定会出现名为 `vea` 的网卡
 
 ## 注意事项
 - 槽位 `id` 作为引用标识不开放编辑；仅允许新增、重命名、绑定/解绑，避免规则引用失效。
@@ -55,8 +65,13 @@
 - [202601092026_theme-package](../../history/2026-01/202601092026_theme-package/) - 主题目录化并支持 ZIP 导入/导出；Electron 启动从 userData/themes 加载并在缺失时复制内置主题
 - [202601100554_pr-review-hardening](../../history/2026-01/202601100554_pr-review-hardening/) - 主题页：`showStatus` 改为模块内共享（不挂 window）；订阅导入后刷新改为轮询 `lastSyncedAt`，避免固定延时竞态
 - [202601100601_theme-pack-manifest](../../history/2026-01/202601100601_theme-pack-manifest/) - 主题包支持 `manifest.json`（单包多子主题）；`entry` 驱动切换与启动加载
-- [202601112055_fix-ui-theme-contrast](../../history/2026-01/202601112055_fix-ui-theme-contrast/) - 主题页：补齐 `color-scheme`（dark/light）并补齐浅色主题缺失 CSS 变量，修复 Windows 下下拉/列表控件对比度异常（Issue #39）
+- [202601111422_feat-restart-core-button](../../history/2026-01/202601111422_feat-restart-core-button/) - 主题页（首页）：增加“重启内核”按钮；并修复内置主题升级后不自动同步的问题
 - [202601112042_fix-slot-ui](../../history/2026-01/202601112042_fix-slot-ui/) - 主题页：补齐“槽位管理”入口与保存 positions，修复槽位功能不可用（Issue #40）
 - [202601112053_fix-issue42-subscription-label](../../history/2026-01/202601112053_fix-issue42-subscription-label/) - 主题页：修复节点面板首次进入订阅名显示为配置 ID（Issue #42）
+- [202601112055_fix-ui-theme-contrast](../../history/2026-01/202601112055_fix-ui-theme-contrast/) - 主题页：补齐 `color-scheme`（dark/light）并补齐浅色主题缺失 CSS 变量，修复 Windows 下下拉/列表控件对比度异常（Issue #39）
 - [202601112057_fix-issue37-38](../../history/2026-01/202601112057_fix-issue37-38/) - 主题页：主页加载避免并发触发 `/proxy/status` 与 `/ip/geo`；链路编辑面板可重复打开并每次进入刷新图数据（Issue #37/#38）
 - [202601112058_fix-issue-36-theme-switch](../../history/2026-01/202601112058_fix-issue-36-theme-switch/) - 主题页：修复 Windows 下切换默认主题报“无法解析主题入口”（Issue #36）
+- [202601112114_refactor-restart-core-button](../../history/2026-01/202601112114_refactor-restart-core-button/) - 主题页（首页）：抽取核心状态/按钮区域内联样式到 CSS；重构 `handleCoreRestart` 并统一缩进
+- [202601112155_pr-review-theme-shared-async](../../history/2026-01/202601112155_pr-review-theme-shared-async/) - 主题页：dark/light 主逻辑抽到共享模块；Electron 主题同步改为异步并注入共享模块，避免主进程同步 IO 阻塞
+- [202601121727_theme-sync-refactor](../../history/2026-01/202601121727_theme-sync-refactor/) - Electron：主题同步逻辑抽离为独立模块，并统一 dark 主题缩进风格
+- [202601121916_default-tun-interface-name-vea](../../history/2026-01/202601121916_default-tun-interface-name-vea/) - 设置：`tun.interfaceName` 默认值从 `tun0` 调整为 `vea`（保持只读）

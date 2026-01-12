@@ -249,8 +249,13 @@ func (a *ClashAdapter) buildTUN(profile domain.ProxyConfig) map[string]interface
 	}
 
 	// 统一接口名：与 ProxyConfig.TUNSettings.InterfaceName 对齐，避免后端无法判断 TUN 是否就绪。
-	if strings.TrimSpace(profile.TUNSettings.InterfaceName) != "" {
-		tun["device"] = strings.TrimSpace(profile.TUNSettings.InterfaceName)
+	// Windows/macOS 下默认值（vea / legacy tun0）不强制写死 device，交给内核自动选择实际名称。
+	if interfaceName := strings.TrimSpace(profile.TUNSettings.InterfaceName); interfaceName != "" {
+		if runtime.GOOS != "linux" && (interfaceName == "vea" || interfaceName == "tun0") {
+			// no-op
+		} else {
+			tun["device"] = interfaceName
+		}
 	}
 
 	// mihomo 的 tun 默认地址/网段就是 198.18.0.1/30。

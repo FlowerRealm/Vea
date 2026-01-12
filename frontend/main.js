@@ -3,6 +3,7 @@ const { spawn } = require('child_process')
 const path = require('path')
 const http = require('http')
 const fs = require('fs')
+const { ensureBundledThemes } = require('./theme_manager')
 
 // ============================================================================
 // 配置常量
@@ -373,41 +374,7 @@ function createWindow() {
 // 主题目录初始化与入口解析
 // ============================================================================
 
-function ensureBundledThemes(userDataDir) {
-  const themesRoot = path.join(userDataDir, 'themes')
-  fs.mkdirSync(themesRoot, { recursive: true })
-
-  const bundledRoot = path.join(__dirname, 'theme')
-  const builtinThemes = ['dark', 'light']
-
-  for (const id of builtinThemes) {
-    const destDir = path.join(themesRoot, id)
-    const destIndex = path.join(destDir, 'index.html')
-    if (fs.existsSync(destIndex)) {
-      continue
-    }
-
-    const srcDir = path.join(bundledRoot, id)
-    const srcIndex = path.join(srcDir, 'index.html')
-    if (!fs.existsSync(srcIndex)) {
-      console.warn(`[Theme] bundled theme is missing: ${srcIndex}`)
-      continue
-    }
-
-    try {
-      fs.rmSync(destDir, { recursive: true, force: true })
-    } catch (e) {
-      console.warn(`[Theme] remove existing theme dir failed: ${e.message}`)
-    }
-
-    try {
-      fs.cpSync(srcDir, destDir, { recursive: true })
-      console.log(`[Theme] installed bundled theme: ${id}`)
-    } catch (e) {
-      console.error(`[Theme] copy bundled theme failed (${id}): ${e.message}`)
-    }
-  }
-}
+// ensureBundledThemes 已抽离到 ./theme_manager.js
 
 async function loadFrontendThemeSetting() {
   const result = await apiRequest({ path: '/settings/frontend', timeout: 2000 })
@@ -755,7 +722,7 @@ app.whenReady().then(async () => {
 
   // 主题初始化：缺少内置主题时从 app resources 复制到 userData/themes
   const userDataDir = app.getPath('userData')
-  ensureBundledThemes(userDataDir)
+  await ensureBundledThemes(userDataDir)
 
   // 启动前读取后端前端设置 theme（默认 dark）
   const themeId = await loadFrontendThemeSetting()
