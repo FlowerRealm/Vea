@@ -8,6 +8,7 @@
 
 ## 关键目录
 - `frontend/`：Electron 入口与 UI
+- `frontend/theme_manager.js`：内置主题同步逻辑（复制到 `userData/themes`、marker+hash 判定是否覆盖、注入 `_shared` 共享模块）；由 `frontend/main.js` 启动阶段调用
 - `frontend/sdk/`：JS SDK（构建产物已提交）
 - `frontend/theme/<themeId>/`：内置主题包（入口 `index.html`）
 - `frontend/theme/*/css/main.css`：内置主题需声明 `color-scheme`（dark/light），避免 Windows 下 `<select>` 等原生控件弹出层沿用系统配色导致对比度异常
@@ -63,3 +64,4 @@
 - [202601112058_fix-issue-36-theme-switch](../../history/2026-01/202601112058_fix-issue-36-theme-switch/) - 主题页：修复 Windows 下切换默认主题报“无法解析主题入口”（Issue #36）
 - [202601112114_refactor-restart-core-button](../../history/2026-01/202601112114_refactor-restart-core-button/) - 主题页（首页）：抽取核心状态/按钮区域内联样式到 CSS；重构 `handleCoreRestart` 并统一缩进
 - [202601112155_pr-review-theme-shared-async](../../history/2026-01/202601112155_pr-review-theme-shared-async/) - 主题页：dark/light 主逻辑抽到共享模块；Electron 主题同步改为异步并注入共享模块，避免主进程同步 IO 阻塞
+- [202601121727_theme-sync-refactor](../../history/2026-01/202601121727_theme-sync-refactor/) - Electron：主题同步逻辑抽离为独立模块，并统一 dark 主题缩进风格

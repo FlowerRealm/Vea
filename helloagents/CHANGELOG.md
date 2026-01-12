@@ -74,6 +74,7 @@
 - 修复内置主题升级后不自动更新的问题：在未检测到用户修改时，启动会自动同步最新内置主题到 userData（旧版本首次同步会备份旧目录）。
 - 维护性：主题页（首页）核心状态/按钮区域样式从内联迁移到 CSS；重构 `handleCoreRestart` 拆分辅助函数并统一缩进。
 - 维护性：主题页 dark/light 主逻辑抽到共享模块 `frontend/theme/_shared/js/app.js`；Electron 主题同步改为异步（`fs.promises`）并注入共享模块，避免主进程同步 IO 阻塞且保证导出/导入主题自包含。
+- 维护性：将 Electron 内置主题同步逻辑（`ensureBundledThemes`）抽离为独立模块 `frontend/theme_manager.js`，降低 `frontend/main.js` 复杂度，并统一 dark 主题关键区块缩进风格。
 
 ## [0.0.1] - 2026-01-05
 

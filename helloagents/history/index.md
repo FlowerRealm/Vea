@@ -53,6 +53,7 @@
 | 202601112114 | refactor-restart-core-button | 重构 | ✅已完成 | [2026-01/202601112114_refactor-restart-core-button](2026-01/202601112114_refactor-restart-core-button/) |
 | 202601112135 | default-tun-interface-name-vea | 规划 | [-]未执行 | [2026-01/202601112135_default-tun-interface-name-vea](2026-01/202601112135_default-tun-interface-name-vea/) |
 | 202601112155 | pr-review-theme-shared-async | 重构 | ✅已完成 | [2026-01/202601112155_pr-review-theme-shared-async](2026-01/202601112155_pr-review-theme-shared-async/) |
+| 202601121727 | theme-sync-refactor | 重构 | ✅已完成 | [2026-01/202601121727_theme-sync-refactor](2026-01/202601121727_theme-sync-refactor/) |
 
 ## 按月归档
 
@@ -105,3 +106,4 @@
 - [202601112114_refactor-restart-core-button](2026-01/202601112114_refactor-restart-core-button/) - 主题页（首页）：抽取核心状态/按钮区域内联样式到 CSS；重构 `handleCoreRestart` 并统一缩进
 - [202601112135_default-tun-interface-name-vea](2026-01/202601112135_default-tun-interface-name-vea/) - 规划：默认 TUN 网卡名改为 `vea`（已归档，未执行）
 - [202601112155_pr-review-theme-shared-async](2026-01/202601112155_pr-review-theme-shared-async/) - 主题页：dark/light 主逻辑抽到共享模块；Electron 主题同步改为异步并注入共享模块，避免主进程同步 IO 阻塞
+- [202601121727_theme-sync-refactor](2026-01/202601121727_theme-sync-refactor/) - 维护性：主题同步逻辑抽离为独立模块，并统一 dark 主题缩进风格
