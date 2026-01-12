@@ -1,9 +1,9 @@
 appId: com.vea.app
 productName: Vea
+executableName: Vea
 copyright: Copyright © 2025 FlowerRealm
 
-# 默认文件命名格式: Vea-版本-平台-架构.扩展名（Windows 安装器见 nsis.artifactName）
-artifactName: "${productName}-${version}-${os}-${arch}.${ext}"
+# 默认文件命名格式: Vea-版本-系统-架构.扩展名（系统名按平台固定为 linux/macos/windows）
 
 publish:
   provider: github
@@ -11,7 +11,9 @@ publish:
   repo: Vea
 
 directories:
-  output: ../release
+  # electron-builder 的中间产物（*-unpacked、builder-*.yml、latest*.yml 等）会落在 output 目录。
+  # 这里固定输出到 dist，最终 release/ 仅保留安装包（由 Makefile / CI 收集）。
+  output: ../dist/electron
 
 files:
   - main.js
@@ -27,6 +29,7 @@ mac:
   target:
     - dmg
     - zip
+  artifactName: "${productName}-${version}-macos-${arch}.${ext}"
   # arch 由命令行参数控制 (--x64 或 --arm64)
   category: public.app-category.utilities
   icon: assets/icon.icns
@@ -35,13 +38,10 @@ mac:
   extraResources:
     - from: ../vea
       to: vea
-    - from: ../scripts
-      to: scripts
-      filter:
-        - "**/*"
 
 linux:
   target: deb
+  artifactName: "${productName}-${version}-linux-${arch}.${ext}"
   # arch 由命令行参数控制 (--x64 或 --arm64)
   category: Network
   icon: assets/icons
@@ -62,20 +62,17 @@ win:
     - target: zip
       arch:
         - x64
+  artifactName: "${productName}-${version}-windows-${arch}.${ext}"
   icon: assets/icon.ico
   requestedExecutionLevel: requireAdministrator
   extraResources:
     - from: ../vea.exe
       to: vea.exe
-    - from: ../scripts
-      to: scripts
-      filter:
-        - "**/*"
 
 nsis:
-  artifactName: "${productName}-${version}-${os}-${arch}-installer.${ext}"
+  artifactName: "${productName}-${version}-windows-${arch}.${ext}"
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: always
   createStartMenuShortcut: true
-  shortcutName: Vea (管理员模式)
+  shortcutName: Vea

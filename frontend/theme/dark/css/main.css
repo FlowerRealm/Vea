@@ -31,6 +31,7 @@
     }
 
     :root {
+      color-scheme: dark;
       /* Premium Dark (Linear-esque) */
       --bg-root: #050505;
       --bg-sidebar: rgba(10, 10, 10, 0.8);
@@ -46,6 +47,8 @@
       --text-tertiary: #6e6e6e;
 
       --accent: #ffffff;
+      --accent-hover: #2563eb;
+      --primary: var(--accent);
       --accent-glow: 0 0 20px rgba(255, 255, 255, 0.15);
 
       --success: #27c93f;
@@ -1753,12 +1756,36 @@
       color: white;
     }
 
-    .rule-chain-hint {
-      margin-top: 6px;
-      font-size: 12px;
-      color: var(--text-tertiary);
-      line-height: 1.4;
-    }
+	    .rule-chain-hint {
+	      margin-top: 6px;
+	      font-size: 12px;
+	      color: var(--text-tertiary);
+	      line-height: 1.4;
+	    }
+
+	    /* 槽位管理 */
+	    .slot-list {
+	      display: flex;
+	      flex-direction: column;
+	      gap: 8px;
+	    }
+
+	    .slot-row input,
+	    .slot-row select {
+	      width: auto;
+	      flex: 1;
+	    }
+
+	    .slot-row .slot-id {
+	      font-family: var(--font-mono);
+	      font-size: 11px;
+	      color: var(--text-tertiary);
+	      max-width: 140px;
+	      overflow: hidden;
+	      text-overflow: ellipsis;
+	      white-space: nowrap;
+	      flex: 0 0 auto;
+	    }
 
     .chain-route-section {
       margin-top: 16px;

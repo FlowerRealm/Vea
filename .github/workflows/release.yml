@@ -169,6 +169,11 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Prepare release directory
+        run: |
+          rm -rf release
+          mkdir -p release
+
       - name: Build Linux x64 packages
         working-directory: frontend
         env:
@@ -179,23 +184,17 @@ jobs:
           echo "=== Verifying x64 binary ==="
           file ../vea
           npm run build:linux -- --x64
-          echo "=== x64 build outputs ==="
-          ls -lh ../release/
-
-      - name: Preserve x64 artifacts
-        run: |
-          mkdir -p release-x64
-          # electron-builder 对 deb 用 amd64
-          mv release/*x64* release-x64/ 2>/dev/null || true
-          mv release/*amd64* release-x64/ 2>/dev/null || true
-          echo "=== Preserved x64 artifacts ==="
-          ls -lh release-x64/
+          echo "=== Staging build outputs ==="
+          ls -lh ../dist/electron/ || true
+          echo "=== Collecting installers ==="
+          cp -f ../dist/electron/*.deb ../release/ 2>/dev/null || true
+          ls -lh ../release/ || true
 
       - name: Clean for arm64 build
         run: |
           rm -rf frontend/node_modules/.cache/electron-builder
           rm -rf ~/.cache/electron-builder
-          rm -rf release/*
+          rm -rf dist/electron
           rm -f vea
 
       - name: Build Linux arm64 packages
@@ -208,15 +207,11 @@ jobs:
           echo "=== Verifying arm64 binary ==="
           file ../vea
           npm run build:linux -- --arm64
-          echo "=== arm64 build outputs ==="
-          ls -lh ../release/
-
-      - name: Merge all artifacts
-        run: |
-          mv release-x64/* release/ 2>/dev/null || true
-          rm -rf release-x64
-          echo "=== Final release contents ==="
-          ls -lh release/
+          echo "=== Staging build outputs ==="
+          ls -lh ../dist/electron/ || true
+          echo "=== Collecting installers ==="
+          cp -f ../dist/electron/*.deb ../release/ 2>/dev/null || true
+          ls -lh ../release/ || true
 
       - name: List build outputs
         working-directory: release
@@ -278,6 +273,13 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Prepare release directories
+        run: |
+          rm -rf release
+          rm -rf release-updates
+          mkdir -p release
+          mkdir -p release-updates
+
       - name: Build macOS x64 package
         working-directory: frontend
         env:
@@ -288,24 +290,22 @@ jobs:
           echo "=== Verifying x64 binary ==="
           file ../vea
           npm run build:mac -- --x64
-          echo "=== x64 build outputs ==="
-          ls -lh ../release/
-
-      - name: Preserve x64 artifacts
-        run: |
-          mkdir -p release-x64
-          mv release/*x64* release-x64/ 2>/dev/null || true
-          # electron-updater: x64 元数据文件（不包含 x64 字样）
-          mv release/latest-mac.yml release-x64/ 2>/dev/null || true
-          mv release/*.blockmap release-x64/ 2>/dev/null || true
-          echo "=== Preserved x64 artifacts ==="
-          ls -lh release-x64/
+          echo "=== Staging build outputs ==="
+          ls -lh ../dist/electron/ || true
+          echo "=== Collecting installers ==="
+          cp -f ../dist/electron/*.dmg ../release/ 2>/dev/null || true
+          cp -f ../dist/electron/*.zip ../release/ 2>/dev/null || true
+          ls -lh ../release/ || true
+          echo "=== Collecting updater assets ==="
+          cp -f ../dist/electron/latest-mac*.yml ../release-updates/ 2>/dev/null || true
+          cp -f ../dist/electron/*.blockmap ../release-updates/ 2>/dev/null || true
+          ls -lh ../release-updates/ || true
 
       - name: Clean for arm64 build
         run: |
           rm -rf frontend/node_modules/.cache/electron-builder
           rm -rf ~/Library/Caches/electron-builder
-          rm -rf release/*
+          rm -rf dist/electron
           rm -f vea
 
       - name: Build macOS arm64 package
@@ -318,15 +318,16 @@ jobs:
           echo "=== Verifying arm64 binary ==="
           file ../vea
           npm run build:mac -- --arm64
-          echo "=== arm64 build outputs ==="
-          ls -lh ../release/
-
-      - name: Merge all artifacts
-        run: |
-          mv release-x64/* release/ 2>/dev/null || true
-          rm -rf release-x64
-          echo "=== Final release contents ==="
-          ls -lh release/
+          echo "=== Staging build outputs ==="
+          ls -lh ../dist/electron/ || true
+          echo "=== Collecting installers ==="
+          cp -f ../dist/electron/*.dmg ../release/ 2>/dev/null || true
+          cp -f ../dist/electron/*.zip ../release/ 2>/dev/null || true
+          ls -lh ../release/ || true
+          echo "=== Collecting updater assets ==="
+          cp -n ../dist/electron/latest-mac*.yml ../release-updates/ 2>/dev/null || true
+          cp -f ../dist/electron/*.blockmap ../release-updates/ 2>/dev/null || true
+          ls -lh ../release-updates/ || true
 
       - name: Upload macOS packages
         uses: actions/upload-artifact@v4
@@ -335,8 +336,8 @@ jobs:
           path: |
             release/*.dmg
             release/*.zip
-            release/latest-mac*.yml
-            release/*.blockmap
+            release-updates/latest-mac*.yml
+            release-updates/*.blockmap
           retention-days: 1
 
   # ===================================
@@ -394,6 +395,20 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run build:win
 
+      - name: Collect Windows installers
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force release -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force release | Out-Null
+          Remove-Item -Recurse -Force release-updates -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force release-updates | Out-Null
+          Copy-Item dist/electron/*.exe release/ -Force -ErrorAction SilentlyContinue
+          Copy-Item dist/electron/*.zip release/ -Force -ErrorAction SilentlyContinue
+          Copy-Item dist/electron/latest*.yml release-updates/ -Force -ErrorAction SilentlyContinue
+          Copy-Item dist/electron/*.blockmap release-updates/ -Force -ErrorAction SilentlyContinue
+          Get-ChildItem release
+          Get-ChildItem release-updates
+
       - name: List build outputs
         working-directory: release
         shell: pwsh
@@ -406,8 +421,8 @@ jobs:
           path: |
             release/*.exe
             release/*.zip
-            release/latest.yml
-            release/*.blockmap
+            release-updates/latest*.yml
+            release-updates/*.blockmap
           retention-days: 1
 
   # ===================================

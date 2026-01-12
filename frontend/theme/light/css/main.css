@@ -31,21 +31,31 @@
     }
 
     :root {
+      color-scheme: light;
       /* Premium Light (Linear-esque) */
       --bg-root: #ffffff;
       --bg-sidebar: #f7f7f8;
       --bg-card: #ffffff;
       --bg-card-hover: #fcfcfc;
+      --bg-secondary: #f3f4f6;
 
       --border-subtle: #e5e5e5;
       --border-highlight: #d4d4d4;
+      --border-color: var(--border-subtle);
 
       --text-primary: #171717;
       --text-secondary: #737373;
       --text-tertiary: #a3a3a3;
 
       --accent: #000000;
+      --accent-bg: rgba(59, 130, 246, 0.05);
+      --accent-hover: #2563eb;
       --accent-glow: 0 0 20px rgba(0, 0, 0, 0.1);
+
+      --primary-color: #4f46e5;
+      --primary: var(--primary-color);
+      --card-bg: var(--bg-card);
+      --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.08);
 
       --success: #16a34a;
       --warning: #d97706;
@@ -1735,12 +1745,36 @@
       color: white;
     }
 
-    .rule-chain-hint {
-      margin-top: 6px;
-      font-size: 12px;
-      color: var(--text-tertiary);
-      line-height: 1.4;
-    }
+	    .rule-chain-hint {
+	      margin-top: 6px;
+	      font-size: 12px;
+	      color: var(--text-tertiary);
+	      line-height: 1.4;
+	    }
+
+	    /* 槽位管理 */
+	    .slot-list {
+	      display: flex;
+	      flex-direction: column;
+	      gap: 8px;
+	    }
+
+	    .slot-row input,
+	    .slot-row select {
+	      width: auto;
+	      flex: 1;
+	    }
+
+	    .slot-row .slot-id {
+	      font-family: var(--font-mono);
+	      font-size: 11px;
+	      color: var(--text-tertiary);
+	      max-width: 140px;
+	      overflow: hidden;
+	      text-overflow: ellipsis;
+	      white-space: nowrap;
+	      flex: 0 0 auto;
+	    }
 
     .chain-route-section {
       margin-top: 16px;

@@ -19,6 +19,7 @@
 
 ### 变更
 - 运行期数据与 artifacts 统一写入 userData（开发模式同样）；启动时会将仓库/可执行目录旁遗留的 `data/` 与 `artifacts/` 迁移到 userData 并清理源目录。
+- 打包产物规范化：electron-builder 中间产物输出到 `dist/electron`；本地 `release/` 仅保留安装包；自动更新所需 `latest*.yml/*.blockmap` 由 CI 上传到 GitHub Release；安装包命名统一为 `Vea-版本-系统-架构`；macOS/Windows 不再打包 Linux 管理脚本；Windows 快捷方式名统一为 `Vea`。
 
 ### 修复
 - 修复速度单位显示不一致的问题：前端主题/SDK/OpenAPI 将速度单位从 `Mbps` 修正为 `MB/s`（与实际测速计算单位一致）。
@@ -38,7 +39,9 @@
 - 修复 sing-box 启动 Shadowsocks+obfs 节点时报错 `plugin not found: obfs`：兼容 Clash/Mihomo 订阅的 `plugin: obfs` 写法并归一化为 `obfs-local`（simple-obfs）。
 - 修复浅色主题下 FRouter 选中态高亮不明显/异常的问题：选中态改为黑色边框（Issue #33）。
 - 修复 TUN 状态显示错误（Issue #32）：主题页 TUN 卡片主状态改为运行态展示，能力检查仅用于详情/指引。
+- 修复 Windows 下 sing-box TUN 启用时因固定 `tun0` 网卡名就绪判定导致启动失败的问题（Issue #41）：就绪检测改为按 TUN 地址识别实际网卡，并在非 Linux 默认不强制写死 `interface_name=tun0`。
 - 修复订阅节点无法自动清理导致节点无限增长的问题：当订阅成功解析出节点时，按最新快照删除旧节点，避免节点越积越多。
+- 修复订阅拉取节点后重启导致 FRouter 节点显示未知（Issue #43 / #18）：订阅同步时按节点指纹复用历史节点 ID，并在 Clash YAML 订阅场景同步重写 `ChainProxySettings` 中的节点引用。
 - 修复订阅拉取节点的异常保护：订阅返回空内容时返回错误并保留现有节点与旧 payload（避免数据丢失）。
 - 修复订阅面板配置行操作重复的问题：移除“刷新”按钮，仅保留“拉取节点”。
 - 修复订阅面板同步失败时错误信息过长导致表格行高度被撑爆的问题：错误信息在状态列单行省略显示，完整信息通过悬浮提示查看。
@@ -53,7 +56,10 @@
 - 修复首页“当前 IP”在代理运行时仍显示真实出口 IP（Issue #26）：`GET /ip/geo` 在代理运行且非 TUN 时通过本地入站代理探测出口 IP。
 - 修复 IP Geo 探测未贯穿请求 context 的问题：API 请求取消/超时后可及时中断外部探测请求，避免无意义等待。
 - 修复浅色主题日志面板“自动滚动”开关关闭态几乎不可见的问题：补齐 `--border-color` 变量（Issue #28）。
-- 修复槽位功能不可用（Issue #29）：主题页在 FRouter 路由规则面板新增“槽位管理”，支持新增/重命名/绑定节点；保存图配置时保留 `positions`，避免意外清空布局数据。
+- 修复 Windows 下主题下拉/列表控件对比度异常（Issue #39）：为内置主题声明 `color-scheme`（dark/light），并补齐浅色主题缺失的 CSS 变量，避免原生控件弹出层使用系统浅色样式导致文字不可读。
+- 修复槽位功能不可用（Issue #29 / #40）：主题页在 FRouter 路由规则面板新增“槽位管理”，支持新增/重命名/绑定节点；保存图配置时保留 `positions`，避免意外清空布局数据。
+- 修复 Windows 下主题切换失败（Issue #36）：主题页入口解析兼容 Windows `file://` URL 的路径编码/分隔符差异，确保默认主题可正常切换。
+- 修复节点面板首次进入时订阅名显示为配置 ID 的问题（Issue #42）：进入节点面板时若尚未加载配置列表则先加载 `/configs`，避免订阅名回退显示为 `configId`。
 - 修复主题页“检查应用更新”点击无响应的问题：修复 `showStatus` 作用域导致的静默异常，确保可触发 IPC 并在状态栏给出反馈。
 - 修复主题页订阅导入后依赖固定 `setTimeout` 刷新的竞态问题：改为轮询配置 `lastSyncedAt` 变化，并在超时/失败时给出提示。
 - 加固 Linux root helper 对 `artifactsRoot` 的推导与校验：`socketPath` 必须符合 `<ArtifactsRoot>/runtime/resolvectl-helper.sock`，并拒绝将根路径解析为 `/`，避免 capabilities 操作范围扩大。
@@ -63,6 +69,8 @@
 - 维护性：系统代理默认端口抽取为常量，避免重复 magic number。
 - 维护性：抽取入站端口 readiness probe 的公共逻辑，减少 TUN 启动流程重复代码。
 - 维护性：主题导出临时文件处理更稳健；主题包 `manifest.json` 校验失败输出告警日志，便于排障。
+- 修复首页“当前 IP”在内核忙碌/切换时偶发误显示真实出口 IP 的问题：`GET /ip/geo` busy 场景不再回落直连探测，并在 TUN 模式存在入站端口时优先走本地入站探测（Issue #37）。
+- 修复主题页链路编辑面板在同一窗口会话只能打开一次的问题：再次进入时会刷新图数据（Issue #38）。
 - 修复内置主题升级后不自动更新的问题：在未检测到用户修改时，启动会自动同步最新内置主题到 userData（旧版本首次同步会备份旧目录）。
 - 维护性：主题页（首页）核心状态/按钮区域样式从内联迁移到 CSS；重构 `handleCoreRestart` 拆分辅助函数并统一缩进。
 - 维护性：主题页 dark/light 主逻辑抽到共享模块 `frontend/theme/_shared/js/app.js`；Electron 主题同步改为异步（`fs.promises`）并注入共享模块，避免主进程同步 IO 阻塞且保证导出/导入主题自包含。
