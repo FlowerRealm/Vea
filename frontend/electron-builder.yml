@@ -17,6 +17,7 @@ directories:
 
 files:
   - main.js
+  - theme_manager.js
   - preload.js
   - settings-schema.js
   - chain-editor/**/*

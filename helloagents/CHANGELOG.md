@@ -54,6 +54,7 @@
 - 修复订阅面板同步错误字段处理的冗余：去除多余 `String()` 转换。
 - 修复创建订阅时等待拉取导致 UI 易误判卡死的问题：导入接口改为立即返回并后台拉取解析；主题页提示“后台拉取中…”并显示“未同步”状态；SDK 时间格式化对零值显示 `-`。
 - 修复 Windows 发布版默认规则模板不可用的问题：electron-builder 打包文件清单补齐 `chain-editor/rule-templates.js`（Issue #27）。
+- 修复 Windows 发布版启动崩溃（Issue #48）：electron-builder 打包文件清单补齐 `frontend/theme_manager.js`，避免主进程 `require('./theme_manager')` 失败。
 - 修复首页“当前 IP”在代理运行时仍显示真实出口 IP（Issue #26）：`GET /ip/geo` 在代理运行且非 TUN 时通过本地入站代理探测出口 IP。
 - 修复 IP Geo 探测未贯穿请求 context 的问题：API 请求取消/超时后可及时中断外部探测请求，避免无意义等待。
 - 修复浅色主题日志面板“自动滚动”开关关闭态几乎不可见的问题：补齐 `--border-color` 变量（Issue #28）。
