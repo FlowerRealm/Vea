@@ -24,6 +24,9 @@
 - 重命名槽位（编辑 `name`）
 - 绑定/解绑节点（编辑 `boundNodeId`）
 
+**实现位置:**
+- `frontend/theme/_shared/js/app.js`：`ChainListEditor` 负责槽位管理弹窗（`#chain-manage-slots` / `#slot-manage-dialog`）；保存会标记为 dirty，最终由底部“保存”提交并携带 `positions` 以避免清空布局。
+
 #### 场景: 规则选择槽位
 在规则编辑弹窗中，“匹配后去向”可选择槽位，并显示“已绑定/未绑定/未知绑定”状态。
 

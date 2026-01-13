@@ -2338,6 +2338,7 @@ export function bootstrapTheme({ createAPI, utils }) {
           this.edges = [];
           this.detourEdges = [];
           this.slots = [];
+          this.positions = {};
           this.nodes = [];
           this.dirty = false;
           this.draggedItem = null;
@@ -2375,6 +2376,7 @@ export function bootstrapTheme({ createAPI, utils }) {
             this.edges = allEdges.filter(e => (e?.from || '') === 'local');
             this.detourEdges = allEdges.filter(e => (e?.from || '') !== 'local');
             this.slots = Array.isArray(data.slots) ? data.slots : [];
+            this.positions = data.positions && typeof data.positions === 'object' ? data.positions : {};
             this.sortEdgesByPriority();
             this.render();
             this.dirty = false;
@@ -2384,6 +2386,7 @@ export function bootstrapTheme({ createAPI, utils }) {
             this.edges = [];
             this.detourEdges = [];
             this.slots = [];
+            this.positions = {};
             this.render();
           }
         }
@@ -2758,6 +2761,21 @@ export function bootstrapTheme({ createAPI, utils }) {
             if (e.target?.dataset?.action !== 'chain-remove') return;
             e.target.closest('.rule-chain-item')?.remove();
           });
+
+          // 槽位管理弹窗
+          this.container.querySelector('#chain-manage-slots')?.addEventListener('click', () => this.openSlotDialog());
+
+          const slotDialog = this.container.querySelector('#slot-manage-dialog');
+          if (slotDialog) {
+            slotDialog.addEventListener('click', (e) => {
+              if (e.target === slotDialog) this.closeSlotDialog();
+            });
+          }
+          this.container.querySelector('#slot-dialog-close')?.addEventListener('click', () => this.closeSlotDialog());
+          this.container.querySelector('#slot-cancel')?.addEventListener('click', () => this.closeSlotDialog());
+          this.container.querySelector('#slot-add')?.addEventListener('click', () => this.addSlotRow());
+          this.container.querySelector('#slot-save')?.addEventListener('click', () => this.saveSlotDialog());
+          this.container.querySelector('#slot-list')?.addEventListener('click', (e) => this.onSlotListClick(e));
         }
 
         // 拖拽排序
@@ -2907,6 +2925,180 @@ export function bootstrapTheme({ createAPI, utils }) {
           dialog?.classList.remove('open');
         }
 
+        openSlotDialog() {
+          const dialog = this.container.querySelector('#slot-manage-dialog');
+          if (!dialog) return;
+          this.renderSlotDialog();
+          dialog.classList.add('open');
+        }
+
+        closeSlotDialog() {
+          const dialog = this.container.querySelector('#slot-manage-dialog');
+          dialog?.classList.remove('open');
+        }
+
+        renderSlotDialog() {
+          const list = this.container.querySelector('#slot-list');
+          if (!list) return;
+
+          const slots = Array.isArray(this.slots) ? this.slots : [];
+          list.innerHTML = '';
+          if (slots.length === 0) {
+            list.innerHTML = '<div class="chain-rules-empty">暂无槽位，点击“添加槽位”创建</div>';
+            return;
+          }
+
+          for (const slot of slots) {
+            list.appendChild(this.createSlotRow(slot));
+          }
+        }
+
+        buildBoundNodeSelectOptions(currentValue) {
+          const selected = (currentValue && String(currentValue).trim()) || '';
+          const nodes = Array.isArray(this.nodes) ? [...this.nodes] : [];
+          const optionHtml = (val, label, isSelected) =>
+            `<option value="${escapeHtml(val)}"${isSelected ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+
+          let html = optionHtml('', '未绑定（穿透）', selected === '');
+
+          if (selected && !nodes.some(n => n?.id === selected)) {
+            html += optionHtml(selected, `未知: ${selected}`, true);
+          }
+
+          const groups = groupNodesBySubscription(nodes);
+          for (const group of groups) {
+            const groupOptions = [];
+            for (const n of group.nodes) {
+              const id = n?.id;
+              if (!id) continue;
+              groupOptions.push(optionHtml(id, n?.name || id, id === selected));
+            }
+            if (groupOptions.length > 0) {
+              html += `<optgroup label="${escapeHtml(group.label)}">${groupOptions.join('')}</optgroup>`;
+            }
+          }
+
+          return html;
+        }
+
+        createSlotRow(slot) {
+          const id = (slot?.id && String(slot.id).trim()) || '';
+          const name = (slot?.name && String(slot.name)) || '';
+          const boundNodeId = (slot?.boundNodeId && String(slot.boundNodeId).trim()) || '';
+
+          const row = document.createElement('div');
+          row.className = 'rule-chain-item slot-row';
+          row.dataset.slotId = id;
+
+          const idEl = document.createElement('div');
+          idEl.className = 'slot-id';
+          idEl.textContent = id;
+
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.className = 'slot-name';
+          input.placeholder = '槽位名称';
+          input.value = name || id;
+
+          const select = document.createElement('select');
+          select.className = 'slot-bound';
+          select.innerHTML = this.buildBoundNodeSelectOptions(boundNodeId);
+
+          const delBtn = document.createElement('button');
+          delBtn.type = 'button';
+          delBtn.className = 'danger';
+          delBtn.dataset.action = 'slot-remove';
+          delBtn.title = '删除';
+          delBtn.textContent = '×';
+
+          row.appendChild(idEl);
+          row.appendChild(input);
+          row.appendChild(select);
+          row.appendChild(delBtn);
+          return row;
+        }
+
+        getNextSlotId() {
+          const list = this.container.querySelector('#slot-list');
+          const used = new Set(
+            Array.from(list?.querySelectorAll('.slot-row') || [])
+              .map(row => (row?.dataset?.slotId || '').trim())
+              .filter(Boolean)
+          );
+
+          let i = 1;
+          while (used.has(`slot-${i}`)) i++;
+          return `slot-${i}`;
+        }
+
+        addSlotRow() {
+          const list = this.container.querySelector('#slot-list');
+          if (!list) return;
+
+          const id = this.getNextSlotId();
+          const idx = id.startsWith('slot-') ? parseInt(id.slice(5), 10) : NaN;
+          const slot = {
+            id,
+            name: Number.isFinite(idx) ? `槽位 ${idx}` : id,
+            boundNodeId: ''
+          };
+
+          const empty = list.querySelector('.chain-rules-empty');
+          if (empty) list.innerHTML = '';
+
+          const row = this.createSlotRow(slot);
+          list.appendChild(row);
+          row.querySelector('input')?.focus();
+        }
+
+        onSlotListClick(e) {
+          const btn = e.target?.closest?.('button[data-action]');
+          if (!btn) return;
+          if (btn.dataset.action !== 'slot-remove') return;
+          const row = btn.closest('.slot-row');
+          if (!row) return;
+          if (!confirm('确定要删除此槽位？')) return;
+          row.remove();
+
+          const list = this.container.querySelector('#slot-list');
+          if (list && list.querySelectorAll('.slot-row').length === 0) {
+            list.innerHTML = '<div class="chain-rules-empty">暂无槽位，点击“添加槽位”创建</div>';
+          }
+        }
+
+        saveSlotDialog() {
+          const list = this.container.querySelector('#slot-list');
+          if (!list) return;
+
+          const rows = Array.from(list.querySelectorAll('.slot-row'));
+          const next = [];
+          const seen = new Set();
+
+          for (const row of rows) {
+            const id = (row?.dataset?.slotId || '').trim();
+            if (!id) continue;
+            if (!id.startsWith('slot-')) {
+              showStatus(`槽位 ID 必须以 slot- 开头: ${id}`, 'error', 4000);
+              return;
+            }
+            if (seen.has(id)) {
+              showStatus(`槽位 ID 重复: ${id}`, 'error', 4000);
+              return;
+            }
+            seen.add(id);
+
+            const name = String(row.querySelector('.slot-name')?.value || '').trim() || id;
+            const boundNodeId = String(row.querySelector('.slot-bound')?.value || '').trim();
+            next.push({ id, name, boundNodeId: boundNodeId || '' });
+          }
+
+          this.slots = next;
+          this.render();
+          this.markDirty();
+          this.closeSlotDialog();
+          showStatus('槽位已更新，点击“保存”生效', 'success', 2000);
+        }
+
         saveEditDialog() {
           const edge = this.edges.find(e => e.id === this.editingEdgeId);
           if (!edge) return;
@@ -2961,7 +3153,7 @@ export function bootstrapTheme({ createAPI, utils }) {
             const data = {
               edges: [...this.edges, ...this.detourEdges],
               slots: this.slots,
-              positions: {}
+              positions: this.positions || {}
             };
 
             await this.api.put(path, data);
