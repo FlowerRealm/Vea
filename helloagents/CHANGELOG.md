@@ -77,6 +77,7 @@
 - 维护性：主题页（首页）核心状态/按钮区域样式从内联迁移到 CSS；重构 `handleCoreRestart` 拆分辅助函数并统一缩进。
 - 维护性：主题页 dark/light 主逻辑抽到共享模块 `frontend/theme/_shared/js/app.js`；Electron 主题同步改为异步（`fs.promises`）并注入共享模块，避免主进程同步 IO 阻塞且保证导出/导入主题自包含。
 - 维护性：将 Electron 内置主题同步逻辑（`ensureBundledThemes`）抽离为独立模块 `frontend/theme_manager.js`，降低 `frontend/main.js` 复杂度，并统一 dark 主题关键区块缩进风格。
+- 修复 Electron 多实例/残留后端导致后端启动即退出的问题：主进程启用单实例锁；启动前通过 `/health` 复用同 `userData` 的已运行服务，并在后端意外退出时提示 `app.log` 路径便于排障。
 
 ## [0.0.1] - 2026-01-05
 

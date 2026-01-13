@@ -55,6 +55,7 @@
 | 202601112155 | pr-review-theme-shared-async | 重构 | ✅已完成 | [2026-01/202601112155_pr-review-theme-shared-async](2026-01/202601112155_pr-review-theme-shared-async/) |
 | 202601121916 | default-tun-interface-name-vea | 变更 | ✅已完成 | [2026-01/202601121916_default-tun-interface-name-vea](2026-01/202601121916_default-tun-interface-name-vea/) |
 | 202601121727 | theme-sync-refactor | 重构 | ✅已完成 | [2026-01/202601121727_theme-sync-refactor](2026-01/202601121727_theme-sync-refactor/) |
+| 202601131921 | fix-backend-port-conflict | 修复 | ✅已完成 | [2026-01/202601131921_fix-backend-port-conflict](2026-01/202601131921_fix-backend-port-conflict/) |
 
 ## 按月归档
 
@@ -109,3 +110,4 @@
 - [202601112155_pr-review-theme-shared-async](2026-01/202601112155_pr-review-theme-shared-async/) - 主题页：dark/light 主逻辑抽到共享模块；Electron 主题同步改为异步并注入共享模块，避免主进程同步 IO 阻塞
 - [202601121916_default-tun-interface-name-vea](2026-01/202601121916_default-tun-interface-name-vea/) - 变更：默认 TUN 网卡名从 `tun0` 调整为 `vea`，并兼容 Windows/macOS 默认不强制设备名与 legacy `tun0`
 - [202601121727_theme-sync-refactor](2026-01/202601121727_theme-sync-refactor/) - 维护性：主题同步逻辑抽离为独立模块，并统一 dark 主题缩进风格
+- [202601131921_fix-backend-port-conflict](2026-01/202601131921_fix-backend-port-conflict/) - 修复 Electron 多实例/残留后端导致固定端口冲突，后端启动即退出

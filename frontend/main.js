@@ -39,6 +39,20 @@ let tray = null
 let isQuitting = false  // 防止退出时的无限循环
 let cleanupInProgress = false
 let startupThemeEntryPath = null
+let backendReady = false
+
+// 只允许单实例运行：避免重复拉起后端导致端口冲突和“后端闪退”
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow) return
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+  })
+}
 
 // ============================================================================
 // 应用自更新（electron-updater）
@@ -260,7 +274,7 @@ function waitForService(maxAttempts = SERVICE_STARTUP_MAX_ATTEMPTS, interval = S
 /**
  * 启动 Vea 服务
  */
-function startVeaService() {
+async function startVeaService() {
   // 开发模式：使用项目根目录的二进制
   // 生产模式：使用打包后的 resources 目录
   const isDev = !app.isPackaged
@@ -285,6 +299,28 @@ function startVeaService() {
 
   // artifacts 必须是可写目录：用于组件/Geo/rule-set/运行期配置（不要写进安装目录或 resources 目录）。
   const artifactsDir = path.join(userDataDir, 'artifacts')
+  const appLogPath = path.join(artifactsDir, 'runtime', 'app.log')
+
+  // 如果服务已经在运行（端口可用且 /health 正常），不要重复启动。
+  // 同时校验 userDataRoot，避免 dev/production 或多实例互相“复用”到错误的数据目录。
+  const health = await apiRequest({ path: '/health', timeout: 800 })
+  if (health.success && health.data && health.data.status === 'ok') {
+    const serviceUserDataRoot = health.data.userDataRoot
+    if (serviceUserDataRoot && path.resolve(serviceUserDataRoot) !== path.resolve(userDataDir)) {
+      dialog.showErrorBox(
+        'Vea 启动失败',
+        `端口 ${VEA_PORT} 已被另一个 Vea 实例占用。\n\n` +
+        `当前 userData: ${userDataDir}\n` +
+        `占用者 userData: ${serviceUserDataRoot}\n\n` +
+        '请先退出/结束占用端口的 Vea 进程后重试。'
+      )
+      app.quit()
+      return
+    }
+
+    console.log('Vea service already running, skip spawning a new process')
+    return
+  }
 
   const args = ['--addr', `:${VEA_PORT}`, '--state', statePath]
   if (isDev) {
@@ -318,6 +354,13 @@ function startVeaService() {
   veaProcess.on('exit', (code, signal) => {
     console.log(`Vea service exited with code ${code} and signal ${signal}`)
     veaProcess = null
+    if (!isQuitting && backendReady) {
+      dialog.showErrorBox(
+        'Vea 后端已退出',
+        `后端进程意外退出（code=${code}, signal=${signal}）。\n\n` +
+        `请查看日志：${appLogPath}`
+      )
+    }
   })
 }
 
@@ -696,11 +739,12 @@ app.whenReady().then(async () => {
 
   // 总是启动服务（确保使用最新的二进制文件和权限配置）
   // 如果服务已在运行，startVeaService 会检测到端口占用并跳过
-  startVeaService()
+  await startVeaService()
 
   // 等待服务启动
   try {
     await waitForService()
+    backendReady = true
   } catch (err) {
     console.error('Service startup timeout:', err)
     // 显示错误对话框

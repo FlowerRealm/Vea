@@ -81,6 +81,12 @@ paths:
                   timestamp:
                     type: string
                     format: date-time
+                  pid:
+                    type: integer
+                    example: 12345
+                  userDataRoot:
+                    type: string
+                    example: /home/user/.config/vea-electron
 
   /snapshot:
     get:

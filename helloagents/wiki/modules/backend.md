@@ -6,6 +6,7 @@
 - 进程管理：启动/停止内核，收集日志与状态
 - TUN 就绪判定：Linux 以 `interface_name` 为准等待网卡就绪；Windows/macOS 以 TUN 地址识别实际网卡，默认不强制依赖网卡名称（`vea`/legacy `tun0`）
 - 核心组件管理：安装/卸载 sing-box / mihomo 等核心组件
+- 提供健康检查：`GET /health` 返回 `pid` 与 `userDataRoot`，便于前端判定“端口占用者是否为同一实例”，避免多实例导致后端启动即退出
 - 配置/订阅解析：`backend/service/config` 解析分享链接与 Clash YAML（`proxies` + `proxy-groups` + `rules`）；创建时会从 payload 解析 Nodes（即使 `sourceUrl` 为空），订阅型配置可自动生成订阅 FRouter（`sourceConfigId` 关联）；创建订阅的后台首次同步失败时会尝试用创建时的 payload 作为 fallback 解析，成功后会清空同步错误并更新 checksum，避免“节点已生成但订阅仍标红失败”的状态不一致
 - 主题包管理：`backend/service/theme` 提供主题目录扫描与 ZIP 导入/导出（支持主题包 `manifest.json` 展开子主题），并在 manifest 校验异常时输出告警日志便于排障
 
@@ -76,3 +77,4 @@
 - [202601112057_fix-issue37-38](../../history/2026-01/202601112057_fix-issue37-38/) - IP Geo：避免 busy 误判回落直连导致“当前 IP”显示真实出口；TUN 模式在存在入站端口时优先走本地入站探测（Issue #37）
 - [202601112058_fix-issue-41-tun-windows](../../history/2026-01/202601112058_fix-issue-41-tun-windows/) - 代理服务：修复 Windows 下 sing-box TUN 启动因固定 `tun0` 就绪判定失败（Issue #41）
 - [202601121916_default-tun-interface-name-vea](../../history/2026-01/202601121916_default-tun-interface-name-vea/) - 代理服务：默认 TUN 网卡名从 `tun0` 调整为 `vea`，并兼容 Windows/macOS 默认不强制设备名与 legacy `tun0`
+- [202601131921_fix-backend-port-conflict](../../history/2026-01/202601131921_fix-backend-port-conflict/) - 健康检查：`/health` 增加 `pid/userDataRoot`；前端可据此避免端口冲突导致后端启动即退出

@@ -18,6 +18,7 @@ import (
 	"vea/backend/service"
 	nodeshare "vea/backend/service/node"
 	"vea/backend/service/nodegroup"
+	"vea/backend/service/shared"
 	themesvc "vea/backend/service/theme"
 )
 
@@ -61,7 +62,12 @@ func (r *Router) register(engine *gin.Engine) {
 	engine.Use(corsMiddleware())
 
 	engine.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok", "timestamp": time.Now()})
+		c.JSON(http.StatusOK, gin.H{
+			"status":       "ok",
+			"timestamp":    time.Now(),
+			"pid":          os.Getpid(),
+			"userDataRoot": shared.UserDataRoot(),
+		})
 	})
 
 	engine.GET("/snapshot", func(c *gin.Context) {
