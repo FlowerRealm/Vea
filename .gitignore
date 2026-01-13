@@ -17,6 +17,7 @@ dist/
 !frontend/sdk/dist/
 !frontend/sdk/dist/**
 release/
+release-updates/
 vea-package.tar.gz
 
 # Electron dev binary (copied from dist/)

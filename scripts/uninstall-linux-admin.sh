@@ -1,6 +1,8 @@
 #!/bin/bash
 # Vea Linux 管理员模式卸载脚本
 
+set -euo pipefail
+
 echo "[Vea] 卸载管理员模式支持..."
 
 # 删除 wrapper

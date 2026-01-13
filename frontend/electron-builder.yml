@@ -55,6 +55,11 @@ linux:
       filter:
         - "**/*"
 
+deb:
+  # deb 安装/卸载时同步安装管理员模式入口（pkexec wrapper + polkit policy + desktop entry）
+  afterInstall: ../scripts/install-linux-admin.sh
+  afterRemove: ../scripts/uninstall-linux-admin.sh
+
 win:
   target:
     - target: nsis

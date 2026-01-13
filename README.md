@@ -50,8 +50,11 @@ make dev
 # 打包当前平台
 make build
 
-# 打包后的文件在
+# 安装包（deb/dmg/exe/zip）
 ls release/
+
+# 自动更新元数据（latest*.yml / *.blockmap）
+ls release-updates/
 ```
 
 ### 可用命令

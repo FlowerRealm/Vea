@@ -6,7 +6,7 @@
   <action id="com.veaproxy.vea.run-as-root">
     <description>Run Vea as administrator</description>
     <message>Authentication is required to run Vea with administrator privileges (needed for TUN mode)</message>
-    <icon_name>vea</icon_name>
+    <icon_name>Vea</icon_name>
     <defaults>
       <allow_any>auth_admin</allow_any>
       <allow_inactive>auth_admin</allow_inactive>

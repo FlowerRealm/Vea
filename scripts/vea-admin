@@ -2,25 +2,35 @@
 # Vea root wrapper - 让 pkexec 以 root 身份运行 Electron
 # 注意：这个脚本会被安装到 /usr/bin/vea-admin
 
-# 获取 Vea 安装路径
-VEA_PATH="/opt/Vea/vea"
+set -euo pipefail
+
+# 获取 Vea 安装路径（deb 默认安装到 /opt/Vea/Vea）
+VEA_PATH="/opt/Vea/Vea"
 
 # 如果是 AppImage 格式，路径可能不同
-if [ ! -f "$VEA_PATH" ]; then
-    # 尝试在常见位置查找
-    for path in /opt/vea/vea /usr/share/vea/vea /usr/local/bin/vea; do
-        if [ -f "$path" ]; then
-            VEA_PATH="$path"
-            break
-        fi
-    done
+if [ ! -x "$VEA_PATH" ]; then
+  # 尝试在常见位置查找
+  for path in \
+    /opt/Vea/Vea \
+    /opt/vea/Vea \
+    /usr/share/Vea/Vea \
+    /usr/local/bin/Vea \
+    /opt/Vea/vea \
+    /opt/vea/vea \
+    /usr/share/vea/vea \
+    /usr/local/bin/vea; do
+    if [ -x "$path" ]; then
+      VEA_PATH="$path"
+      break
+    fi
+  done
 fi
 
 # 检查文件是否存在
-if [ ! -f "$VEA_PATH" ]; then
-    echo "Error: Vea executable not found at $VEA_PATH" >&2
-    exit 1
+if [ ! -x "$VEA_PATH" ]; then
+  echo "Error: Vea executable not found (expected /opt/Vea/Vea)" >&2
+  exit 1
 fi
 
-# 以 root 身份运行 Vea
-exec "$VEA_PATH" "$@"
+# Electron 以 root 运行需要 --no-sandbox
+exec "$VEA_PATH" --no-sandbox "$@"

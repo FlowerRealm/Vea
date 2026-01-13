@@ -173,6 +173,8 @@ jobs:
         run: |
           rm -rf release
           mkdir -p release
+          rm -rf release-updates
+          mkdir -p release-updates
 
       - name: Build Linux x64 packages
         working-directory: frontend
@@ -189,6 +191,10 @@ jobs:
           echo "=== Collecting installers ==="
           cp -f ../dist/electron/*.deb ../release/ 2>/dev/null || true
           ls -lh ../release/ || true
+          echo "=== Collecting updater assets ==="
+          cp -f ../dist/electron/latest-linux*.yml ../release-updates/ 2>/dev/null || true
+          cp -f ../dist/electron/*.blockmap ../release-updates/ 2>/dev/null || true
+          ls -lh ../release-updates/ || true
 
       - name: Clean for arm64 build
         run: |
@@ -212,6 +218,14 @@ jobs:
           echo "=== Collecting installers ==="
           cp -f ../dist/electron/*.deb ../release/ 2>/dev/null || true
           ls -lh ../release/ || true
+          echo "=== Collecting updater assets ==="
+          # electron-builder 可能只输出 latest-linux.yml；这里保证 arm64 有独立的 update info 文件。
+          cp -n ../dist/electron/latest-linux*.yml ../release-updates/ 2>/dev/null || true
+          cp -f ../dist/electron/*.blockmap ../release-updates/ 2>/dev/null || true
+          if [ -f ../dist/electron/latest-linux.yml ] && [ ! -f ../release-updates/latest-linux-arm64.yml ]; then
+            cp -f ../dist/electron/latest-linux.yml ../release-updates/latest-linux-arm64.yml 2>/dev/null || true
+          fi
+          ls -lh ../release-updates/ || true
 
       - name: List build outputs
         working-directory: release
@@ -221,7 +235,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: linux-packages
-          path: release/*.deb
+          path: |
+            release/*.deb
+            release-updates/latest-linux*.yml
+            release-updates/*.blockmap
           retention-days: 1
 
   # ===================================

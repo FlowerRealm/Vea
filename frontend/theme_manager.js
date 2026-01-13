@@ -15,6 +15,32 @@ async function pathExists(pathname) {
   }
 }
 
+async function copyDirRecursive(srcDir, destDir) {
+  await fs.promises.mkdir(destDir, { recursive: true })
+
+  const entries = await fs.promises.readdir(srcDir, { withFileTypes: true })
+  for (const ent of entries) {
+    const srcPath = path.join(srcDir, ent.name)
+    const destPath = path.join(destDir, ent.name)
+
+    if (ent.isDirectory()) {
+      await copyDirRecursive(srcPath, destPath)
+      continue
+    }
+
+    if (ent.isFile()) {
+      // fs.promises.cp 在 asar 源目录下会触发 ENOTDIR，这里改用 readFile/writeFile 兼容 asar。
+      const data = await fs.promises.readFile(srcPath)
+      await fs.promises.writeFile(destPath, data)
+      continue
+    }
+
+    if (ent.isSymbolicLink()) {
+      throw new Error(`refusing to copy symlink: ${srcPath}`)
+    }
+  }
+}
+
 async function computeDirHash(rootDir, { ignoreNames = [] } = {}) {
   const hash = crypto.createHash('sha256')
   const ignores = new Set([MARKER_NAME, ...ignoreNames])
@@ -114,7 +140,7 @@ async function syncThemeSharedModule(bundledRoot, themeDir) {
   }
 
   try {
-    await fs.promises.cp(srcDir, destDir, { recursive: true })
+    await copyDirRecursive(srcDir, destDir)
     if (bundledHash) {
       await writeMarker(destDir, bundledHash)
     }
@@ -178,7 +204,7 @@ async function syncBundledTheme({ themeId, themesRoot, bundledRoot, backupRoot }
           console.warn(`[Theme] remove bundled theme backup failed: ${e.message}`)
         }
         try {
-          await fs.promises.cp(destDir, backupDir, { recursive: true })
+          await copyDirRecursive(destDir, backupDir)
           console.warn(`[Theme] backed up existing bundled theme (${themeId}) to ${backupDir}`)
         } catch (e) {
           console.warn(`[Theme] backup bundled theme failed (${themeId}): ${e.message}`)
@@ -197,7 +223,7 @@ async function syncBundledTheme({ themeId, themesRoot, bundledRoot, backupRoot }
     }
 
     try {
-      await fs.promises.cp(srcDir, destDir, { recursive: true })
+      await copyDirRecursive(srcDir, destDir)
       if (bundledHash) {
         await writeMarker(destDir, bundledHash)
       }
@@ -229,4 +255,3 @@ async function ensureBundledThemes(userDataDir) {
 module.exports = {
   ensureBundledThemes,
 }
-

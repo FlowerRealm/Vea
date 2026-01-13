@@ -29,7 +29,7 @@ npm run dev           # 启动 Electron
 make build            # 打包当前平台
 ```
 
-打包后的应用位于项目根目录的 `release/`。
+打包后的安装包位于项目根目录的 `release/`，自动更新元数据位于 `release-updates/`。
 
 ## 项目结构
 
