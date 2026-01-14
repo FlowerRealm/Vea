@@ -14,6 +14,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
   # ===================================
@@ -193,7 +195,6 @@ jobs:
           ls -lh ../release/ || true
           echo "=== Collecting updater assets ==="
           cp -f ../dist/electron/latest-linux*.yml ../release-updates/ 2>/dev/null || true
-          cp -f ../dist/electron/*.blockmap ../release-updates/ 2>/dev/null || true
           ls -lh ../release-updates/ || true
 
       - name: Clean for arm64 build
@@ -221,7 +222,6 @@ jobs:
           echo "=== Collecting updater assets ==="
           # electron-builder 可能只输出 latest-linux.yml；这里保证 arm64 有独立的 update info 文件。
           cp -n ../dist/electron/latest-linux*.yml ../release-updates/ 2>/dev/null || true
-          cp -f ../dist/electron/*.blockmap ../release-updates/ 2>/dev/null || true
           if [ -f ../dist/electron/latest-linux.yml ] && [ ! -f ../release-updates/latest-linux-arm64.yml ]; then
             cp -f ../dist/electron/latest-linux.yml ../release-updates/latest-linux-arm64.yml 2>/dev/null || true
           fi
@@ -238,7 +238,6 @@ jobs:
           path: |
             release/*.deb
             release-updates/latest-linux*.yml
-            release-updates/*.blockmap
           retention-days: 1
 
   # ===================================
@@ -314,8 +313,12 @@ jobs:
           cp -f ../dist/electron/*.zip ../release/ 2>/dev/null || true
           ls -lh ../release/ || true
           echo "=== Collecting updater assets ==="
-          cp -f ../dist/electron/latest-mac*.yml ../release-updates/ 2>/dev/null || true
-          cp -f ../dist/electron/*.blockmap ../release-updates/ 2>/dev/null || true
+          yml="$(ls ../dist/electron/latest-mac*.yml 2>/dev/null | head -n 1)"
+          if [ -z "$yml" ]; then
+            echo "latest-mac*.yml not found in dist/electron"
+            exit 1
+          fi
+          cp -f "$yml" ../release-updates/latest-mac-x64.yml
           ls -lh ../release-updates/ || true
 
       - name: Clean for arm64 build
@@ -342,9 +345,58 @@ jobs:
           cp -f ../dist/electron/*.zip ../release/ 2>/dev/null || true
           ls -lh ../release/ || true
           echo "=== Collecting updater assets ==="
-          cp -n ../dist/electron/latest-mac*.yml ../release-updates/ 2>/dev/null || true
-          cp -f ../dist/electron/*.blockmap ../release-updates/ 2>/dev/null || true
+          yml="$(ls ../dist/electron/latest-mac*.yml 2>/dev/null | head -n 1)"
+          if [ -z "$yml" ]; then
+            echo "latest-mac*.yml not found in dist/electron"
+            exit 1
+          fi
+          cp -f "$yml" ../release-updates/latest-mac-arm64.yml
           ls -lh ../release-updates/ || true
+
+      - name: Merge macOS updater yml
+        working-directory: frontend
+        run: |
+          node - <<'NODE'
+          const fs = require('fs')
+          const yaml = require('js-yaml')
+
+          const x64Path = '../release-updates/latest-mac-x64.yml'
+          const arm64Path = '../release-updates/latest-mac-arm64.yml'
+          const outPath = '../release-updates/latest-mac.yml'
+
+          const x64 = yaml.load(fs.readFileSync(x64Path, 'utf8'))
+          const arm64 = yaml.load(fs.readFileSync(arm64Path, 'utf8'))
+
+          const files = []
+          for (const src of [x64, arm64]) {
+            const list = Array.isArray(src && src.files) ? src.files : []
+            for (const f of list) files.push(f)
+          }
+
+          const dedup = new Map()
+          for (const f of files) {
+            if (!f || !f.url) continue
+            dedup.set(f.url, f)
+          }
+
+          const merged = {
+            version: (x64 && x64.version) || (arm64 && arm64.version),
+            releaseDate: (x64 && x64.releaseDate) || (arm64 && arm64.releaseDate),
+            files: Array.from(dedup.values()),
+          }
+
+          if (!merged.version) {
+            throw new Error('Missing version in merged latest-mac.yml')
+          }
+          if (!merged.files.length) {
+            throw new Error('Missing files in merged latest-mac.yml')
+          }
+
+          fs.writeFileSync(outPath, yaml.dump(merged), 'utf8')
+
+          fs.rmSync(x64Path, { force: true })
+          fs.rmSync(arm64Path, { force: true })
+          NODE
 
       - name: Upload macOS packages
         uses: actions/upload-artifact@v4
@@ -353,8 +405,7 @@ jobs:
           path: |
             release/*.dmg
             release/*.zip
-            release-updates/latest-mac*.yml
-            release-updates/*.blockmap
+            release-updates/latest-mac.yml
           retention-days: 1
 
   # ===================================
@@ -422,7 +473,6 @@ jobs:
           Copy-Item dist/electron/*.exe release/ -Force -ErrorAction SilentlyContinue
           Copy-Item dist/electron/*.zip release/ -Force -ErrorAction SilentlyContinue
           Copy-Item dist/electron/latest*.yml release-updates/ -Force -ErrorAction SilentlyContinue
-          Copy-Item dist/electron/*.blockmap release-updates/ -Force -ErrorAction SilentlyContinue
           Get-ChildItem release
           Get-ChildItem release-updates
 
@@ -439,7 +489,6 @@ jobs:
             release/*.exe
             release/*.zip
             release-updates/latest*.yml
-            release-updates/*.blockmap
           retention-days: 1
 
   # ===================================
@@ -460,14 +509,8 @@ jobs:
         working-directory: release-dist
         run: |
           mkdir -p ../dist
-          find . -type f \( -name "*.deb" -o -name "*.dmg" -o -name "*.exe" -o -name "*.zip" -o -name "latest*.yml" -o -name "*.blockmap" \) -exec mv {} ../dist/ \;
+          find . -type f \( -name "*.deb" -o -name "*.dmg" -o -name "*.exe" -o -name "*.zip" \) -exec mv {} ../dist/ \;
           ls -lh ../dist/
-
-      - name: Generate checksums
-        working-directory: dist
-        run: |
-          sha256sum * > Vea-${{ github.event.inputs.version }}-SHA256SUMS.txt
-          cat Vea-${{ github.event.inputs.version }}-SHA256SUMS.txt
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -505,13 +548,6 @@ jobs:
             ### Windows (exe)
             双击exe安装程序，按提示安装
 
-            ## 校验文件完整性
-
-            使用SHA256校验和验证下载文件：
-            \`\`\`bash
-            sha256sum -c Vea-${{ github.event.inputs.version }}-SHA256SUMS.txt
-            \`\`\`
-
             ---
 
             🤖 Generated with [Claude Code](https://claude.com/claude-code)
@@ -519,3 +555,57 @@ jobs:
           prerelease: false
           files: dist/*
           token: ${{ secrets.GITHUB_TOKEN }}
+
+  # ===================================
+  # 7. 部署自动更新资源到 GitHub Pages
+  # ===================================
+  deploy-pages:
+    name: Deploy Updater Assets to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: [package-linux, package-macos, package-windows]
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download all packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-packages'
+          path: release-dist
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Prepare Pages content
+        run: |
+          rm -rf pages
+          mkdir -p pages/updates
+          touch pages/.nojekyll
+          cat > pages/index.html <<'HTML'
+          <!doctype html>
+          <meta charset="utf-8">
+          <title>Vea Updates</title>
+          <p>This site hosts Vea auto-update artifacts.</p>
+          HTML
+
+          # Update metadata (Windows/macOS)
+          find release-dist -type f -name "latest.yml" -exec cp -f {} pages/updates/ \;
+          find release-dist -type f -name "latest-mac.yml" -exec cp -f {} pages/updates/ \;
+
+          # Updater payloads
+          find release-dist -type f \( -name "*.exe" -o -name "*-macos-*.zip" \) -exec cp -f {} pages/updates/ \;
+
+          ls -lah pages/updates || true
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

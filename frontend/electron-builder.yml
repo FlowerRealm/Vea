@@ -5,10 +5,11 @@ copyright: Copyright © 2025 FlowerRealm
 
 # 默认文件命名格式: Vea-版本-系统-架构.扩展名（系统名按平台固定为 linux/macos/windows）
 
+# 说明：应用内自动更新使用 electron-updater（GenericProvider），更新资源托管在 GitHub Pages。
+# 需要把安装包与 latest*.yml 放到同一目录（见 .github/workflows/release.yml 的 Pages 部署）。
 publish:
-  provider: github
-  owner: FlowerRealm
-  repo: Vea
+  provider: generic
+  url: https://flowerrealm.github.io/Vea/updates
 
 directories:
   # electron-builder 的中间产物（*-unpacked、builder-*.yml、latest*.yml 等）会落在 output 目录。
@@ -82,3 +83,5 @@ nsis:
   createDesktopShortcut: always
   createStartMenuShortcut: true
   shortcutName: Vea
+  # 禁用差分更新：避免生成/依赖 *.blockmap
+  differentialPackage: false

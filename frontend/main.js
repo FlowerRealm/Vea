@@ -97,6 +97,8 @@ function initAutoUpdater() {
 
   autoUpdater.allowPrerelease = false
   autoUpdater.autoDownload = true
+  // 关闭差分更新：避免依赖 *.blockmap（更新源为 GitHub Pages 静态文件）
+  autoUpdater.disableDifferentialDownload = true
 
   autoUpdater.on('checking-for-update', () => {
     updaterState = 'checking'

@@ -53,8 +53,9 @@ make build
 # 安装包（deb/dmg/exe/zip）
 ls release/
 
-# 自动更新元数据（latest*.yml / *.blockmap）
-ls release-updates/
+# 自动更新资源（Windows/macOS）：由 CI 部署到 GitHub Pages（/updates/）
+# 本地构建生成的 latest*.yml 位于 dist/electron/（差分更新已禁用，不再依赖 *.blockmap）
+ls dist/electron/latest*.yml
 ```
 
 ### 可用命令

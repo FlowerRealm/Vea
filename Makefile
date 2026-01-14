@@ -91,14 +91,8 @@ build: ## 打包 Electron 应用
 	@for ext in deb dmg exe zip; do \
 		cp -f dist/electron/*.$$ext release/ 2>/dev/null || true; \
 	done
-	@echo "==> 收集自动更新文件到 release-updates/..."
-	@mkdir -p release-updates
-	@rm -rf release-updates/*
-	@cp -f dist/electron/latest*.yml release-updates/ 2>/dev/null || true
-	@cp -f dist/electron/*.blockmap release-updates/ 2>/dev/null || true
 	@echo "==> 应用打包完成"
 	@ls -lh release/ || true
-	@ls -lh release-updates/ || true
 
 clean: ## 清理构建产物
 	@echo "==> 清理构建产物..."

@@ -5,6 +5,7 @@
 - 通过 SDK 调用后端 API
 - 提供组件面板：安装/更新/卸载核心组件
 - 提供应用自更新能力：手动检查更新，自动下载/安装并重启（Windows/macOS）
+  - 更新源：GitHub Pages（GenericProvider，`/updates/`）；已禁用差分更新，不依赖 `*.blockmap`
 
 ## 关键目录
 - `frontend/`：Electron 入口与 UI

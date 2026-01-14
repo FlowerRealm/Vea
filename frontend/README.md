@@ -29,7 +29,9 @@ npm run dev           # 启动 Electron
 make build            # 打包当前平台
 ```
 
-打包后的安装包位于项目根目录的 `release/`，自动更新元数据位于 `release-updates/`。
+打包后的安装包位于项目根目录的 `release/`。
+
+自动更新（Windows/macOS）使用 GitHub Pages 托管更新元数据（CI 会部署 `latest*.yml` 与更新所需安装包到 Pages；本地构建时这些文件仍会在 `dist/electron/` 生成）。
 
 ## 项目结构
 
