@@ -16,6 +16,7 @@
 - 主题包支持 `manifest.json`（单包多子主题）：在 `userData/themes/<packId>/manifest.json` 中描述包信息与子主题入口；`GET /themes` 展开子主题并返回 `entry`，用于切换与启动加载。
 - 增加应用内“检查更新”能力：支持 Windows/macOS 从 GitHub Releases 获取最新稳定版并自动下载、安装与重启（Issue #24）。
 - 主题页（首页）增加“重启内核”按钮：允许手动触发 `POST /proxy/start` 重启/启动内核，并在系统代理启用时自动关闭/恢复以避免断网。
+- FRouter 面板新增“走向图”详情卡片：在选中态展示静态配置走向（规则→去向→链路），支持拖拽平移与滚轮缩放浏览。
 
 ### 变更
 - 运行期数据与 artifacts 统一写入 userData（开发模式同样）；启动时会将仓库/可执行目录旁遗留的 `data/` 与 `artifacts/` 迁移到 userData 并清理源目录。

@@ -742,6 +742,7 @@ export function bootstrapTheme({ createAPI, utils }) {
         persistFRouterId(currentFRouterId);
         updateFRouterSelectors();
         renderFRouters(froutersCache, currentFRouterId);
+        scheduleFRouterFlowGraph(currentFRouterId);
         updateHomeFRouterMetrics();
         if (chainEditorInitialized && chainListEditor) {
           chainListEditor.setFRouterId(currentFRouterId);
@@ -1512,6 +1513,7 @@ export function bootstrapTheme({ createAPI, utils }) {
 
 	          updateFRouterTabs(frouters);
 	          renderFRouters(frouters, currentFRouterId);
+	          scheduleFRouterFlowGraph(currentFRouterId);
 	          updateFRouterSelectors();
 	          updateHomeFRouterMetrics();
 	          refreshCoreStatus();
@@ -1929,6 +1931,21 @@ export function bootstrapTheme({ createAPI, utils }) {
             }
 
             const selectedClass = frouter.id === currentId ? "active" : "";
+            const detailHtml = frouter.id === currentId
+              ? `
+	            <div class="frouter-detail" data-frouter-id="${rowId}">
+	              <div class="frouter-detail-header">
+	                <div class="frouter-detail-title">
+	                  <span>走向图</span>
+	                  <span class="frouter-detail-hint">拖拽平移 · 滚轮缩放</span>
+	                </div>
+	              </div>
+	              <div class="frouter-flow" data-frouter-id="${rowId}">
+	                <div class="frouter-flow-empty">加载中...</div>
+	              </div>
+	            </div>
+	          `
+              : "";
 
             return `
           <div class="node-row ${selectedClass}" data-id="${rowId}">
@@ -1950,10 +1967,755 @@ export function bootstrapTheme({ createAPI, utils }) {
 	                <span class="node-metric-value ${speedClass}">${speedValue}</span>
 	              </div>
 	            </div>
+	            ${detailHtml}
           </div>
         `;
           })
           .join("");
+      }
+
+      // ===== FRouter Flow Graph (静态走向可视化) =====
+      let flowGraphPendingId = "";
+      let flowGraphInFlight = false;
+
+      function scheduleFRouterFlowGraph(frouterId) {
+        const id = String(frouterId || "").trim();
+        if (!id) return;
+        if (currentPanel !== "panel1") return;
+        if (nodeGrid) {
+          const activeRow = nodeGrid.querySelector(".node-row.active");
+          if (activeRow && (activeRow.dataset.id || "") === id) {
+            const container = activeRow.querySelector(".frouter-flow");
+            if (container) {
+              const current = Array.isArray(froutersCache)
+                ? froutersCache.find((r) => r && r.id === id)
+                : null;
+              const updatedAt = current && current.chainProxy && current.chainProxy.updatedAt
+                ? String(current.chainProxy.updatedAt)
+                : "";
+
+              if (container.dataset.flowRenderedId === id &&
+                container.dataset.flowRenderedUpdatedAt === updatedAt &&
+                container.querySelector("svg")
+              ) {
+                return;
+              }
+            }
+          }
+        }
+        flowGraphPendingId = id;
+        if (flowGraphInFlight) return;
+
+        flowGraphInFlight = true;
+        (async () => {
+          try {
+            while (flowGraphPendingId) {
+              const targetId = flowGraphPendingId;
+              flowGraphPendingId = "";
+              await renderFRouterFlowGraphOnce(targetId);
+            }
+          } finally {
+            flowGraphInFlight = false;
+          }
+        })();
+      }
+
+      function dagreAvailable() {
+        const dagre = window && window.dagre ? window.dagre : null;
+        if (!dagre) return false;
+        if (!dagre.graphlib || !dagre.graphlib.Graph) return false;
+        if (typeof dagre.layout !== "function") return false;
+        return true;
+      }
+
+      function ensureFlowGraphContainerGuards(container) {
+        if (!container || container.dataset.flowGuardBound === "1") return;
+        container.dataset.flowGuardBound = "1";
+
+        const stop = (e) => {
+          e.stopPropagation();
+        };
+        const stopAndPrevent = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        };
+
+        container.addEventListener("click", stop);
+        container.addEventListener("dblclick", stopAndPrevent);
+        container.addEventListener("contextmenu", stopAndPrevent);
+      }
+
+      function renderFlowGraphMessage(container, message) {
+        if (!container) return;
+        container.innerHTML = `<div class="frouter-flow-empty">${escapeHtml(message || "")}</div>`;
+      }
+
+      async function renderFRouterFlowGraphOnce(frouterId) {
+        if (currentPanel !== "panel1") return;
+        if (!nodeGrid) return;
+        const activeRow = nodeGrid.querySelector(".node-row.active");
+        if (!activeRow) return;
+
+        const activeId = activeRow.dataset.id || "";
+        if (!activeId || activeId !== frouterId) return;
+
+        const container = activeRow.querySelector(".frouter-flow");
+        if (!container) return;
+
+        const current = Array.isArray(froutersCache)
+          ? froutersCache.find((r) => r && r.id === frouterId)
+          : null;
+        const updatedAt = current && current.chainProxy && current.chainProxy.updatedAt
+          ? String(current.chainProxy.updatedAt)
+          : "";
+
+        if (container.dataset.flowRenderedId === frouterId &&
+          container.dataset.flowRenderedUpdatedAt === updatedAt &&
+          container.querySelector("svg")
+        ) {
+          return;
+        }
+
+        ensureFlowGraphContainerGuards(container);
+        renderFlowGraphMessage(container, "加载中...");
+
+        if (!dagreAvailable()) {
+          renderFlowGraphMessage(container, "走向图依赖 dagre，但当前未加载");
+          return;
+        }
+
+        if (!current || !current.chainProxy) {
+          renderFlowGraphMessage(container, "未找到该 FRouter 的图数据");
+          return;
+        }
+
+        const stillActive = nodeGrid.querySelector(".node-row.active");
+        if (!stillActive || (stillActive.dataset.id || "") !== frouterId) {
+          return;
+        }
+        const stillContainer = stillActive.querySelector(".frouter-flow");
+        if (!stillContainer) return;
+
+        await loadNodes();
+        const nodes = Array.isArray(nodesCache) ? nodesCache : [];
+
+        const edges = Array.isArray(current.chainProxy.edges) ? current.chainProxy.edges : [];
+        const slots = Array.isArray(current.chainProxy.slots) ? current.chainProxy.slots : [];
+
+        const model = buildFRouterFlowModel({ edges, slots, nodes });
+        renderFRouterFlowSVG(stillContainer, model);
+        stillContainer.dataset.flowRenderedId = frouterId;
+        stillContainer.dataset.flowRenderedUpdatedAt = updatedAt;
+      }
+
+      function buildFRouterFlowModel({ edges, slots, nodes }) {
+        const enabledEdges = Array.isArray(edges) ? edges.filter(e => e && e.enabled !== false) : [];
+        const slotList = Array.isArray(slots) ? slots : [];
+        const nodeList = Array.isArray(nodes) ? nodes : [];
+
+        const nodesById = new Map();
+        for (const n of nodeList) {
+          const id = n && n.id ? String(n.id) : "";
+          if (!id) continue;
+          nodesById.set(id, n);
+        }
+
+        const slotsById = new Map();
+        for (const s of slotList) {
+          const id = s && s.id ? String(s.id) : "";
+          if (!id) continue;
+          slotsById.set(id, s);
+        }
+
+        const isSlotId = (id) => {
+          const v = String(id || "");
+          return v.startsWith("slot-") && v.length > 5;
+        };
+
+        const resolveSlot = (id) => {
+          const raw = String(id || "").trim();
+          if (!raw) return { id: "", kind: "empty" };
+          if (!isSlotId(raw)) return { id: raw, kind: "raw" };
+          const slot = slotsById.get(raw);
+          const bound = slot && slot.boundNodeId ? String(slot.boundNodeId).trim() : "";
+          if (bound) {
+            return { id: bound, kind: "bound", slotId: raw, slotName: slot && slot.name ? String(slot.name) : raw };
+          }
+          return { id: raw, kind: "unbound", slotId: raw, slotName: slot && slot.name ? String(slot.name) : raw };
+        };
+
+        const selectionEdges = enabledEdges
+          .filter(e => String(e.from || "") === "local")
+          .slice()
+          .sort((a, b) => {
+            const ap = typeof a.priority === "number" ? a.priority : 0;
+            const bp = typeof b.priority === "number" ? b.priority : 0;
+            if (ap !== bp) return bp - ap;
+            const aid = String(a.id || "");
+            const bid = String(b.id || "");
+            return aid.localeCompare(bid, "en");
+          });
+
+        const detourEdges = enabledEdges.filter(e => String(e.from || "") !== "local");
+
+        const detourUpstream = new Map();
+        const warnings = [];
+
+        const setDetour = (from, to, edgeId) => {
+          if (!from || !to) return;
+          if (from === to) {
+            warnings.push(`edge ${edgeId}: detour self-loop ${from}`);
+            return;
+          }
+          if (from === "direct" || from === "block" || from === "local") {
+            return;
+          }
+          if (to === "direct" || to === "block" || to === "local") {
+            return;
+          }
+
+          const existed = detourUpstream.get(from);
+          if (existed && existed !== to) {
+            warnings.push(`node ${from} has multiple detour upstreams: ${existed} and ${to}`);
+            return;
+          }
+          detourUpstream.set(from, to);
+        };
+
+        for (const e of detourEdges) {
+          const edgeId = String(e.id || "");
+          const fromResolved = resolveSlot(e.from);
+          const toResolved = resolveSlot(e.to);
+          if (fromResolved.kind === "unbound" || toResolved.kind === "unbound") {
+            continue;
+          }
+          // slot -> direct/block 允许但无 detour 效果
+          if (toResolved.id === "direct" || toResolved.id === "block") {
+            continue;
+          }
+          setDetour(fromResolved.id, toResolved.id, edgeId);
+        }
+
+        for (const e of selectionEdges) {
+          const edgeId = String(e.id || "");
+          const toResolved = resolveSlot(e.to);
+          if (toResolved.kind === "unbound") {
+            continue;
+          }
+          if (toResolved.id === "direct" || toResolved.id === "block") {
+            continue;
+          }
+
+          const via = Array.isArray(e.via) ? e.via : [];
+          if (via.length === 0) continue;
+
+          let current = toResolved.id;
+          for (const hop of via) {
+            const hopResolved = resolveSlot(hop);
+            if (hopResolved.kind === "unbound") {
+              continue;
+            }
+            if (!hopResolved.id || hopResolved.id === "direct" || hopResolved.id === "block" || hopResolved.id === "local") {
+              continue;
+            }
+            setDetour(current, hopResolved.id, edgeId);
+            current = hopResolved.id;
+          }
+        }
+
+        const isDefaultSelectionEdge = (edge) => {
+          const to = String(edge && edge.to ? edge.to : "");
+          const via = Array.isArray(edge && edge.via) ? edge.via : [];
+          if ((to === "direct" || to === "block") && via.length > 0) {
+            return false;
+          }
+
+          const ruleType = String(edge && edge.ruleType ? edge.ruleType : "");
+          if (!ruleType) {
+            if (edge && edge.routeRule) return false;
+            return true;
+          }
+          if (ruleType === "route") {
+            const rr = edge && edge.routeRule ? edge.routeRule : null;
+            if (!rr) return true;
+            const domains = Array.isArray(rr.domains) ? rr.domains.filter(Boolean) : [];
+            const ips = Array.isArray(rr.ips) ? rr.ips.filter(Boolean) : [];
+            return domains.length === 0 && ips.length === 0;
+          }
+          return false;
+        };
+
+        const normalizeList = (list) => {
+          return Array.isArray(list)
+            ? list.map(s => String(s || "").trim()).filter(Boolean)
+            : [];
+        };
+
+        const summarizeList = (prefix, list, { maxItems = 2 } = {}) => {
+          const items = normalizeList(list);
+          if (items.length === 0) return "";
+          const shown = items.slice(0, maxItems);
+          const more = items.length > maxItems ? ` (+${items.length - maxItems})` : "";
+          return `${prefix}: ${shown.join(", ")}${more}`;
+        };
+
+        const truncateText = (text, maxLen) => {
+          const s = String(text || "");
+          if (s.length <= maxLen) return s;
+          return s.slice(0, Math.max(0, maxLen - 1)) + "…";
+        };
+
+        const getNodeDisplayName = (id) => {
+          const n = nodesById.get(id);
+          if (!n) return id || "未知";
+          const name = n && n.name ? String(n.name) : "";
+          return name || id;
+        };
+
+        const flowNodes = new Map();
+        const flowEdges = [];
+
+        const addNode = (id, node) => {
+          if (!id) return;
+          if (flowNodes.has(id)) return;
+          flowNodes.set(id, node);
+        };
+
+        const addEdge = (edge) => {
+          if (!edge || !edge.from || !edge.to) return;
+          flowEdges.push(edge);
+        };
+
+        addNode("local", {
+          id: "local",
+          kind: "local",
+          lines: ["入口", "local"],
+          tooltip: "入口：local"
+        });
+        addNode("direct", { id: "direct", kind: "direct", lines: ["直连"], tooltip: "不代理（直连）" });
+        addNode("block", { id: "block", kind: "block", lines: ["阻断"], tooltip: "阻断（立即失败）" });
+
+        const reachableDetour = new Set();
+        const walkDetour = (start) => {
+          const seen = new Set();
+          let current = start;
+          while (current && detourUpstream.has(current)) {
+            if (seen.has(current)) {
+              warnings.push(`detour cycle detected near ${current}`);
+              break;
+            }
+            seen.add(current);
+            reachableDetour.add(current);
+            const up = detourUpstream.get(current);
+            if (!up) break;
+            current = up;
+          }
+        };
+
+        for (const edge of selectionEdges) {
+          const edgeId = String(edge.id || "");
+          const ruleId = `rule:${edgeId}`;
+          const priority = typeof edge.priority === "number" ? edge.priority : 0;
+          const desc = String(edge.description || "").trim();
+          const def = isDefaultSelectionEdge(edge);
+          const rr = edge && edge.routeRule ? edge.routeRule : null;
+          const domains = rr ? normalizeList(rr.domains) : [];
+          const ips = rr ? normalizeList(rr.ips) : [];
+
+          const title = def
+            ? "默认（兜底）"
+            : `P${priority} 路由${desc ? " · " + truncateText(desc, 12) : ""}`;
+
+          const lines = [title];
+          if (!def) {
+            const dLine = summarizeList("D", domains);
+            const ipLine = summarizeList("IP", ips);
+            if (dLine) lines.push(dLine);
+            if (ipLine) lines.push(ipLine);
+          } else {
+            lines.push("匹配全部");
+          }
+
+          const tooltipParts = [];
+          tooltipParts.push(def ? "默认（匹配全部）" : `路由规则 (P${priority})`);
+          if (desc) tooltipParts.push(`描述: ${desc}`);
+          if (!def) {
+            if (domains.length) tooltipParts.push(`Domains:\n${domains.join("\n")}`);
+            if (ips.length) tooltipParts.push(`IPs:\n${ips.join("\n")}`);
+          }
+
+          addNode(ruleId, {
+            id: ruleId,
+            kind: def ? "rule-default" : "rule",
+            lines,
+            tooltip: tooltipParts.join("\n\n")
+          });
+
+          addEdge({ id: `e:local:${ruleId}`, from: "local", to: ruleId, kind: "rule-link" });
+
+          const toResolved = resolveSlot(edge.to);
+          if (!toResolved.id) {
+            warnings.push(`edge ${edgeId}: empty to`);
+            continue;
+          }
+
+          if (toResolved.kind === "unbound") {
+            const slotTitle = toResolved.slotName || toResolved.slotId || toResolved.id;
+            addNode(toResolved.id, {
+              id: toResolved.id,
+              kind: "slot",
+              lines: ["未绑定", truncateText(slotTitle, 18)],
+              tooltip: `槽位未绑定（穿透/跳过）: ${toResolved.id}`
+            });
+            addEdge({ id: `e:${ruleId}:${toResolved.id}`, from: ruleId, to: toResolved.id, kind: "rule-target" });
+            continue;
+          }
+
+          const targetId = toResolved.id;
+          if (targetId === "direct" || targetId === "block") {
+            addEdge({ id: `e:${ruleId}:${targetId}`, from: ruleId, to: targetId, kind: "rule-target" });
+            continue;
+          }
+
+          addNode(targetId, {
+            id: targetId,
+            kind: nodesById.has(targetId) ? "node" : "node-unknown",
+            lines: [truncateText(getNodeDisplayName(targetId), 20)],
+            tooltip: nodesById.has(targetId) ? `${getNodeDisplayName(targetId)}\n${targetId}` : `未知节点: ${targetId}`
+          });
+          addEdge({ id: `e:${ruleId}:${targetId}`, from: ruleId, to: targetId, kind: "rule-target" });
+          walkDetour(targetId);
+        }
+
+        for (const from of reachableDetour) {
+          const to = detourUpstream.get(from);
+          if (!to) continue;
+          addNode(from, {
+            id: from,
+            kind: nodesById.has(from) ? "node" : "node-unknown",
+            lines: [truncateText(getNodeDisplayName(from), 20)],
+            tooltip: nodesById.has(from) ? `${getNodeDisplayName(from)}\n${from}` : `未知节点: ${from}`
+          });
+          addNode(to, {
+            id: to,
+            kind: nodesById.has(to) ? "node" : "node-unknown",
+            lines: [truncateText(getNodeDisplayName(to), 20)],
+            tooltip: nodesById.has(to) ? `${getNodeDisplayName(to)}\n${to}` : `未知节点: ${to}`
+          });
+          addEdge({ id: `e:detour:${from}:${to}`, from, to, kind: "detour" });
+        }
+
+        return {
+          nodes: Array.from(flowNodes.values()),
+          edges: flowEdges,
+          warnings
+        };
+      }
+
+      function renderFRouterFlowSVG(container, model) {
+        if (!container) return;
+
+        const nodes = model && Array.isArray(model.nodes) ? model.nodes : [];
+        const edges = model && Array.isArray(model.edges) ? model.edges : [];
+        if (nodes.length === 0) {
+          renderFlowGraphMessage(container, "暂无走向数据");
+          return;
+        }
+
+        const rect = container.getBoundingClientRect();
+        const viewportWidth = Math.max(240, Math.floor(rect.width || 0));
+        const viewportHeight = Math.max(180, Math.floor(rect.height || 0));
+
+        const dagre = window.dagre;
+        const g = new dagre.graphlib.Graph({ multigraph: true });
+        g.setGraph({
+          rankdir: "LR",
+          nodesep: 24,
+          ranksep: 64,
+          marginx: 12,
+          marginy: 12
+        });
+        g.setDefaultEdgeLabel(() => ({}));
+
+        const estimateTextWidth = (text, { fontSize = 12 } = {}) => {
+          const s = String(text || "");
+          let w = 0;
+          for (let i = 0; i < s.length; i++) {
+            const code = s.charCodeAt(i);
+            w += code > 255 ? fontSize : fontSize * 0.62;
+          }
+          return w;
+        };
+
+        const computeNodeSize = (node) => {
+          const lines = Array.isArray(node.lines) ? node.lines : [];
+          const kind = String(node.kind || "");
+          const fontSize = 12;
+          const paddingX = 16;
+          const paddingY = 12;
+          const lineGap = 4;
+
+          const maxLine = lines.reduce((max, line) => Math.max(max, estimateTextWidth(line, { fontSize })), 0);
+          let minWidth = 88;
+          let maxWidth = 240;
+          if (kind === "rule" || kind === "rule-default") {
+            minWidth = 180;
+            maxWidth = 280;
+          } else if (kind === "node" || kind === "node-unknown") {
+            minWidth = 120;
+            maxWidth = 220;
+          }
+
+          const width = Math.max(minWidth, Math.min(maxWidth, Math.ceil(maxLine + paddingX * 2)));
+          const height = Math.max(44, Math.ceil(lines.length * (fontSize + lineGap) + paddingY * 2));
+          return { width, height, fontSize, paddingX, paddingY, lineGap };
+        };
+
+        const nodeMetrics = new Map();
+        for (const n of nodes) {
+          const id = String(n.id || "").trim();
+          if (!id) continue;
+          const metrics = computeNodeSize(n);
+          nodeMetrics.set(id, metrics);
+          g.setNode(id, { width: metrics.width, height: metrics.height });
+        }
+
+        for (const e of edges) {
+          if (!e || !e.from || !e.to) continue;
+          g.setEdge(e.from, e.to, { kind: e.kind, id: e.id }, e.id);
+        }
+
+        try {
+          dagre.layout(g);
+        } catch (err) {
+          renderFlowGraphMessage(container, `布局失败：${err.message}`);
+          return;
+        }
+
+        const svgNS = "http://www.w3.org/2000/svg";
+        const createSvg = (tag) => document.createElementNS(svgNS, tag);
+
+        const svg = createSvg("svg");
+        svg.classList.add("frouter-flow-svg");
+        svg.setAttribute("viewBox", `0 0 ${viewportWidth} ${viewportHeight}`);
+        svg.setAttribute("width", "100%");
+        svg.setAttribute("height", "100%");
+
+        const defs = createSvg("defs");
+        const marker = createSvg("marker");
+        marker.setAttribute("id", "flow-arrow");
+        marker.setAttribute("viewBox", "0 0 10 10");
+        marker.setAttribute("refX", "8");
+        marker.setAttribute("refY", "5");
+        marker.setAttribute("markerWidth", "6");
+        marker.setAttribute("markerHeight", "6");
+        marker.setAttribute("orient", "auto-start-reverse");
+        const arrowPath = createSvg("path");
+        arrowPath.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
+        arrowPath.setAttribute("class", "flow-arrow");
+        marker.appendChild(arrowPath);
+        defs.appendChild(marker);
+        svg.appendChild(defs);
+
+        const stage = createSvg("g");
+        stage.classList.add("flow-stage");
+        svg.appendChild(stage);
+
+        const edgesGroup = createSvg("g");
+        edgesGroup.classList.add("flow-edges");
+        stage.appendChild(edgesGroup);
+
+        const nodesGroup = createSvg("g");
+        nodesGroup.classList.add("flow-nodes");
+        stage.appendChild(nodesGroup);
+
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+
+        for (const id of g.nodes()) {
+          const n = g.node(id);
+          if (!n) continue;
+          const left = n.x - n.width / 2;
+          const right = n.x + n.width / 2;
+          const top = n.y - n.height / 2;
+          const bottom = n.y + n.height / 2;
+          minX = Math.min(minX, left);
+          minY = Math.min(minY, top);
+          maxX = Math.max(maxX, right);
+          maxY = Math.max(maxY, bottom);
+        }
+
+        const buildPathD = (points) => {
+          if (!Array.isArray(points) || points.length === 0) return "";
+          let d = `M ${points[0].x} ${points[0].y}`;
+          for (let i = 1; i < points.length; i++) {
+            d += ` L ${points[i].x} ${points[i].y}`;
+          }
+          return d;
+        };
+
+        for (const e of edges) {
+          const edgeObj = g.edge({ v: e.from, w: e.to, name: e.id });
+          const points = edgeObj && Array.isArray(edgeObj.points) ? edgeObj.points : [];
+          if (points.length === 0) continue;
+
+          const path = createSvg("path");
+          path.setAttribute("d", buildPathD(points));
+          path.setAttribute("class", `flow-edge flow-edge-${String(e.kind || "link")}`);
+          path.setAttribute("marker-end", "url(#flow-arrow)");
+          edgesGroup.appendChild(path);
+        }
+
+        const byId = new Map(nodes.map(n => [String(n.id || ""), n]));
+        for (const id of g.nodes()) {
+          const node = byId.get(id);
+          if (!node) continue;
+          const layout = g.node(id);
+          if (!layout) continue;
+          const metrics = nodeMetrics.get(id);
+          if (!metrics) continue;
+
+          const group = createSvg("g");
+          group.setAttribute("class", `flow-node flow-node-${String(node.kind || "node")}`);
+
+          const title = createSvg("title");
+          title.textContent = String(node.tooltip || "");
+          group.appendChild(title);
+
+          const x = layout.x - metrics.width / 2;
+          const y = layout.y - metrics.height / 2;
+
+          const rectEl = createSvg("rect");
+          rectEl.setAttribute("x", String(x));
+          rectEl.setAttribute("y", String(y));
+          rectEl.setAttribute("width", String(metrics.width));
+          rectEl.setAttribute("height", String(metrics.height));
+          rectEl.setAttribute("rx", "10");
+          rectEl.setAttribute("ry", "10");
+          rectEl.setAttribute("class", "flow-node-rect");
+          group.appendChild(rectEl);
+
+          const textEl = createSvg("text");
+          textEl.setAttribute("class", "flow-node-text");
+          textEl.setAttribute("text-anchor", "middle");
+          textEl.setAttribute("x", String(layout.x));
+          textEl.setAttribute("y", String(y + metrics.paddingY));
+          textEl.setAttribute("font-size", String(metrics.fontSize));
+          textEl.setAttribute("dominant-baseline", "hanging");
+
+          const lines = Array.isArray(node.lines) ? node.lines : [];
+          for (let i = 0; i < lines.length; i++) {
+            const tspan = createSvg("tspan");
+            tspan.setAttribute("x", String(layout.x));
+            tspan.setAttribute("dy", i === 0 ? "0" : String(metrics.fontSize + metrics.lineGap));
+            tspan.textContent = String(lines[i] || "");
+            textEl.appendChild(tspan);
+          }
+          group.appendChild(textEl);
+
+          nodesGroup.appendChild(group);
+        }
+
+        container.innerHTML = "";
+        container.appendChild(svg);
+
+        const padding = 18;
+        const graphW = Math.max(1, maxX - minX);
+        const graphH = Math.max(1, maxY - minY);
+
+        const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+
+        let scale = 1;
+        let tx = 0;
+        let ty = 0;
+
+        const applyTransform = () => {
+          stage.setAttribute("transform", `translate(${tx} ${ty}) scale(${scale})`);
+        };
+
+        const fitToView = () => {
+          const sx = (viewportWidth - padding * 2) / graphW;
+          const sy = (viewportHeight - padding * 2) / graphH;
+          scale = clamp(Math.min(sx, sy), 0.15, 2.5);
+          tx = (viewportWidth - graphW * scale) / 2 - minX * scale;
+          ty = (viewportHeight - graphH * scale) / 2 - minY * scale;
+          applyTransform();
+        };
+
+        fitToView();
+
+        let panning = false;
+        let startX = 0;
+        let startY = 0;
+        let startTx = 0;
+        let startTy = 0;
+
+        const onPointerDown = (e) => {
+          if (e.button !== 0) return;
+          e.preventDefault();
+          e.stopPropagation();
+          panning = true;
+          container.classList.add("is-panning");
+          startX = e.clientX;
+          startY = e.clientY;
+          startTx = tx;
+          startTy = ty;
+          try {
+            svg.setPointerCapture(e.pointerId);
+          } catch {
+            // ignore
+          }
+        };
+
+        const onPointerMove = (e) => {
+          if (!panning) return;
+          e.preventDefault();
+          const dx = e.clientX - startX;
+          const dy = e.clientY - startY;
+          tx = startTx + dx;
+          ty = startTy + dy;
+          applyTransform();
+        };
+
+        const endPan = (e) => {
+          if (!panning) return;
+          panning = false;
+          container.classList.remove("is-panning");
+          try {
+            svg.releasePointerCapture(e.pointerId);
+          } catch {
+            // ignore
+          }
+        };
+
+        const onWheel = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          const r = container.getBoundingClientRect();
+          const px = e.clientX - r.left;
+          const py = e.clientY - r.top;
+          if (!Number.isFinite(px) || !Number.isFinite(py)) return;
+
+          const worldX = (px - tx) / scale;
+          const worldY = (py - ty) / scale;
+
+          const factor = Math.exp(-e.deltaY * 0.001);
+          const nextScale = clamp(scale * factor, 0.15, 4);
+          tx = px - worldX * nextScale;
+          ty = py - worldY * nextScale;
+          scale = nextScale;
+          applyTransform();
+        };
+
+        svg.addEventListener("pointerdown", onPointerDown);
+        svg.addEventListener("pointermove", onPointerMove);
+        svg.addEventListener("pointerup", endPan);
+        svg.addEventListener("pointercancel", endPan);
+        container.addEventListener("wheel", onWheel, { passive: false });
+        container.addEventListener("dblclick", () => fitToView());
       }
 
       async function loadConfigs({ notify = false } = {}) {

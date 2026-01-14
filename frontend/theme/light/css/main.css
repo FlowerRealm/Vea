@@ -932,6 +932,129 @@
     }
 
 
+    /* === FRouter Flow Graph === */
+	    .frouter-detail {
+	      grid-column: 1 / -1;
+	      margin-top: 12px;
+	      padding-top: 12px;
+	      border-top: 1px solid var(--border-subtle);
+	    }
+
+	    .frouter-detail-header {
+	      display: flex;
+	      align-items: center;
+	      justify-content: space-between;
+	      margin-bottom: 8px;
+	    }
+
+	    .frouter-detail-title {
+	      display: flex;
+	      align-items: baseline;
+	      gap: 10px;
+	      font-size: 12px;
+	      color: var(--text-secondary);
+	    }
+
+	    .frouter-detail-hint {
+	      font-size: 11px;
+	      color: var(--text-tertiary);
+	    }
+
+	    .frouter-flow {
+	      height: 260px;
+	      border-radius: 12px;
+	      overflow: hidden;
+	      border: 1px solid var(--border-color);
+	      background: var(--bg-secondary);
+	      position: relative;
+	      touch-action: none;
+	      cursor: grab;
+	    }
+
+	    .frouter-flow.is-panning {
+	      cursor: grabbing;
+	    }
+
+	    .frouter-flow-empty {
+	      position: absolute;
+	      inset: 0;
+	      display: flex;
+	      align-items: center;
+	      justify-content: center;
+	      font-size: 12px;
+	      color: var(--text-tertiary);
+	      padding: 12px;
+	      text-align: center;
+	    }
+
+	    .frouter-flow-svg {
+	      display: block;
+	    }
+
+	    .frouter-flow .flow-arrow {
+	      fill: rgba(0, 0, 0, 0.5);
+	    }
+
+	    .frouter-flow .flow-edge {
+	      fill: none;
+	      stroke: rgba(0, 0, 0, 0.28);
+	      stroke-width: 1.6;
+	    }
+
+	    .frouter-flow .flow-edge-detour {
+	      stroke-dasharray: 6 4;
+	      opacity: 0.75;
+	    }
+
+	    .frouter-flow .flow-edge-rule-link {
+	      opacity: 0.55;
+	    }
+
+	    .frouter-flow .flow-edge-rule-target {
+	      opacity: 0.9;
+	    }
+
+	    .frouter-flow .flow-node-rect {
+	      fill: var(--card-bg);
+	      stroke: var(--border-color);
+	      stroke-width: 1;
+	    }
+
+	    .frouter-flow .flow-node-text {
+	      fill: var(--text-primary);
+	      font-family: var(--font-mono);
+	    }
+
+	    .frouter-flow .flow-node-rule .flow-node-rect {
+	      fill: rgba(79, 70, 229, 0.08);
+	      stroke: rgba(79, 70, 229, 0.35);
+	    }
+
+	    .frouter-flow .flow-node-rule-default .flow-node-rect {
+	      fill: rgba(0, 0, 0, 0.04);
+	      stroke: rgba(0, 0, 0, 0.2);
+	    }
+
+	    .frouter-flow .flow-node-direct .flow-node-rect {
+	      fill: rgba(16, 185, 129, 0.08);
+	      stroke: rgba(16, 185, 129, 0.3);
+	    }
+
+	    .frouter-flow .flow-node-block .flow-node-rect {
+	      fill: rgba(239, 68, 68, 0.08);
+	      stroke: rgba(239, 68, 68, 0.3);
+	    }
+
+	    .frouter-flow .flow-node-slot .flow-node-rect {
+	      fill: rgba(245, 158, 11, 0.1);
+	      stroke: rgba(245, 158, 11, 0.35);
+	    }
+
+	    .frouter-flow .flow-node-node-unknown .flow-node-rect {
+	      stroke-dasharray: 4 4;
+	    }
+
+
     /* === Buttons & Inputs === */
     button {
       font-size: 13px;

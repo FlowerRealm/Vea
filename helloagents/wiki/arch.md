@@ -35,3 +35,4 @@ sequenceDiagram
 | adr_id | title | date | status | affected_modules | details |
 |--------|-------|------|--------|------------------|---------|
 | ADR-001 | FRouter 作为一等操作单元 | 2026-01-05 | ✅已采纳 | backend/frontend | 见 `history/2026-01/202601050639_fix-clash-tun-dns/how.md`（本次变更未新增 ADR，仅引用示例） |
+| ADR-002 | 前端走向图自动布局（dagre vendor） | 2026-01-14 | ✅已采纳 | frontend | 见 `history/2026-01/202601141452_frouter_flow_graph/how.md` |

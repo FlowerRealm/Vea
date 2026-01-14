@@ -16,6 +16,21 @@
 
 ## 规范
 
+### 需求: FRouter 详情卡片走向图（静态配置）
+**模块:** frontend/theme
+
+在 FRouter 面板中，选中态的 FRouter 以“详情卡片”形式展开，并展示“走向图”：以静态配置视角说明流量从 `local` 经由规则到 `direct/block/节点`，以及 `via/detour` 形成的 hop 链路。
+
+**展示规则:**
+- 规则节点需展示 priority、规则类型（默认/路由）、匹配条件摘要（domains/ips）；hover 可查看完整匹配项（截断不丢信息）
+- slot 已绑定时，走向图直接展示绑定后的节点（不单独显示 slot）
+- slot 未绑定时，走向图标注“未绑定/穿透（编译会跳过）”
+- 默认不展示节点地址/端口等敏感信息，避免截图分享泄露
+
+**交互:**
+- 支持拖拽平移、滚轮缩放浏览
+- 双击适配视图（fit-to-view）
+
 ### 需求: 槽位管理（slot-*）
 **模块:** frontend/theme
 
@@ -80,3 +95,4 @@
 - [202601121727_theme-sync-refactor](../../history/2026-01/202601121727_theme-sync-refactor/) - Electron：主题同步逻辑抽离为独立模块，并统一 dark 主题缩进风格
 - [202601121916_default-tun-interface-name-vea](../../history/2026-01/202601121916_default-tun-interface-name-vea/) - 设置：`tun.interfaceName` 默认值从 `tun0` 调整为 `vea`（保持只读）
 - [202601131921_fix-backend-port-conflict](../../history/2026-01/202601131921_fix-backend-port-conflict/) - Electron：单实例锁 + 启动前健康检查，避免固定端口冲突导致后端启动即退出
+- [202601141452_frouter_flow_graph](../../history/2026-01/202601141452_frouter_flow_graph/) - 主题页：FRouter 面板选中态卡片新增“走向图”（静态配置），支持拖拽平移与滚轮缩放浏览
