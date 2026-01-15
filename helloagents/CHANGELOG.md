@@ -27,6 +27,7 @@
 ### 修复
 - 修复速度单位显示不一致的问题：前端主题/SDK/OpenAPI 将速度单位从 `Mbps` 修正为 `MB/s`（与实际测速计算单位一致）。
 - 修复前端“系统代理端口（proxy.port）”不生效的问题：端口变更会联动更新 `ProxyConfig.inboundPort`；内核运行中修改端口会自动重启并在系统代理启用时重新应用系统代理设置；启动时从后端同步实际端口避免 UI 默认值误导。
+- 修复 Windows 下 sing-box `mixed` 入站端口占用导致启动失败的问题：默认入站端口从 `1080` 调整为 `31346`，并在启动前检测端口占用，冲突时 fail-fast 返回明确错误提示（不自动换端口）。
 - 修复 Linux 下 mihomo(Clash) TUN 在默认 MTU=9000 时可能出现“看起来全网断开”的问题：当检测到未自定义的默认 TUN 组合时，自动将 MTU 调整为 1500。
 - 修复 mihomo(Clash) TUN 模式在部分环境下因 DoH/QUIC 导致“可启动但访问异常/分流失效”的问题：默认开启 sniffer，并默认拒绝 QUIC（UDP/443）以强制回落到 TCP/HTTPS。
 - 修复 Linux 下 sing-box TUN 模式可能出现“IP 通但域名解析卡死”的问题：默认远程 DNS 从 `8.8.8.8:53(TCP)` 改为 DoH（Cloudflare `1.1.1.1:443`）。
@@ -63,7 +64,7 @@
 - 修复 Windows 下主题下拉/列表控件对比度异常（Issue #39）：为内置主题声明 `color-scheme`（dark/light），并补齐浅色主题缺失的 CSS 变量，避免原生控件弹出层使用系统浅色样式导致文字不可读。
 - 修复槽位功能不可用（Issue #29 / #40）：主题页在 FRouter 路由规则面板新增“槽位管理”，支持新增/重命名/绑定节点；保存图配置时保留 `positions`，避免意外清空布局数据。
 - 修复 Windows 下主题切换失败（Issue #36）：主题页入口解析兼容 Windows `file://` URL 的路径编码/分隔符差异，确保默认主题可正常切换。
-- 修复节点面板首次进入时订阅名显示为配置 ID 的问题（Issue #42）：进入节点面板时若尚未加载配置列表则先加载 `/configs`，避免订阅名回退显示为 `configId`。
+- 修复节点面板首次进入时订阅名显示为配置 ID 的问题（Issue #42 / #53）：进入节点面板时会优先加载 `/configs`；未加载完成时使用“加载中...”占位并在加载完成后自动刷新为订阅名，避免订阅名回退显示为 `configId`。
 - 修复主题页“检查应用更新”点击无响应的问题：修复 `showStatus` 作用域导致的静默异常，确保可触发 IPC 并在状态栏给出反馈。
 - 修复主题页订阅导入后依赖固定 `setTimeout` 刷新的竞态问题：改为轮询配置 `lastSyncedAt` 变化，并在超时/失败时给出提示。
 - 加固 Linux root helper 对 `artifactsRoot` 的推导与校验：`socketPath` 必须符合 `<ArtifactsRoot>/runtime/resolvectl-helper.sock`，并拒绝将根路径解析为 `/`，避免 capabilities 操作范围扩大。

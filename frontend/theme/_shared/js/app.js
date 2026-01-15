@@ -42,11 +42,14 @@ export function bootstrapTheme({ createAPI, utils }) {
         running: false,
         binary: "",
       };
-	      let froutersCache = [];
-	      let nodesCache = [];
-	      let configsCache = [];
-	      let currentFRouterId = "";
-	      let componentsCache = [];
+		      let froutersCache = [];
+		      let nodesCache = [];
+		      let configsCache = [];
+		      let configsLoaded = false;
+		      let configsLoadPromise = null;
+		      let configsLoadNotify = false;
+		      let currentFRouterId = "";
+		      let componentsCache = [];
 	      let froutersPollHandle = null;
 	      let nodesPollHandle = null;
 	      let kernelLogsPollHandle = null;
@@ -1618,11 +1621,13 @@ export function bootstrapTheme({ createAPI, utils }) {
 	        return cfg?.name || "";
 	      }
 
-	      function formatSubscriptionLabel(configId) {
-	        if (!configId) return "未归属订阅";
-	        const name = getConfigNameById(configId);
-	        return name || String(configId);
-	      }
+		      function formatSubscriptionLabel(configId) {
+		        if (!configId) return "未归属订阅";
+		        const name = getConfigNameById(configId);
+		        if (name) return name;
+		        if (!configsLoaded) return "加载中...";
+		        return String(configId);
+		      }
 
 	      function groupNodesBySubscription(nodes) {
 	        const all = Array.isArray(nodes) ? nodes : [];
@@ -2718,19 +2723,37 @@ export function bootstrapTheme({ createAPI, utils }) {
         container.addEventListener("dblclick", () => fitToView());
       }
 
-      async function loadConfigs({ notify = false } = {}) {
-        try {
-          const configs = await api.get("/configs");
-          configsCache = Array.isArray(configs) ? configs : [];
-          renderConfigs(configsCache);
-          renderOrUpdateNodesPanel(nodesCache);
-          if (notify) {
-            showStatus("配置列表已刷新", "success");
-          }
-        } catch (err) {
-          showStatus(`加载配置失败：${err.message}`, "error", 6000);
-        }
-      }
+	      async function loadConfigs({ notify = false } = {}) {
+	        configsLoadNotify = configsLoadNotify || Boolean(notify);
+	        if (configsLoadPromise) {
+	          return configsLoadPromise;
+	        }
+
+	        configsLoadPromise = (async () => {
+	          try {
+	            const configs = await api.get("/configs");
+	            configsCache = Array.isArray(configs) ? configs : [];
+	            configsLoaded = true;
+
+	            renderConfigs(configsCache);
+	            if (currentPanel === "panel-nodes") {
+	              renderOrUpdateNodesPanel(nodesCache);
+	            }
+
+	            if (configsLoadNotify) {
+	              showStatus("配置列表已刷新", "success");
+	            }
+	          } catch (err) {
+	            console.error("加载配置失败:", err);
+	            showStatus(`加载配置失败：${err.message}`, "error", 6000);
+	          } finally {
+	            configsLoadPromise = null;
+	            configsLoadNotify = false;
+	          }
+	        })();
+
+	        return configsLoadPromise;
+	      }
 
       function renderConfigs(configs) {
         const tbody = document.querySelector("#config-table tbody");
@@ -4152,10 +4175,11 @@ export function bootstrapTheme({ createAPI, utils }) {
 		        "panel-home": () => loadHomePanel(),
 		        panel1: loadFRouters,
 		        panel2: loadConfigs,
-		        "panel-nodes": () => {
-		          startNodesPolling();
-		          return loadNodes();
-		        },
+			        "panel-nodes": () => {
+			          startNodesPolling();
+			          loadConfigs();
+			          return loadNodes();
+			        },
 		        panel3: () => loadComponents(),
 		        "panel-logs": () => {
 		          ensureLogsTabs();

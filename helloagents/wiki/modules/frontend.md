@@ -59,6 +59,19 @@
 - 预期结果: 设置面板中 `tun.interfaceName` 默认显示为 `vea`
 - 预期结果: 不暗示 Windows/macOS 上一定会出现名为 `vea` 的网卡
 
+### 需求: 节点面板订阅名显示正确（Issue #53 / #42）
+**模块:** frontend/theme
+
+在「节点」面板（全局节点）按订阅分组时，分组标题应展示订阅 `name`。首次进入面板时，即使尚未打开「订阅」面板，也不应回退显示 `configId`（UUID）；在配置加载中可使用“加载中...”占位，并在加载完成后自动刷新。
+
+#### 场景: 启动后直接进入「节点」面板
+- 预期结果: 订阅分组标题显示订阅 `name`
+- 预期结果: 无需切换面板即可恢复正确显示
+
+#### 场景: 配置加载较慢
+- 预期结果: 加载完成前不展示 UUID
+- 预期结果: 加载完成后自动刷新为订阅 `name`
+
 ## 注意事项
 - 槽位 `id` 作为引用标识不开放编辑；仅允许新增、重命名、绑定/解绑，避免规则引用失效。
 - 主题切换入口解析需兼容 Windows `file://` URL 的路径编码/分隔符差异（例如 `%5C`），避免仅用字符串查找推导主题根路径。
@@ -99,3 +112,4 @@
 - [202601121916_default-tun-interface-name-vea](../../history/2026-01/202601121916_default-tun-interface-name-vea/) - 设置：`tun.interfaceName` 默认值从 `tun0` 调整为 `vea`（保持只读）
 - [202601131921_fix-backend-port-conflict](../../history/2026-01/202601131921_fix-backend-port-conflict/) - Electron：单实例锁 + 启动前健康检查，避免固定端口冲突导致后端启动即退出
 - [202601141452_frouter_flow_graph](../../history/2026-01/202601141452_frouter_flow_graph/) - 主题页：FRouter 面板选中态卡片新增“走向图”（静态配置），支持拖拽平移与滚轮缩放浏览
+- [202601151958_fix_subscription_name_display](../../history/2026-01/202601151958_fix_subscription_name_display/) - 主题页：修复节点面板首次进入时订阅名显示为配置 ID（Issue #53 / #42）
