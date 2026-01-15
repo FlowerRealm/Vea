@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -750,6 +751,98 @@ rules:
 	}
 	if !found {
 		t.Fatalf("expected frouter edges to reference preserved node id %s, got edges=%v", existingNodeID, frouter.ChainProxy.Edges)
+	}
+}
+
+func TestService_SyncNodesFromPayload_ClashYAML_ReusesExistingNodeID_WhenTransportDetailsChange(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	store := memory.NewStore(events.NewBus())
+	configRepo := memory.NewConfigRepo(store)
+	nodeRepo := memory.NewNodeRepo(store)
+	frouterRepo := memory.NewFRouterRepo(store)
+	nodeSvc := nodes.NewService(context.Background(), nodeRepo)
+	svc := NewService(context.Background(), configRepo, nodeSvc, frouterRepo)
+
+	const configID = "cfg-1"
+	if _, err := configRepo.Create(ctx, domain.Config{
+		ID:     configID,
+		Name:   "cfg-1",
+		Format: domain.ConfigFormatSubscription,
+	}); err != nil {
+		t.Fatalf("create config: %v", err)
+	}
+
+	const existingNodeID = "old-node-id"
+	if _, err := nodeRepo.Create(ctx, domain.Node{
+		ID:             existingNodeID,
+		Name:           "n1",
+		Address:        "example.com",
+		Port:           443,
+		Protocol:       domain.ProtocolVMess,
+		SourceConfigID: configID,
+		Security: &domain.NodeSecurity{
+			UUID:       "11111111-1111-1111-1111-111111111111",
+			AlterID:    0,
+			Encryption: "auto",
+		},
+		Transport: &domain.NodeTransport{
+			Type: "ws",
+			Path: "/old",
+		},
+		TLS: &domain.NodeTLS{
+			Enabled:     true,
+			Type:        "tls",
+			Fingerprint: "chrome",
+		},
+	}); err != nil {
+		t.Fatalf("create node: %v", err)
+	}
+
+	const payload = `
+proxies:
+  - name: n1
+    type: vmess
+    server: example.com
+    port: 443
+    uuid: 11111111-1111-1111-1111-111111111111
+    alterId: 0
+    cipher: auto
+    tls: true
+    client-fingerprint: safari
+    network: ws
+    ws-opts:
+      path: /new
+rules:
+  - MATCH,n1
+`
+
+	if err := svc.syncNodesFromPayload(ctx, configID, payload); err != nil {
+		t.Fatalf("sync nodes: %v", err)
+	}
+
+	nodesAfter, err := nodeRepo.ListByConfigID(ctx, configID)
+	if err != nil {
+		t.Fatalf("list nodes: %v", err)
+	}
+	if len(nodesAfter) != 1 {
+		t.Fatalf("expected nodes=1 after sync, got %d", len(nodesAfter))
+	}
+	if nodesAfter[0].ID != existingNodeID {
+		t.Fatalf("expected node id preserved=%s, got %s", existingNodeID, nodesAfter[0].ID)
+	}
+
+	n, err := nodeRepo.Get(ctx, existingNodeID)
+	if err != nil {
+		t.Fatalf("get node: %v", err)
+	}
+	if n.Transport == nil || n.Transport.Type != "ws" || n.Transport.Path != "/new" {
+		t.Fatalf("expected transport updated to ws path /new, got transport=%v", n.Transport)
+	}
+	if n.TLS == nil || !n.TLS.Enabled || strings.ToLower(strings.TrimSpace(n.TLS.Fingerprint)) != "safari" {
+		t.Fatalf("expected tls fingerprint updated to safari, got tls=%v", n.TLS)
 	}
 }
 

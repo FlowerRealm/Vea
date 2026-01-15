@@ -236,9 +236,9 @@ func (s *Service) syncNodesFromPayload(ctx context.Context, configID, payload st
 		return nil
 	}
 
-	existingIDByFingerprint := map[string]string{}
+	existingIndex := existingNodeIDIndex{}
 	if existing, err := s.nodeService.ListByConfigID(ctx, configID); err == nil && len(existing) > 0 {
-		existingIDByFingerprint = buildExistingNodeIDByFingerprint(existing)
+		existingIndex = buildExistingNodeIDIndex(existing)
 	}
 
 	trimmed := strings.TrimSpace(payload)
@@ -254,8 +254,8 @@ func (s *Service) syncNodesFromPayload(ctx context.Context, configID, payload st
 
 	if len(nodes) > 0 {
 		// 分享链接订阅：仅更新节点；如之前生成过 Clash YAML 的订阅 FRouter，清理掉以避免残留。
-		if len(existingIDByFingerprint) > 0 {
-			nodes, _ = reuseNodeIDs(existingIDByFingerprint, nodes)
+		if len(existingIndex.byFingerprint) > 0 || len(existingIndex.byIdentity) > 0 {
+			nodes, _ = reuseNodeIDs(existingIndex, nodes)
 		}
 		if _, err := s.nodeService.ReplaceNodesForConfig(ctx, configID, nodes); err != nil {
 			log.Printf("[ConfigSync] update nodes failed for %s: %v", configID, err)
@@ -299,9 +299,9 @@ func (s *Service) syncNodesFromPayload(ctx context.Context, configID, payload st
 			log.Printf("[ConfigSync] clash warning: %s", w)
 		}
 	}
-	if len(existingIDByFingerprint) > 0 {
+	if len(existingIndex.byFingerprint) > 0 || len(existingIndex.byIdentity) > 0 {
 		var idMap map[string]string
-		clashResult.Nodes, idMap = reuseNodeIDs(existingIDByFingerprint, clashResult.Nodes)
+		clashResult.Nodes, idMap = reuseNodeIDs(existingIndex, clashResult.Nodes)
 		clashResult.Chain = rewriteChainProxyNodeIDs(clashResult.Chain, idMap)
 	}
 	if _, err := s.nodeService.ReplaceNodesForConfig(ctx, configID, clashResult.Nodes); err != nil {

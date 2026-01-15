@@ -16,32 +16,65 @@ type nodeFingerprint struct {
 	TLS       *domain.NodeTLS       `json:"tls,omitempty"`
 }
 
-func buildExistingNodeIDByFingerprint(nodes []domain.Node) map[string]string {
-	out := make(map[string]string, len(nodes))
+type existingNodeIDIndex struct {
+	byFingerprint      map[string]string
+	byIdentity         map[string]string
+	ambiguousIdentites map[string]struct{}
+}
+
+func buildExistingNodeIDIndex(nodes []domain.Node) existingNodeIDIndex {
+	if len(nodes) == 0 {
+		return existingNodeIDIndex{}
+	}
+
+	byFingerprint := make(map[string]string, len(nodes))
+	byIdentity := make(map[string]string, len(nodes))
+	ambiguousIdentites := make(map[string]struct{}, 8)
+
 	for _, n := range nodes {
 		id := strings.TrimSpace(n.ID)
 		if id == "" {
 			continue
 		}
+
 		key := fingerprintKey(n)
-		if key == "" {
+		if key != "" {
+			if _, ok := byFingerprint[key]; !ok {
+				byFingerprint[key] = id
+			}
+		}
+
+		identity := identityKey(n)
+		if identity == "" {
 			continue
 		}
-		if _, ok := out[key]; ok {
+		if _, ok := ambiguousIdentites[identity]; ok {
 			continue
 		}
-		out[key] = id
+		if prev, ok := byIdentity[identity]; ok && prev != id {
+			ambiguousIdentites[identity] = struct{}{}
+			delete(byIdentity, identity)
+			continue
+		}
+		if _, ok := byIdentity[identity]; !ok {
+			byIdentity[identity] = id
+		}
 	}
-	return out
+
+	return existingNodeIDIndex{
+		byFingerprint:      byFingerprint,
+		byIdentity:         byIdentity,
+		ambiguousIdentites: ambiguousIdentites,
+	}
 }
 
-func reuseNodeIDs(existingIDByFingerprint map[string]string, nodes []domain.Node) ([]domain.Node, map[string]string) {
-	if len(nodes) == 0 || len(existingIDByFingerprint) == 0 {
+func reuseNodeIDs(index existingNodeIDIndex, nodes []domain.Node) ([]domain.Node, map[string]string) {
+	if len(nodes) == 0 || (len(index.byFingerprint) == 0 && len(index.byIdentity) == 0) {
 		return nodes, nil
 	}
 
 	used := make(map[string]struct{}, len(nodes))
-	mapping := make(map[string]string, 8) // oldID -> newID
+	mapping := make(map[string]string, 8) // parsedID -> existingID
 
 	for i := range nodes {
 		originalID := strings.TrimSpace(nodes[i].ID)
@@ -49,11 +82,27 @@ func reuseNodeIDs(existingIDByFingerprint map[string]string, nodes []domain.Node
 
 		key := fingerprintKey(nodes[i])
 		if key != "" {
-			if existingID := strings.TrimSpace(existingIDByFingerprint[key]); existingID != "" && existingID != originalID {
+			if existingID := strings.TrimSpace(index.byFingerprint[key]); existingID != "" && existingID != originalID {
 				if _, ok := used[existingID]; !ok {
 					nextID = existingID
 					if originalID != "" {
 						mapping[originalID] = existingID
+					}
+				}
+			}
+		}
+
+		if nextID == originalID {
+			identity := identityKey(nodes[i])
+			if identity != "" {
+				if _, ok := index.ambiguousIdentites[identity]; !ok {
+					if existingID := strings.TrimSpace(index.byIdentity[identity]); existingID != "" && existingID != originalID {
+						if _, ok := used[existingID]; !ok {
+							nextID = existingID
+							if originalID != "" {
+								mapping[originalID] = existingID
+							}
+						}
 					}
 				}
 			}
@@ -81,6 +130,82 @@ func fingerprintKey(node domain.Node) string {
 		TLS:       canonicalTLS(node.TLS),
 	}
 	b, _ := json.Marshal(fp)
+	return string(b)
+}
+
+func identityKey(node domain.Node) string {
+	proto := node.Protocol
+	addr := strings.ToLower(strings.TrimSpace(node.Address))
+	if strings.TrimSpace(string(proto)) == "" || addr == "" || node.Port <= 0 {
+		return ""
+	}
+
+	sec := canonicalSecurity(proto, node.Security)
+
+	out := struct {
+		Protocol  domain.NodeProtocol `json:"protocol"`
+		Address   string              `json:"address"`
+		Port      int                 `json:"port"`
+		Transport string              `json:"transport,omitempty"`
+		TLS       string              `json:"tls,omitempty"`
+		UUID      string              `json:"uuid,omitempty"`
+		Password  string              `json:"password,omitempty"`
+		Method    string              `json:"method,omitempty"`
+		Flow      string              `json:"flow,omitempty"`
+	}{
+		Protocol: proto,
+		Address:  addr,
+		Port:     node.Port,
+	}
+
+	if node.Transport != nil {
+		typ := strings.ToLower(strings.TrimSpace(node.Transport.Type))
+		if typ != "" && typ != "tcp" {
+			out.Transport = typ
+		}
+	}
+	if node.TLS != nil && node.TLS.Enabled {
+		typ := strings.ToLower(strings.TrimSpace(node.TLS.Type))
+		if typ == "" {
+			typ = "tls"
+		}
+		out.TLS = typ
+	}
+
+	switch proto {
+	case domain.ProtocolVLESS:
+		if sec == nil || strings.TrimSpace(sec.UUID) == "" {
+			return ""
+		}
+		out.UUID = strings.TrimSpace(sec.UUID)
+		out.Flow = strings.TrimSpace(sec.Flow)
+	case domain.ProtocolVMess:
+		if sec == nil || strings.TrimSpace(sec.UUID) == "" {
+			return ""
+		}
+		out.UUID = strings.TrimSpace(sec.UUID)
+	case domain.ProtocolTrojan, domain.ProtocolHysteria2:
+		if sec == nil || strings.TrimSpace(sec.Password) == "" {
+			return ""
+		}
+		out.Password = strings.TrimSpace(sec.Password)
+	case domain.ProtocolShadowsocks:
+		if sec == nil || strings.TrimSpace(sec.Password) == "" || strings.TrimSpace(sec.Method) == "" {
+			return ""
+		}
+		out.Password = strings.TrimSpace(sec.Password)
+		out.Method = strings.TrimSpace(sec.Method)
+	case domain.ProtocolTUIC:
+		if sec == nil || strings.TrimSpace(sec.UUID) == "" || strings.TrimSpace(sec.Password) == "" {
+			return ""
+		}
+		out.UUID = strings.TrimSpace(sec.UUID)
+		out.Password = strings.TrimSpace(sec.Password)
+	default:
+		return ""
+	}
+
+	b, _ := json.Marshal(out)
 	return string(b)
 }
 
