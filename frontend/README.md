@@ -120,6 +120,16 @@ curl http://localhost:19080/health
 
 编辑 `frontend/theme/dark/index.html`（或 `css/`、`js/`）以及 `frontend/theme/light/index.html`，重启 Electron 即可看到效果。
 
+### 自定义主题（开发/分发）
+
+- **运行时加载路径**：Electron 从 `userData/themes/<entry>` 加载主题入口（而不是直接从 `frontend/theme/` 加载）。
+- **推荐工作流**：应用内「导出当前主题(.zip)」→ 修改 →「导入主题(.zip)」→ 在设置里切换。
+- **主题包（manifest）**：支持单包多子主题（`<packId>/<subThemeId>`），可复用包根目录 `_shared/`。
+
+详细规则与示例模板见：
+- `docs/THEMES.md`
+- `docs/examples/themes/theme-pack/`
+
 ### 修改主进程逻辑
 
 编辑 `frontend/main.js`，需要重启 Electron。

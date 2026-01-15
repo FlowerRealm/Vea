@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "my-pack",
+  "name": "My Theme Pack",
+  "description": "示例主题包：用于演示 manifest.json 结构与多子主题入口。",
+  "version": "0.1.0",
+  "author": "you",
+  "license": "MIT",
+  "themes": [
+    {
+      "id": "dark",
+      "name": "深色（示例）",
+      "entry": "dark/index.html"
+    },
+    {
+      "id": "light",
+      "name": "浅色（示例）",
+      "entry": "light/index.html"
+    }
+  ],
+  "defaultTheme": "dark"
+}
+

@@ -57,6 +57,7 @@
 | 202601121727 | theme-sync-refactor | 重构 | ✅已完成 | [2026-01/202601121727_theme-sync-refactor](2026-01/202601121727_theme-sync-refactor/) |
 | 202601131921 | fix-backend-port-conflict | 修复 | ✅已完成 | [2026-01/202601131921_fix-backend-port-conflict](2026-01/202601131921_fix-backend-port-conflict/) |
 | 202601141452 | frouter-flow-graph | 功能 | ✅已完成 | [2026-01/202601141452_frouter_flow_graph](2026-01/202601141452_frouter_flow_graph/) |
+| 202601151954 | theme-custom-style-docs | 文档 | ✅已完成 | [2026-01/202601151954_theme-custom-style-docs](2026-01/202601151954_theme-custom-style-docs/) |
 
 ## 按月归档
 
@@ -113,3 +114,4 @@
 - [202601121727_theme-sync-refactor](2026-01/202601121727_theme-sync-refactor/) - 维护性：主题同步逻辑抽离为独立模块，并统一 dark 主题缩进风格
 - [202601131921_fix-backend-port-conflict](2026-01/202601131921_fix-backend-port-conflict/) - 修复 Electron 多实例/残留后端导致固定端口冲突，后端启动即退出
 - [202601141452_frouter_flow_graph](2026-01/202601141452_frouter_flow_graph/) - FRouter 面板选中态卡片新增静态走向图（规则→去向→链路），支持拖拽平移与滚轮缩放浏览
+- [202601151954_theme-custom-style-docs](2026-01/202601151954_theme-custom-style-docs/) - 补齐自定义主题/样式开发文档与示例模板（Issue #46）

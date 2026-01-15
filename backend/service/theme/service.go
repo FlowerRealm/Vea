@@ -323,8 +323,8 @@ func (s *Service) ExportZip(ctx context.Context, id string, w io.Writer) error {
 // ImportZip 导入主题 zip，并安全解压安装到 <userData>/themes/<themeId>/。
 //
 // 规则：
-// - zip 必须包含且仅包含一个顶层目录（该目录名即 themeId）
-// - 顶层目录下必须存在 index.html
+// - zip 必须包含且仅包含一个顶层目录（该目录名即 themeId/packId）
+// - 顶层目录下必须存在 index.html（单主题）或 manifest.json（主题包）
 // - 拒绝路径穿越、符号链接、过深目录、文件数/解压总大小超限
 func (s *Service) ImportZip(ctx context.Context, zipPath string) (string, error) {
 	zipPath = strings.TrimSpace(zipPath)

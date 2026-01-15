@@ -14,6 +14,7 @@
 - 支持 Clash YAML 订阅解析：解析 `proxies` 并结合 `proxy-groups`/`rules` 自动生成订阅 FRouter（用于将订阅路由语义落到 Vea 的 `ChainProxySettings`）。
 - 主题包（目录化 + ZIP 导入/导出）：主题以 `index.html` 为入口的目录形式存在；后端新增 `/themes`（list/import/export/delete）；Electron 启动从 userData/themes 加载并在缺失时复制内置主题；主题内提供“导入主题(.zip)”与“导出当前主题(.zip)”。
 - 主题包支持 `manifest.json`（单包多子主题）：在 `userData/themes/<packId>/manifest.json` 中描述包信息与子主题入口；`GET /themes` 展开子主题并返回 `entry`，用于切换与启动加载。
+- 补齐自定义主题/样式的开发文档与示例模板（Issue #46）。
 - 增加应用内“检查更新”能力：支持 Windows/macOS 从 GitHub Pages 获取最新稳定版并自动下载、安装与重启（Issue #24）。
 - 主题页（首页）增加“重启内核”按钮：允许手动触发 `POST /proxy/start` 重启/启动内核，并在系统代理启用时自动关闭/恢复以避免断网。
 - FRouter 面板新增“走向图”详情卡片：在选中态展示静态配置走向（规则→去向→链路），支持拖拽平移与滚轮缩放浏览。

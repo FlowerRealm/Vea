@@ -101,6 +101,7 @@ Vea/
 - [SDK 文档](./frontend/sdk/README.md)
 - [API 文档（OpenAPI）](./docs/api/openapi.yaml)
 - [架构说明](./docs/ARCHITECTURE_V2.md)
+- [主题与自定义样式](./docs/THEMES.md)
 
 ## 常见问题
 

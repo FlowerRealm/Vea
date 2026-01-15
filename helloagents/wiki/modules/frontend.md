@@ -14,6 +14,7 @@
 - `frontend/theme/<themeId>/`：内置主题包（入口 `index.html`）
 - `frontend/theme/*/css/main.css`：内置主题需声明 `color-scheme`（dark/light），避免 Windows 下 `<select>` 等原生控件弹出层沿用系统配色导致对比度异常
 - `userData/themes/<packId>/manifest.json`：主题包（manifest）容器；包内可包含多个子主题，入口由 `entry`（相对 `themes/`）指定
+- `docs/THEMES.md`：主题与自定义样式说明（包含入口梳理、ZIP 约束、manifest 示例模板）
 
 ## 规范
 
@@ -62,6 +63,7 @@
 - 槽位 `id` 作为引用标识不开放编辑；仅允许新增、重命名、绑定/解绑，避免规则引用失效。
 - 主题切换入口解析需兼容 Windows `file://` URL 的路径编码/分隔符差异（例如 `%5C`），避免仅用字符串查找推导主题根路径。
 - Electron 采用单实例锁避免重复启动；启动后端前会先请求 `/health` 判定是否已存在同 `userData` 的后端服务，避免固定端口冲突导致“后端闪退”。
+- 主题导入为 HTML/CSS/JS：导入主题等同于运行第三方代码；仅导入你信任的主题包。
 
 ## 变更历史
 - [202601071130_fix-gz-extract-clash-install](../../history/2026-01/202601071130_fix-gz-extract-clash-install/) - 组件面板新增“卸载”按钮；主题按钮 hover 支持 `--accent-hover` 变量（提升一致性与可维护性）
