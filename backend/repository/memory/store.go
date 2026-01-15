@@ -47,7 +47,7 @@ func NewStore(eventBus *events.Bus) *Store {
 	}
 	s.proxyConfig = domain.ProxyConfig{
 		InboundMode:     domain.InboundMixed,
-		InboundPort:     1080,
+		InboundPort:     31346,
 		PreferredEngine: domain.EngineAuto,
 	}
 	return s
@@ -309,7 +309,7 @@ func (s *Store) LoadState(state domain.ServiceState) {
 		s.proxyConfig.InboundMode = domain.InboundMixed
 	}
 	if s.proxyConfig.InboundPort == 0 && s.proxyConfig.InboundMode != domain.InboundTUN {
-		s.proxyConfig.InboundPort = 1080
+		s.proxyConfig.InboundPort = 31346
 	}
 	if s.proxyConfig.PreferredEngine == "" {
 		s.proxyConfig.PreferredEngine = domain.EngineAuto

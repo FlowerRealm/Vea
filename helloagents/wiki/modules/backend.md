@@ -49,6 +49,21 @@
 - 条件: Windows/macOS + InboundMode=TUN，且 `tun.interfaceName=tun0`
 - 预期结果: 配置生成不写死设备名；TUN 就绪判定按地址识别实际网卡
 
+### 需求: 默认入站端口为 31346 + 端口占用 fail-fast
+**模块:** backend/service/proxy, backend/repository/memory, backend/service/facade
+
+Windows 下常见代理软件默认占用 `127.0.0.1:1080`，如果后端默认也使用 1080，会导致 sing-box `mixed` 入站启动失败并产生“mixed 不可用”的误判。
+因此需要：
+1) 默认端口与前端一致（降低冲突概率）；2) 启动前对端口占用做 fail-fast 并返回可操作提示（不自动换端口）。
+
+#### 场景: 新安装/空配置默认端口
+- 条件: `InboundMode != tun` 且未显式设置 `inboundPort`
+- 预期结果: 默认 `inboundPort=31346`（与前端「系统代理 → 代理端口」默认值一致）
+
+#### 场景: 端口被占用时启动失败
+- 条件: 目标监听端口已被其他进程监听（例如 `127.0.0.1:1080`）
+- 预期结果: `POST /proxy/start` 返回 400（`ErrInvalidData`），错误信息包含端口与处理建议（改端口/关闭占用者），且不误判为“内核已就绪”
+
 ## 变更历史
 - [202601050639_fix-clash-tun-dns](../../history/2026-01/202601050639_fix-clash-tun-dns/) - 修复 Linux 下 mihomo TUN 断网（默认配置对齐主流客户端）
 - [202601051238_fix-clash-tun-mtu](../../history/2026-01/202601051238_fix-clash-tun-mtu/) - 修复 Linux 下 mihomo TUN 默认 MTU=9000 导致“看起来全网断开”的问题（按选中引擎自动调整为 1500）
@@ -78,3 +93,4 @@
 - [202601112058_fix-issue-41-tun-windows](../../history/2026-01/202601112058_fix-issue-41-tun-windows/) - 代理服务：修复 Windows 下 sing-box TUN 启动因固定 `tun0` 就绪判定失败（Issue #41）
 - [202601121916_default-tun-interface-name-vea](../../history/2026-01/202601121916_default-tun-interface-name-vea/) - 代理服务：默认 TUN 网卡名从 `tun0` 调整为 `vea`，并兼容 Windows/macOS 默认不强制设备名与 legacy `tun0`
 - [202601131921_fix-backend-port-conflict](../../history/2026-01/202601131921_fix-backend-port-conflict/) - 健康检查：`/health` 增加 `pid/userDataRoot`；前端可据此避免端口冲突导致后端启动即退出
+- [202601151954_fix-proxy-inbound-port-bind](../../history/2026-01/202601151954_fix-proxy-inbound-port-bind/) - 修复 Windows 下 sing-box mixed 入站端口占用启动失败：默认端口调整为 31346，并在端口占用时 fail-fast 返回明确错误提示

@@ -28,7 +28,7 @@ import (
 	"github.com/google/uuid"
 )
 
-const defaultProxyPort = 1080
+const defaultProxyPort = 31346
 
 // Facade 服务门面（API 聚合层）
 type Facade struct {

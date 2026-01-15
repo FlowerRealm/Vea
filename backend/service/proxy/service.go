@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"vea/backend/domain"
@@ -259,6 +260,15 @@ func (s *Service) Start(ctx context.Context, cfg domain.ProxyConfig) error {
 		}
 	}
 
+	// 入站端口占用检查（Windows 常见：1080 被其他代理占用）。
+	// 注意：必须在 stopLocked() 之后执行，否则会把“当前正在运行的旧内核”误判为占用者。
+	if cfg.InboundPort > 0 {
+		listenAddr := inboundListenAddrForEngine(engine, cfg)
+		if err := s.ensureTCPPortAvailable(listenAddr, cfg.InboundPort); err != nil {
+			return rollback(err)
+		}
+	}
+
 	// 写入配置文件
 	configDir := engineConfigDir(engine)
 	configName := "config.json"
@@ -301,6 +311,19 @@ func (s *Service) Start(ctx context.Context, cfg domain.ProxyConfig) error {
 	s.activeCfg = cfg
 	s.lastRestartError = ""
 	return nil
+}
+
+func inboundListenAddrForEngine(engine domain.CoreEngineKind, cfg domain.ProxyConfig) string {
+	if cfg.InboundConfig != nil {
+		if host := strings.TrimSpace(cfg.InboundConfig.Listen); host != "" {
+			return host
+		}
+		// allowLan 目前仅对 mihomo/clash 生效（sing-box 的入站是 per-inbound 配置）。
+		if engine == domain.EngineClash && cfg.InboundConfig.AllowLAN {
+			return "0.0.0.0"
+		}
+	}
+	return "127.0.0.1"
 }
 
 // Stop 停止代理
@@ -433,7 +456,7 @@ func (s *Service) applyConfigDefaults(ctx context.Context, cfg domain.ProxyConfi
 		cfg.InboundMode = domain.InboundMixed
 	}
 	if cfg.InboundPort == 0 && cfg.InboundMode != domain.InboundTUN {
-		cfg.InboundPort = 1080
+		cfg.InboundPort = 31346
 	}
 
 	// 内核日志统一开到 debug（按用户需求：看完整日志，而不是“只有启动几行”）。
@@ -802,6 +825,67 @@ func (s *Service) startProcess(adapter adapters.CoreAdapter, engine domain.CoreE
 	}
 
 	return nil
+}
+
+func (s *Service) ensureTCPPortAvailable(host string, port int) error {
+	if port <= 0 {
+		return nil
+	}
+
+	host = strings.TrimSpace(host)
+	if host == "" {
+		host = "127.0.0.1"
+	}
+
+	inUse, err := tcpPortInUse(host, port)
+	if err != nil {
+		return fmt.Errorf("%w: 入站监听地址无效：%s（%v）", repository.ErrInvalidData, net.JoinHostPort(host, fmt.Sprintf("%d", port)), err)
+	}
+	if !inUse {
+		return nil
+	}
+	return fmt.Errorf("%w: 入站端口已被占用：%s（请更换端口或关闭占用该端口的程序）", repository.ErrInvalidData, net.JoinHostPort(host, fmt.Sprintf("%d", port)))
+}
+
+func tcpPortInUse(host string, port int) (bool, error) {
+	if port <= 0 {
+		return false, nil
+	}
+	host = strings.TrimSpace(host)
+	if host == "" {
+		host = "127.0.0.1"
+	}
+
+	dialHost := host
+	switch dialHost {
+	case "0.0.0.0":
+		dialHost = "127.0.0.1"
+	case "::":
+		dialHost = "::1"
+	}
+
+	// 先用 Dial 探测：Windows 下 net.Listen 可能无法可靠判断“端口已被监听”。
+	if conn, err := net.DialTimeout("tcp", net.JoinHostPort(dialHost, fmt.Sprintf("%d", port)), 200*time.Millisecond); err == nil {
+		_ = conn.Close()
+		return true, nil
+	}
+
+	ln, err := net.Listen("tcp", net.JoinHostPort(host, fmt.Sprintf("%d", port)))
+	if err == nil {
+		_ = ln.Close()
+		return false, nil
+	}
+	if errors.Is(err, syscall.EADDRINUSE) {
+		return true, nil
+	}
+
+	// Windows 文案兼容：`Only one usage of each socket address ... is normally permitted.`
+	lower := strings.ToLower(err.Error())
+	if strings.Contains(lower, "address already in use") || strings.Contains(lower, "only one usage") {
+		return true, nil
+	}
+
+	return false, err
 }
 
 func (s *Service) waitForInboundPortReady(adapter adapters.CoreAdapter, handle *adapters.ProcessHandle, port int, timeout time.Duration, clearTunIface bool) error {

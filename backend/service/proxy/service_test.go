@@ -3,9 +3,12 @@ package proxy
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -209,6 +212,85 @@ func TestService_Start_MissingFRouterIDIsInvalidData(t *testing.T) {
 	}
 	if !errors.Is(err, repository.ErrInvalidData) {
 		t.Fatalf("expected errors.Is(..., ErrInvalidData)=true, got err=%v", err)
+	}
+}
+
+func TestService_Start_InboundPortInUseReturnsInvalidData(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	oldRoot := shared.ArtifactsRoot
+	shared.ArtifactsRoot = t.TempDir()
+	t.Cleanup(func() { shared.ArtifactsRoot = oldRoot })
+	seedSingBoxRuleSets(t)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	port := ln.Addr().(*net.TCPAddr).Port
+
+	store := memory.NewStore(nil)
+	frouterRepo := memory.NewFRouterRepo(store)
+	componentRepo := memory.NewComponentRepo(store)
+	settingsRepo := memory.NewSettingsRepo(store)
+
+	frouter, err := frouterRepo.Create(ctx, domain.FRouter{
+		Name: "fr-1",
+		ChainProxy: domain.ChainProxySettings{
+			Edges: []domain.ProxyEdge{
+				{ID: "e-default", From: domain.EdgeNodeLocal, To: domain.EdgeNodeDirect, Enabled: true},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create frouter: %v", err)
+	}
+
+	comp, err := componentRepo.Create(ctx, domain.CoreComponent{Kind: domain.ComponentSingBox, Name: "sing-box"})
+	if err != nil {
+		t.Fatalf("create component: %v", err)
+	}
+	installDir := filepath.Join(t.TempDir(), "sing-box")
+	if err := os.MkdirAll(installDir, 0o755); err != nil {
+		t.Fatalf("mkdir install dir: %v", err)
+	}
+	binPath := filepath.Join(installDir, "sing-box")
+	if err := os.WriteFile(binPath, []byte("dummy"), 0o644); err != nil {
+		t.Fatalf("write dummy binary: %v", err)
+	}
+	if err := componentRepo.SetInstalled(ctx, comp.ID, installDir, "test", ""); err != nil {
+		t.Fatalf("set installed: %v", err)
+	}
+
+	adapter := &fakeCoreAdapter{
+		kind:        domain.EngineSingBox,
+		binaryNames: []string{"sing-box"},
+	}
+	svc := NewService(frouterRepo, nil, componentRepo, settingsRepo)
+	svc.adapters = map[domain.CoreEngineKind]coreadapters.CoreAdapter{
+		domain.EngineSingBox: adapter,
+	}
+
+	err = svc.Start(ctx, domain.ProxyConfig{
+		FRouterID:       frouter.ID,
+		InboundMode:     domain.InboundMixed,
+		InboundPort:     port,
+		PreferredEngine: domain.EngineSingBox,
+	})
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !errors.Is(err, repository.ErrInvalidData) {
+		t.Fatalf("expected errors.Is(..., ErrInvalidData)=true, got err=%v", err)
+	}
+	if adapter.startCalls != 0 {
+		t.Fatalf("expected adapter.Start not to be called, got %d", adapter.startCalls)
+	}
+	if !strings.Contains(err.Error(), fmt.Sprintf("127.0.0.1:%d", port)) {
+		t.Fatalf("expected error to contain %q, got %v", fmt.Sprintf("127.0.0.1:%d", port), err)
 	}
 }
 
