@@ -154,6 +154,14 @@ class FRoutersAPI {
     return this.client.put(`/frouters/${id}`, data)
   }
 
+  async updateMeta(id, data) {
+    return this.client.put(`/frouters/${id}/meta`, data)
+  }
+
+  async copy(id, data) {
+    return this.client.post(`/frouters/${id}/copy`, data)
+  }
+
   async delete(id) {
     return this.client.delete(`/frouters/${id}`)
   }
@@ -407,7 +415,9 @@ function createAPI(baseURL = '') {
 function formatTime(value) {
   if (!value) return '-'
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value)
+  const timestamp = date.getTime();
+  if (Number.isNaN(timestamp)) return String(value)
+  if (timestamp <= 0) return '-'
   return date.toLocaleString()
 }
 
@@ -454,8 +464,8 @@ function formatLatency(ms) {
 
 function formatSpeed(mbps) {
   if (!mbps || mbps <= 0) return '-'
-  if (mbps >= 10) return `${mbps.toFixed(1)} Mbps`
-  return `${mbps.toFixed(2)} Mbps`
+  if (mbps >= 10) return `${mbps.toFixed(1)} MB/s`
+  return `${mbps.toFixed(2)} MB/s`
 }
 
 function sleep(ms) {

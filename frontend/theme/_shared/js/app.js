@@ -71,7 +71,9 @@ export function bootstrapTheme({ createAPI, utils }) {
 	      let appLogAutoScroll = true;
 	      let appLogsPanelInitialized = false;
 	      let logsTabsInitialized = false;
-	      let nodesLoadInFlight = false;
+	      let nodesLoadPromise = null;
+	      let nodesGraphVersion = 0;
+	      let nodesGraphIdentityHash = "";
 			      let homeAutoTestInFlight = false;
 			      let applyFRouterInFlight = false;
 			      let applyFRouterPendingId = "";
@@ -1533,24 +1535,48 @@ export function bootstrapTheme({ createAPI, utils }) {
 		      }
 
           async function loadNodes() {
-            if (nodesLoadInFlight) {
-              return;
+            if (nodesLoadPromise) {
+              return nodesLoadPromise;
             }
-            nodesLoadInFlight = true;
-            try {
-              const payload = await api.get("/nodes");
-              nodesCache = Array.isArray(payload.nodes) ? payload.nodes : [];
-              if (currentPanel === "panel-nodes") {
-                renderOrUpdateNodesPanel(nodesCache);
+
+            const buildNodesIdentityHash = (nodes) => {
+              const all = Array.isArray(nodes) ? nodes : [];
+              if (all.length === 0) return "";
+              return all
+                .map((n) => {
+                  const id = (n && n.id) || "";
+                  const name = (n && n.name) || "";
+                  return `${id}|${name}`;
+                })
+                .sort()
+                .join(";");
+            };
+
+            nodesLoadPromise = (async () => {
+              try {
+                const payload = await api.get("/nodes");
+                nodesCache = Array.isArray(payload.nodes) ? payload.nodes : [];
+
+                const nextHash = buildNodesIdentityHash(nodesCache);
+                if (nextHash !== nodesGraphIdentityHash) {
+                  nodesGraphIdentityHash = nextHash;
+                  nodesGraphVersion += 1;
+                }
+
+                if (currentPanel === "panel-nodes") {
+                  renderOrUpdateNodesPanel(nodesCache);
+                }
+              } catch (err) {
+                console.error("加载节点失败:", err);
+                if (currentPanel === "panel-nodes") {
+                  showStatus(`加载节点失败：${err.message}`, "error", 6000);
+                }
+              } finally {
+                nodesLoadPromise = null;
               }
-            } catch (err) {
-              console.error("加载节点失败:", err);
-              if (currentPanel === "panel-nodes") {
-                showStatus(`加载节点失败：${err.message}`, "error", 6000);
-              }
-            } finally {
-              nodesLoadInFlight = false;
-            }
+            })();
+
+            return nodesLoadPromise;
           }
 		
 		      async function autoTestHomePanel({ notify = false } = {}) {
@@ -1944,6 +1970,10 @@ export function bootstrapTheme({ createAPI, utils }) {
 	                  <span>走向图</span>
 	                  <span class="frouter-detail-hint">拖拽平移 · 滚轮缩放</span>
 	                </div>
+                <div class="frouter-detail-actions">
+                  <button class="mini-btn" data-action="edit-frouter-tags" title="编辑标签">标签</button>
+                  <button class="mini-btn" data-action="flow-fullscreen" title="全屏查看走向图">全屏</button>
+                </div>
 	              </div>
 	              <div class="frouter-flow" data-frouter-id="${rowId}">
 	                <div class="frouter-flow-empty">加载中...</div>
@@ -1982,6 +2012,7 @@ export function bootstrapTheme({ createAPI, utils }) {
       // ===== FRouter Flow Graph (静态走向可视化) =====
       let flowGraphPendingId = "";
       let flowGraphInFlight = false;
+      let flowGraphMarkerSeq = 0;
 
       function scheduleFRouterFlowGraph(frouterId) {
         const id = String(frouterId || "").trim();
@@ -1998,9 +2029,13 @@ export function bootstrapTheme({ createAPI, utils }) {
               const updatedAt = current && current.chainProxy && current.chainProxy.updatedAt
                 ? String(current.chainProxy.updatedAt)
                 : "";
+              const nodesVersion = String(nodesGraphVersion);
+              const nodesStable = !nodesLoadPromise;
 
-              if (container.dataset.flowRenderedId === id &&
+              if (nodesStable &&
+                container.dataset.flowRenderedId === id &&
                 container.dataset.flowRenderedUpdatedAt === updatedAt &&
+                container.dataset.flowRenderedNodesVersion === nodesVersion &&
                 container.querySelector("svg")
               ) {
                 return;
@@ -2074,15 +2109,7 @@ export function bootstrapTheme({ createAPI, utils }) {
           ? String(current.chainProxy.updatedAt)
           : "";
 
-        if (container.dataset.flowRenderedId === frouterId &&
-          container.dataset.flowRenderedUpdatedAt === updatedAt &&
-          container.querySelector("svg")
-        ) {
-          return;
-        }
-
         ensureFlowGraphContainerGuards(container);
-        renderFlowGraphMessage(container, "加载中...");
 
         if (!dagreAvailable()) {
           renderFlowGraphMessage(container, "走向图依赖 dagre，但当前未加载");
@@ -2094,6 +2121,18 @@ export function bootstrapTheme({ createAPI, utils }) {
           return;
         }
 
+        await loadNodes();
+        const nodesVersion = String(nodesGraphVersion);
+        if (container.dataset.flowRenderedId === frouterId &&
+          container.dataset.flowRenderedUpdatedAt === updatedAt &&
+          container.dataset.flowRenderedNodesVersion === nodesVersion &&
+          container.querySelector("svg")
+        ) {
+          return;
+        }
+
+        renderFlowGraphMessage(container, "加载中...");
+
         const stillActive = nodeGrid.querySelector(".node-row.active");
         if (!stillActive || (stillActive.dataset.id || "") !== frouterId) {
           return;
@@ -2101,7 +2140,6 @@ export function bootstrapTheme({ createAPI, utils }) {
         const stillContainer = stillActive.querySelector(".frouter-flow");
         if (!stillContainer) return;
 
-        await loadNodes();
         const nodes = Array.isArray(nodesCache) ? nodesCache : [];
 
         const edges = Array.isArray(current.chainProxy.edges) ? current.chainProxy.edges : [];
@@ -2111,6 +2149,7 @@ export function bootstrapTheme({ createAPI, utils }) {
         renderFRouterFlowSVG(stillContainer, model);
         stillContainer.dataset.flowRenderedId = frouterId;
         stillContainer.dataset.flowRenderedUpdatedAt = updatedAt;
+        stillContainer.dataset.flowRenderedNodesVersion = nodesVersion;
       }
 
       function buildFRouterFlowModel({ edges, slots, nodes }) {
@@ -2508,7 +2547,8 @@ export function bootstrapTheme({ createAPI, utils }) {
 
         const defs = createSvg("defs");
         const marker = createSvg("marker");
-        marker.setAttribute("id", "flow-arrow");
+        const markerId = `flow-arrow-${++flowGraphMarkerSeq}`;
+        marker.setAttribute("id", markerId);
         marker.setAttribute("viewBox", "0 0 10 10");
         marker.setAttribute("refX", "8");
         marker.setAttribute("refY", "5");
@@ -2569,7 +2609,7 @@ export function bootstrapTheme({ createAPI, utils }) {
           const path = createSvg("path");
           path.setAttribute("d", buildPathD(points));
           path.setAttribute("class", `flow-edge flow-edge-${String(e.kind || "link")}`);
-          path.setAttribute("marker-end", "url(#flow-arrow)");
+          path.setAttribute("marker-end", `url(#${markerId})`);
           edgesGroup.appendChild(path);
         }
 
@@ -2722,6 +2762,89 @@ export function bootstrapTheme({ createAPI, utils }) {
         container.addEventListener("wheel", onWheel, { passive: false });
         container.addEventListener("dblclick", () => fitToView());
       }
+
+      // ===== Flow Graph Modal (全屏) =====
+      const flowGraphModal = document.getElementById("flow-graph-modal");
+      const flowGraphModalClose = document.getElementById("flow-graph-modal-close");
+      const flowGraphModalBackdrop = flowGraphModal ? flowGraphModal.querySelector(".modal-backdrop") : null;
+      const flowGraphModalTitle = document.getElementById("flow-graph-modal-title");
+      const flowGraphModalContainer = document.getElementById("flow-graph-modal-container");
+
+      function closeFlowGraphModal() {
+        if (!flowGraphModal) return;
+        flowGraphModal.classList.remove("open");
+        if (flowGraphModalContainer) {
+          flowGraphModalContainer.innerHTML = "";
+        }
+      }
+
+      async function openFlowGraphModal(frouterId) {
+        if (!flowGraphModal || !flowGraphModalContainer) {
+          showStatus("当前主题不支持走向图全屏窗口", "error", 5000);
+          return;
+        }
+
+        const id = String(frouterId || "").trim();
+        if (!id) {
+          showStatus("请先选择一个 FRouter", "error", 4000);
+          return;
+        }
+
+        flowGraphModal.classList.add("open");
+        if (flowGraphModalTitle) {
+          flowGraphModalTitle.textContent = "走向图";
+        }
+        ensureFlowGraphContainerGuards(flowGraphModalContainer);
+        renderFlowGraphMessage(flowGraphModalContainer, "加载中...");
+
+        // 等待 Modal 可见后再测量布局尺寸
+        await new Promise((r) => requestAnimationFrame(r));
+
+        try {
+          await Promise.all([
+            loadFRouters({ notify: false }),
+            loadNodes()
+          ]);
+
+          if (!dagreAvailable()) {
+            renderFlowGraphMessage(flowGraphModalContainer, "走向图依赖 dagre，但当前未加载");
+            return;
+          }
+
+          const current = Array.isArray(froutersCache)
+            ? froutersCache.find((r) => r && r.id === id)
+            : null;
+          if (!current || !current.chainProxy) {
+            renderFlowGraphMessage(flowGraphModalContainer, "未找到该 FRouter 的图数据");
+            return;
+          }
+
+          const name = current && current.name ? String(current.name) : "未命名 FRouter";
+          if (flowGraphModalTitle) {
+            flowGraphModalTitle.textContent = `走向图 · ${name}`;
+          }
+
+          const nodes = Array.isArray(nodesCache) ? nodesCache : [];
+          const edges = Array.isArray(current.chainProxy.edges) ? current.chainProxy.edges : [];
+          const slots = Array.isArray(current.chainProxy.slots) ? current.chainProxy.slots : [];
+          const model = buildFRouterFlowModel({ edges, slots, nodes });
+          renderFRouterFlowSVG(flowGraphModalContainer, model);
+        } catch (err) {
+          renderFlowGraphMessage(flowGraphModalContainer, `加载失败：${err.message}`);
+        }
+      }
+
+      if (flowGraphModalClose) {
+        flowGraphModalClose.addEventListener("click", closeFlowGraphModal);
+      }
+      if (flowGraphModalBackdrop) {
+        flowGraphModalBackdrop.addEventListener("click", closeFlowGraphModal);
+      }
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && flowGraphModal?.classList.contains("open")) {
+          closeFlowGraphModal();
+        }
+      });
 
 	      async function loadConfigs({ notify = false } = {}) {
 	        configsLoadNotify = configsLoadNotify || Boolean(notify);
@@ -4168,6 +4291,11 @@ export function bootstrapTheme({ createAPI, utils }) {
           chainListEditor.addRule();
         });
 
+        document.getElementById('chain-open-flow')?.addEventListener('click', async () => {
+          const current = getCurrentFRouter();
+          await openFlowGraphModal(current ? current.id : "");
+        });
+
         console.log('[ChainListEditor] 初始化完成');
       }
 
@@ -4339,6 +4467,86 @@ export function bootstrapTheme({ createAPI, utils }) {
 	        });
 	      }
 
+      function buildUniqueFRouterCopyName(baseName) {
+        const base = String(baseName || "").trim() || "FRouter";
+        const existing = new Set(
+          Array.isArray(froutersCache)
+            ? froutersCache.map((r) => String((r && r.name) || "").trim()).filter(Boolean)
+            : []
+        );
+
+        const candidate = `${base} 副本`;
+        if (!existing.has(candidate)) return candidate;
+
+        for (let i = 2; i <= 99; i++) {
+          const next = `${base} 副本 ${i}`;
+          if (!existing.has(next)) return next;
+        }
+        return `${base} 副本 ${Date.now()}`;
+      }
+
+      async function editFRouterTags(frouterId) {
+        if (!frouterId) {
+          showStatus("未找到 FRouter", "error", 4000);
+          return;
+        }
+
+        const current = Array.isArray(froutersCache)
+          ? froutersCache.find((r) => r && r.id === frouterId)
+          : null;
+        const prev = current && Array.isArray(current.tags) ? current.tags.join(",") : "";
+        const input = prompt("编辑 FRouter 标签（逗号分隔）", prev);
+        if (input === null) return;
+        const tags = parseList(input);
+
+        try {
+          await api.put(`/frouters/${frouterId}/meta`, { tags });
+          showStatus("标签已更新", "success");
+          await loadFRouters({ notify: false });
+        } catch (err) {
+          showStatus(`更新标签失败：${err.message}`, "error", 6000);
+        }
+      }
+
+      async function copyFRouter(frouterId) {
+        if (!frouterId) {
+          showStatus("未找到 FRouter", "error", 4000);
+          return;
+        }
+        const current = Array.isArray(froutersCache)
+          ? froutersCache.find((r) => r && r.id === frouterId)
+          : null;
+        const baseName = current && current.name ? String(current.name) : "";
+        const name = buildUniqueFRouterCopyName(baseName);
+
+        try {
+          const created = await api.post(`/frouters/${frouterId}/copy`, { name });
+          showStatus("FRouter 已复制", "success");
+          await loadFRouters({ notify: false });
+          if (created && created.id) {
+            setCurrentFRouter(created.id, { notify: false });
+          }
+        } catch (err) {
+          showStatus(`复制失败：${err.message}`, "error", 6000);
+        }
+      }
+
+      async function deleteFRouter(frouterId) {
+        if (!frouterId) {
+          showStatus("未找到 FRouter", "error", 4000);
+          return;
+        }
+        if (!confirm("确认删除该 FRouter？此操作不可撤销。")) return;
+
+        try {
+          await api.delete(`/frouters/${frouterId}`);
+          showStatus("FRouter 已删除", "success");
+          await loadFRouters({ notify: false });
+        } catch (err) {
+          showStatus(`删除失败：${err.message}`, "error", 6000);
+        }
+      }
+
 		      function ensureFRouterContextMenu() {
 		        let menu = document.getElementById("frouter-context-menu");
 		        if (menu) return menu;
@@ -4349,10 +4557,14 @@ export function bootstrapTheme({ createAPI, utils }) {
 	        menu.className = "slot-context-menu";
 	        menu.innerHTML = `
 	          <div class="slot-context-menu-item" data-action="open-chain">链路编辑</div>
+            <div class="slot-context-menu-item" data-action="rename-frouter">重命名</div>
+            <div class="slot-context-menu-item" data-action="edit-frouter-tags">编辑标签</div>
+            <div class="slot-context-menu-item" data-action="copy-frouter">复制 FRouter</div>
+            <div class="slot-context-menu-item danger" data-action="delete-frouter">删除 FRouter</div>
 	        `;
 	        document.body.appendChild(menu);
 
-	        menu.addEventListener("click", (e) => {
+	        menu.addEventListener("click", async (e) => {
 	          const item = e.target.closest(".slot-context-menu-item[data-action]");
 	          if (!item) return;
 	          menu.classList.remove("visible");
@@ -4362,6 +4574,35 @@ export function bootstrapTheme({ createAPI, utils }) {
 	          if (action === "open-chain") {
 	            if (frouterId) setCurrentFRouter(frouterId, { notify: false });
 	            openChainEditorPanel();
+            } else if (action === "rename-frouter") {
+              if (!frouterId) {
+                showStatus("未找到 FRouter", "error", 4000);
+                return;
+              }
+              const current = Array.isArray(froutersCache)
+                ? froutersCache.find((r) => r && r.id === frouterId)
+                : null;
+              const prevName = current && current.name ? String(current.name) : "";
+              const input = prompt("重命名 FRouter", prevName);
+              if (input === null) return;
+              const nextName = String(input || "").trim();
+              if (!nextName) {
+                showStatus("名称不能为空", "error", 4000);
+                return;
+              }
+              try {
+                await api.put(`/frouters/${frouterId}/meta`, { name: nextName });
+                showStatus("FRouter 已重命名", "success");
+                await loadFRouters({ notify: false });
+              } catch (err) {
+                showStatus(`重命名失败：${err.message}`, "error", 6000);
+              }
+	          } else if (action === "edit-frouter-tags") {
+              await editFRouterTags(frouterId);
+	          } else if (action === "copy-frouter") {
+              await copyFRouter(frouterId);
+	          } else if (action === "delete-frouter") {
+              await deleteFRouter(frouterId);
 	          }
 	        });
 
@@ -4929,6 +5170,10 @@ export function bootstrapTheme({ createAPI, utils }) {
               await api.post(`/frouters/${id}/speedtest`);
               showStatus("测速任务已排队", "info");
               await loadFRouters();
+            } else if (action === "edit-frouter-tags") {
+              await editFRouterTags(id);
+            } else if (action === "flow-fullscreen") {
+              await openFlowGraphModal(id);
             }
           } catch (err) {
             showStatus(`操作失败：${err.message}`, "error", 6000);
@@ -4954,8 +5199,8 @@ export function bootstrapTheme({ createAPI, utils }) {
 	          const menu = ensureFRouterContextMenu();
 	          menu.dataset.frouterId = id;
 
-	          const maxLeft = Math.max(0, window.innerWidth - 200);
-	          const maxTop = Math.max(0, window.innerHeight - 120);
+	          const maxLeft = Math.max(0, window.innerWidth - 240);
+	          const maxTop = Math.max(0, window.innerHeight - 240);
 	          menu.style.left = `${Math.min(event.clientX, maxLeft)}px`;
 	          menu.style.top = `${Math.min(event.clientY, maxTop)}px`;
 	          menu.classList.add("visible");
@@ -5677,23 +5922,25 @@ export function bootstrapTheme({ createAPI, utils }) {
 
         const inboundMode = currentCfg && currentCfg.inboundMode ? currentCfg.inboundMode : "mixed";
 
-        // TUN 模式下端口不生效，但仍可提前保存到配置中（切回非 TUN 时生效）。
+        // 注意：TUN 模式下 sing-box 仍会启用本地 mixed 入站端口（HTTP + SOCKS）。
+        // 端口变更需要保存到 ProxyConfig.inboundPort，且内核运行时需重启才能生效。
+        let savedMode = inboundMode;
         if (inboundMode === "tun") {
           try {
             await api.put("/proxy/config", { inboundPort: normalized });
-            showStatus("已保存代理端口（当前为 TUN 模式，切回非 TUN 后生效）", "info", 4000);
           } catch (err) {
             showStatus(`保存代理端口失败：${err.message}`, "error", 6000);
+            return;
           }
-          return;
-        }
-
-        // 非 TUN：强制保持 mixed（系统代理场景需要 HTTP + SOCKS）
-        try {
-          await api.put("/proxy/config", { inboundMode: "mixed", inboundPort: normalized });
-        } catch (err) {
-          showStatus(`保存代理端口失败：${err.message}`, "error", 6000);
-          return;
+        } else {
+          // 非 TUN：强制保持 mixed（系统代理场景需要 HTTP + SOCKS）
+          try {
+            await api.put("/proxy/config", { inboundMode: "mixed", inboundPort: normalized });
+            savedMode = "mixed";
+          } catch (err) {
+            showStatus(`保存代理端口失败：${err.message}`, "error", 6000);
+            return;
+          }
         }
 
         // 如果内核正在运行，需要重启才能让端口变更生效。
@@ -5723,7 +5970,8 @@ export function bootstrapTheme({ createAPI, utils }) {
           }
 
           // 系统代理已启用时，重启后需要重新应用系统代理（端口可能发生变化）。
-          if (systemProxySettings && systemProxySettings.enabled) {
+          // TUN 模式下系统代理应保持关闭，避免指向本地端口导致断网。
+          if (savedMode !== "tun" && systemProxySettings && systemProxySettings.enabled) {
             try {
               await api.put("/settings/system-proxy", {
                 enabled: true,

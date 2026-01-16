@@ -1052,6 +1052,39 @@
 	      stroke-dasharray: 4 4;
 	    }
 
+	    .flow-graph-modal-content {
+	      width: 96vw;
+	      height: 92vh;
+	      max-width: none;
+	      max-height: none;
+	      padding: 18px;
+	      display: flex;
+	      flex-direction: column;
+	      gap: 12px;
+	    }
+
+	    .flow-graph-modal-header {
+	      display: flex;
+	      align-items: center;
+	      justify-content: space-between;
+	      gap: 12px;
+	    }
+
+	    .flow-graph-modal-title {
+	      font-size: 14px;
+	      font-weight: 600;
+	      color: var(--text-primary);
+	    }
+
+	    .flow-graph-modal-body {
+	      flex: 1;
+	      min-height: 0;
+	    }
+
+	    .flow-graph-modal-body .frouter-flow {
+	      height: 100%;
+	    }
+
 
     /* === Buttons & Inputs === */
     button {
@@ -1985,5 +2018,39 @@
     .chain-toggle input:checked + .chain-toggle-slider:before {
       background: var(--bg-root);
       transform: translateX(18px);
+    }
+
+    /* Context menu (FRouter / Chain Editor) */
+    .slot-context-menu {
+      position: fixed;
+      z-index: 9999;
+      display: none;
+      min-width: 180px;
+      padding: 6px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-md);
+    }
+
+    .slot-context-menu.visible {
+      display: block;
+    }
+
+    .slot-context-menu-item {
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      user-select: none;
+      color: var(--text-primary);
+      white-space: nowrap;
+    }
+
+    .slot-context-menu-item:hover {
+      background: var(--bg-card-hover);
+    }
+
+    .slot-context-menu-item.danger {
+      color: var(--error);
     }
   

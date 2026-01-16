@@ -60,6 +60,14 @@
 | 202601151954 | theme-custom-style-docs | 文档 | ✅已完成 | [2026-01/202601151954_theme-custom-style-docs](2026-01/202601151954_theme-custom-style-docs/) |
 | 202601151954 | fix-proxy-inbound-port-bind | 修复 | ✅已完成 | [2026-01/202601151954_fix-proxy-inbound-port-bind](2026-01/202601151954_fix-proxy-inbound-port-bind/) |
 | 202601151958 | fix-subscription-name-display | 修复 | ✅已完成 | [2026-01/202601151958_fix_subscription_name_display](2026-01/202601151958_fix_subscription_name_display/) |
+| 202601161625 | fix_issue54_tun_port | 修复 | ✅已完成 | [2026-01/202601161625_fix_issue54_tun_port](2026-01/202601161625_fix_issue54_tun_port/) |
+| 202601161626 | fix-issue55-subscription-node-id-reuse | 修复 | ✅已完成 | [2026-01/202601161626_fix-issue55-subscription-node-id-reuse](2026-01/202601161626_fix-issue55-subscription-node-id-reuse/) |
+| 202601161628 | fix-issue62-frouter-rename | 修复 | ✅已完成 | [2026-01/202601161628_fix-issue62-frouter-rename](2026-01/202601161628_fix-issue62-frouter-rename/) |
+| 202601161631 | fix-issue-61-copy-frouter | 修复 | ✅已完成 | [2026-01/202601161631_fix-issue-61-copy-frouter](2026-01/202601161631_fix-issue-61-copy-frouter/) |
+| 202601161631 | fix-issue60-edit-frouter-tags | 修复 | ✅已完成 | [2026-01/202601161631_fix-issue60-edit-frouter-tags](2026-01/202601161631_fix-issue60-edit-frouter-tags/) |
+| 202601161635 | fix-issue59-delete-frouter | 修复 | ✅已完成 | [2026-01/202601161635_fix-issue59-delete-frouter](2026-01/202601161635_fix-issue59-delete-frouter/) |
+| 202601161636 | fix-issue57-flow-graph-fullscreen | 修复 | ✅已完成 | [2026-01/202601161636_fix-issue57-flow-graph-fullscreen](2026-01/202601161636_fix-issue57-flow-graph-fullscreen/) |
+| 202601161700 | fix-issue56-flow-graph-node-sync | 修复 | ✅已完成 | [2026-01/202601161700_fix-issue56-flow-graph-node-sync](2026-01/202601161700_fix-issue56-flow-graph-node-sync/) |
 
 ## 按月归档
 
@@ -119,3 +127,11 @@
 - [202601151954_theme-custom-style-docs](2026-01/202601151954_theme-custom-style-docs/) - 补齐自定义主题/样式开发文档与示例模板（Issue #46）
 - [202601151954_fix-proxy-inbound-port-bind](2026-01/202601151954_fix-proxy-inbound-port-bind/) - 修复 Windows 下 sing-box mixed 入站端口占用启动失败：默认端口调整为 31346，并在端口占用时 fail-fast 返回明确错误提示
 - [202601151958_fix_subscription_name_display](2026-01/202601151958_fix_subscription_name_display/) - 主题页：修复节点面板首次进入时订阅名显示为配置 ID（Issue #53 / #42）
+- [202601161625_fix_issue54_tun_port](2026-01/202601161625_fix_issue54_tun_port/) - 主题页：系统代理端口联动后端 `ProxyConfig.inboundPort`，避免 TUN 场景回退 mixed 后仍指向 1080（Issue #54）
+- [202601161626_fix-issue55-subscription-node-id-reuse](2026-01/202601161626_fix-issue55-subscription-node-id-reuse/) - 订阅：拉取节点时复用历史节点 ID 并重写订阅链路引用，避免 FRouter 节点变为未知（Issue #55 / #18）
+- [202601161628_fix-issue62-frouter-rename](2026-01/202601161628_fix-issue62-frouter-rename/) - FRouter：新增重命名接口与主题页右键“重命名”；修复更新 FRouter 时未传 tags 会意外清空 tags（Issue #62）
+- [202601161631_fix-issue-61-copy-frouter](2026-01/202601161631_fix-issue-61-copy-frouter/) - FRouter：主题页右键菜单支持复制（自动生成不冲突名称），后端新增 `POST /frouters/:id/copy`（Issue #61）
+- [202601161631_fix-issue60-edit-frouter-tags](2026-01/202601161631_fix-issue60-edit-frouter-tags/) - FRouter：支持编辑标签（详情卡片“标签”按钮 + 右键菜单）（Issue #60）
+- [202601161635_fix-issue59-delete-frouter](2026-01/202601161635_fix-issue59-delete-frouter/) - FRouter：支持删除，并在删除后自动修复 `ProxyConfig.frouterId`（删到空集合自动创建默认 FRouter）（Issue #59）
+- [202601161636_fix-issue57-flow-graph-fullscreen](2026-01/202601161636_fix-issue57-flow-graph-fullscreen/) - 主题页：走向图支持全屏查看，并修复多图 marker id 冲突（Issue #57）
+- [202601161700_fix-issue56-flow-graph-node-sync](2026-01/202601161700_fix-issue56-flow-graph-node-sync/) - 主题页：修复拉取节点后走向图节点不同步（Issue #56）

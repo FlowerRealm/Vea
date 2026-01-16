@@ -7,7 +7,7 @@
 本地应用场景下默认不做复杂认证（以本机访问为主），具体以实现为准。
 
 ## 接口索引（节选）
-- `GET /frouters` / `POST /frouters` / `PUT /frouters/:id` / `DELETE /frouters/:id`
+- `GET /frouters` / `POST /frouters` / `PUT /frouters/:id` / `PUT /frouters/:id/meta` / `POST /frouters/:id/copy` / `DELETE /frouters/:id`
 - `GET /frouters/:id/graph`
 - `GET /nodes`
 - `GET /themes` / `POST /themes/import` / `GET /themes/:id/export` / `DELETE /themes/:id`

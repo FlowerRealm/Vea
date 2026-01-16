@@ -398,6 +398,58 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /frouters/{id}/meta:
+    put:
+      tags: [frouters]
+      summary: 更新 FRouter 元信息
+      description: 仅更新 FRouter 的 name/tags，不触发链路图编译校验
+      operationId: updateFRouterMeta
+      parameters:
+        - $ref: '#/components/parameters/FRouterId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FRouterMetaRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FRouter'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /frouters/{id}/copy:
+    post:
+      tags: [frouters]
+      summary: 复制 FRouter
+      description: 基于指定 FRouter 的 chainProxy/tags 创建副本
+      operationId: copyFRouter
+      parameters:
+        - $ref: '#/components/parameters/FRouterId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FRouterCopyRequest'
+      responses:
+        '201':
+          description: 复制成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FRouter'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
   /frouters/{id}/ping:
     post:
       tags: [frouters]
@@ -1602,6 +1654,28 @@ components:
           type: string
         chainProxy:
           $ref: '#/components/schemas/ChainProxySettings'
+        tags:
+          type: array
+          items:
+            type: string
+
+    FRouterMetaRequest:
+      type: object
+      description: 仅更新 FRouter 的 name/tags，不触发链路图编译校验（至少提供一个字段）
+      properties:
+        name:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    FRouterCopyRequest:
+      type: object
+      description: 复制 FRouter 时的可选覆盖字段（不传则使用默认命名与原 tags）
+      properties:
+        name:
+          type: string
         tags:
           type: array
           items:

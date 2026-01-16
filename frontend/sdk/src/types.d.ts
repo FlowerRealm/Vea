@@ -228,6 +228,16 @@ export interface FRouterUpdateRequest {
   tags?: string[]
 }
 
+export interface FRouterMetaRequest {
+  name?: string
+  tags?: string[]
+}
+
+export interface FRouterCopyRequest {
+  name?: string
+  tags?: string[]
+}
+
 export interface NodeCreateRequest {
   name: string
   address: string
@@ -248,6 +258,16 @@ export interface NodeUpdateRequest {
   security?: NodeSecurity
   transport?: NodeTransport
   tls?: NodeTLS
+}
+
+export interface NodeFromLinkRequest {
+  shareLink: string
+  tags?: string[]
+}
+
+export interface NodeMetaRequest {
+  name?: string
+  tags?: string[]
 }
 
 export interface ConfigImportRequest {
@@ -324,6 +344,8 @@ export interface FRoutersAPI {
   list(): Promise<FRoutersListResponse>
   create(data: FRouterCreateRequest): Promise<FRouter>
   update(id: string, data: FRouterUpdateRequest): Promise<FRouter>
+  updateMeta(id: string, data: FRouterMetaRequest): Promise<FRouter>
+  copy(id: string, data?: FRouterCopyRequest): Promise<FRouter>
   delete(id: string): Promise<null>
   ping(id: string): Promise<null>
   speedtest(id: string): Promise<null>
@@ -348,7 +370,11 @@ export interface ConfigsAPI {
 export interface NodesAPI {
   list(): Promise<NodesListResponse>
   create(data: NodeCreateRequest): Promise<Node>
+  createFromLink(data: NodeFromLinkRequest): Promise<NodesListResponse>
   update(id: string, data: NodeUpdateRequest): Promise<Node>
+  updateMeta(id: string, data: NodeMetaRequest): Promise<Node>
+  bulkPing(ids?: string[]): Promise<null>
+  bulkSpeedtest(ids?: string[]): Promise<null>
   ping(id: string): Promise<null>
   speedtest(id: string): Promise<null>
 }

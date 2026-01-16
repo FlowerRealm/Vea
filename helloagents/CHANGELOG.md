@@ -18,6 +18,7 @@
 - 增加应用内“检查更新”能力：支持 Windows/macOS 从 GitHub Pages 获取最新稳定版并自动下载、安装与重启（Issue #24）。
 - 主题页（首页）增加“重启内核”按钮：允许手动触发 `POST /proxy/start` 重启/启动内核，并在系统代理启用时自动关闭/恢复以避免断网。
 - FRouter 面板新增“走向图”详情卡片：在选中态展示静态配置走向（规则→去向→链路），支持拖拽平移与滚轮缩放浏览。
+- FRouter 支持复制/删除/编辑标签：主题页右键菜单新增“复制/删除/编辑标签”，并新增 `POST /frouters/:id/copy`；删除后自动修复 `ProxyConfig.frouterId` 并在空集合时自动创建默认 FRouter（Issue #59/#60/#61）。
 
 ### 变更
 - 运行期数据与 artifacts 统一写入 userData（开发模式同样）；启动时会将仓库/可执行目录旁遗留的 `data/` 与 `artifacts/` 迁移到 userData 并清理源目录。
@@ -25,6 +26,9 @@
 - 默认 TUN 网卡名从 `tun0` 调整为 `vea`：Linux 默认显式使用 `vea`；Windows/macOS 默认不强制写死设备名并兼容 legacy `tun0`（仍按地址判定就绪）。
 
 ### 修复
+- 修复走向图无法全屏查看的问题：详情卡片新增“全屏”入口、路由规则面板新增“走向图”入口，并修复多图同时存在时 SVG marker id 冲突（Issue #57）。
+- 修复拉取节点后走向图节点与实际节点不同步的问题：走向图渲染会等待 nodes 列表加载完成，并在节点 id/name 变化时触发重渲染（Issue #56）。
+- 新增 FRouter 元信息更新接口 `PUT /frouters/:id/meta` 与主题页“重命名”入口；并修复 `PUT /frouters/:id` 未携带 `tags` 时意外清空 tags 的问题（Issue #62）。
 - 修复速度单位显示不一致的问题：前端主题/SDK/OpenAPI 将速度单位从 `Mbps` 修正为 `MB/s`（与实际测速计算单位一致）。
 - 修复前端“系统代理端口（proxy.port）”不生效的问题：端口变更会联动更新 `ProxyConfig.inboundPort`；内核运行中修改端口会自动重启并在系统代理启用时重新应用系统代理设置；启动时从后端同步实际端口避免 UI 默认值误导。
 - 修复 Windows 下 sing-box `mixed` 入站端口占用导致启动失败的问题：默认入站端口从 `1080` 调整为 `31346`，并在启动前检测端口占用，冲突时 fail-fast 返回明确错误提示（不自动换端口）。

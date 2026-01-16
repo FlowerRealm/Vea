@@ -99,6 +99,8 @@ func (r *Router) register(engine *gin.Engine) {
 		frouters.GET("", r.listFRouters)
 		frouters.POST("", r.createFRouter)
 		frouters.PUT(":id", r.updateFRouter)
+		frouters.PUT(":id/meta", r.updateFRouterMeta)
+		frouters.POST(":id/copy", r.copyFRouter)
 		frouters.DELETE(":id", r.deleteFRouter)
 		frouters.POST(":id/ping", r.pingFRouter)
 		frouters.POST(":id/speedtest", r.speedtestFRouter)
@@ -193,6 +195,16 @@ type frouterUpdateRequest struct {
 	Name       string                     `json:"name" binding:"required"`
 	ChainProxy *domain.ChainProxySettings `json:"chainProxy,omitempty"`
 	Tags       []string                   `json:"tags,omitempty"`
+}
+
+type frouterMetaRequest struct {
+	Name string   `json:"name,omitempty"`
+	Tags []string `json:"tags,omitempty"`
+}
+
+type frouterCopyRequest struct {
+	Name string   `json:"name,omitempty"`
+	Tags []string `json:"tags,omitempty"`
 }
 
 type nodeRequest struct {
@@ -567,7 +579,9 @@ func (r *Router) updateFRouter(c *gin.Context) {
 		if _, err := nodegroup.CompileFRouter(frouter, nodes); err != nil {
 			return domain.FRouter{}, err
 		}
-		frouter.Tags = req.Tags
+		if req.Tags != nil {
+			frouter.Tags = req.Tags
+		}
 		return frouter, nil
 	})
 	if err != nil {
@@ -575,6 +589,116 @@ func (r *Router) updateFRouter(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, updated)
+}
+
+func (r *Router) updateFRouterMeta(c *gin.Context) {
+	var req frouterMetaRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	if strings.TrimSpace(req.Name) == "" && req.Tags == nil {
+		badRequest(c, fmt.Errorf("%w: name or tags is required", repository.ErrInvalidData))
+		return
+	}
+
+	id := c.Param("id")
+	updated, err := r.service.UpdateFRouter(id, func(frouter domain.FRouter) (domain.FRouter, error) {
+		if strings.TrimSpace(req.Name) != "" {
+			frouter.Name = strings.TrimSpace(req.Name)
+		}
+		if req.Tags != nil {
+			frouter.Tags = req.Tags
+		}
+		return frouter, nil
+	})
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, updated)
+}
+
+func (r *Router) copyFRouter(c *gin.Context) {
+	var req frouterCopyRequest
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		badRequest(c, err)
+		return
+	}
+
+	id := c.Param("id")
+	original, err := r.service.GetFRouter(id)
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		base := strings.TrimSpace(original.Name)
+		if base == "" {
+			base = "FRouter"
+		}
+		name = base + " 副本"
+	}
+
+	next := domain.FRouter{
+		Name:       name,
+		Tags:       cloneStringSlice(original.Tags),
+		ChainProxy: cloneChainProxySettings(original.ChainProxy),
+	}
+	if req.Tags != nil {
+		next.Tags = cloneStringSlice(req.Tags)
+	}
+	next.ChainProxy.Edges = normalizeChainEdges(next.ChainProxy.Edges)
+	next.ChainProxy.UpdatedAt = time.Now()
+
+	// 复制属于“新创建”：不继承订阅归属与历史测速/延迟等运行态数据。
+	next.SourceConfigID = ""
+	next.LastLatencyMS = 0
+	next.LastLatencyAt = time.Time{}
+	next.LastLatencyError = ""
+	next.LastSpeedMbps = 0
+	next.LastSpeedAt = time.Time{}
+	next.LastSpeedError = ""
+
+	if len(next.ChainProxy.Slots) == 0 {
+		next.ChainProxy.Slots = []domain.SlotNode{{ID: "slot-1", Name: "配置槽"}}
+	}
+	if len(next.ChainProxy.Edges) == 0 {
+		next.ChainProxy.Edges = []domain.ProxyEdge{{
+			ID:       uuid.NewString(),
+			From:     domain.EdgeNodeLocal,
+			To:       domain.EdgeNodeDirect,
+			Priority: 0,
+			Enabled:  true,
+		}}
+	}
+
+	nodes, err := r.service.ListNodes()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	if _, err := nodegroup.CompileFRouter(next, nodes); err != nil {
+		var ce *nodegroup.CompileError
+		if errors.As(err, &ce) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":    "invalid frouter",
+				"problems": ce.Problems,
+			})
+			return
+		}
+		badRequest(c, err)
+		return
+	}
+
+	created, err := r.service.CreateFRouter(next)
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, created)
 }
 
 func (r *Router) deleteFRouter(c *gin.Context) {
@@ -1322,6 +1446,52 @@ func normalizeChainEdges(edges []domain.ProxyEdge) []domain.ProxyEdge {
 			out[i].Priority = 0
 		}
 	}
+	return out
+}
+
+func cloneStringSlice(items []string) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]string, len(items))
+	copy(out, items)
+	return out
+}
+
+func cloneChainProxySettings(chain domain.ChainProxySettings) domain.ChainProxySettings {
+	out := chain
+
+	if len(chain.Edges) > 0 {
+		edges := make([]domain.ProxyEdge, len(chain.Edges))
+		for i := range chain.Edges {
+			edges[i] = chain.Edges[i]
+			if len(chain.Edges[i].Via) > 0 {
+				edges[i].Via = cloneStringSlice(chain.Edges[i].Via)
+			}
+			if chain.Edges[i].RouteRule != nil {
+				rule := *chain.Edges[i].RouteRule
+				rule.Domains = cloneStringSlice(rule.Domains)
+				rule.IPs = cloneStringSlice(rule.IPs)
+				edges[i].RouteRule = &rule
+			}
+		}
+		out.Edges = edges
+	}
+
+	if len(chain.Slots) > 0 {
+		slots := make([]domain.SlotNode, len(chain.Slots))
+		copy(slots, chain.Slots)
+		out.Slots = slots
+	}
+
+	if len(chain.Positions) > 0 {
+		positions := make(map[string]domain.GraphPosition, len(chain.Positions))
+		for k, v := range chain.Positions {
+			positions[k] = v
+		}
+		out.Positions = positions
+	}
+
 	return out
 }
 

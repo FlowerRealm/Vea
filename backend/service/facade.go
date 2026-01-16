@@ -221,7 +221,11 @@ func (f *Facade) UpdateFRouter(id string, updateFn func(domain.FRouter) (domain.
 
 // DeleteFRouter 删除 FRouter
 func (f *Facade) DeleteFRouter(id string) error {
-	return f.frouter.Delete(context.Background(), id)
+	ctx := context.Background()
+	if err := f.frouter.Delete(ctx, id); err != nil {
+		return err
+	}
+	return f.EnsureDefaultFRouter(ctx)
 }
 
 // MeasureFRouterLatencyAsync 异步测试 FRouter 延迟

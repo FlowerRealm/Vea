@@ -32,6 +32,7 @@
 **交互:**
 - 支持拖拽平移、滚轮缩放浏览
 - 双击适配视图（fit-to-view）
+- 支持全屏查看：在详情卡片点击“全屏”，或在「路由规则」面板点击“走向图”打开全屏窗口
 
 ### 需求: 槽位管理（slot-*）
 **模块:** frontend/theme
@@ -113,3 +114,10 @@
 - [202601131921_fix-backend-port-conflict](../../history/2026-01/202601131921_fix-backend-port-conflict/) - Electron：单实例锁 + 启动前健康检查，避免固定端口冲突导致后端启动即退出
 - [202601141452_frouter_flow_graph](../../history/2026-01/202601141452_frouter_flow_graph/) - 主题页：FRouter 面板选中态卡片新增“走向图”（静态配置），支持拖拽平移与滚轮缩放浏览
 - [202601151958_fix_subscription_name_display](../../history/2026-01/202601151958_fix_subscription_name_display/) - 主题页：修复节点面板首次进入时订阅名显示为配置 ID（Issue #53 / #42）
+- [202601161625_fix_issue54_tun_port](../../history/2026-01/202601161625_fix_issue54_tun_port/) - 主题页：系统代理端口联动后端 `ProxyConfig.inboundPort`，避免 TUN 场景回退 mixed 后仍指向 1080（Issue #54）
+- [202601161628_fix-issue62-frouter-rename](../../history/2026-01/202601161628_fix-issue62-frouter-rename/) - FRouter：主题页右键菜单新增“重命名”，并接入 `PUT /frouters/:id/meta`（Issue #62）
+- [202601161631_fix-issue-61-copy-frouter](../../history/2026-01/202601161631_fix-issue-61-copy-frouter/) - FRouter：主题页右键菜单支持复制（自动生成不冲突名称）（Issue #61）
+- [202601161631_fix-issue60-edit-frouter-tags](../../history/2026-01/202601161631_fix-issue60-edit-frouter-tags/) - FRouter：支持编辑标签（详情卡片“标签”按钮 + 右键菜单）（Issue #60）
+- [202601161635_fix-issue59-delete-frouter](../../history/2026-01/202601161635_fix-issue59-delete-frouter/) - FRouter：主题页右键菜单支持删除（Issue #59）
+- [202601161636_fix-issue57-flow-graph-fullscreen](../../history/2026-01/202601161636_fix-issue57-flow-graph-fullscreen/) - 主题页：走向图支持全屏查看，并修复多图 marker id 冲突（Issue #57）
+- [202601161700_fix-issue56-flow-graph-node-sync](../../history/2026-01/202601161700_fix-issue56-flow-graph-node-sync/) - 主题页：修复拉取节点后走向图节点不同步（Issue #56）

@@ -149,6 +149,14 @@ class FRoutersAPI {
     return this.client.put(`/frouters/${id}`, data)
   }
 
+  async updateMeta(id, data) {
+    return this.client.put(`/frouters/${id}/meta`, data)
+  }
+
+  async copy(id, data) {
+    return this.client.post(`/frouters/${id}/copy`, data)
+  }
+
   async delete(id) {
     return this.client.delete(`/frouters/${id}`)
   }

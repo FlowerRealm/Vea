@@ -208,6 +208,7 @@
 	              <span>当前 FRouter</span>
 	              <select id="chain-route-select"></select>
 	            </div>
+	            <button id="chain-open-flow" class="chain-btn">走向图</button>
 	            <button id="chain-manage-slots" class="chain-btn">槽位管理</button>
 	            <button id="chain-add-rule" class="chain-btn primary">+ 添加规则</button>
 	          </div>
@@ -589,6 +590,22 @@
       </div>
     </section>
   </main>
+
+  <div id="flow-graph-modal" class="modal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content flow-graph-modal-content">
+      <div class="flow-graph-modal-header">
+        <div id="flow-graph-modal-title" class="flow-graph-modal-title">走向图</div>
+        <button id="flow-graph-modal-close"
+          style="background:none; border:none; color:var(--text-secondary); font-size:20px; cursor:pointer;">×</button>
+      </div>
+      <div class="flow-graph-modal-body">
+        <div id="flow-graph-modal-container" class="frouter-flow">
+          <div class="frouter-flow-empty">加载中...</div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div id="node-modal" class="modal">
     <div class="modal-backdrop"></div>

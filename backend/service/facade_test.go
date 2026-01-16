@@ -95,6 +95,56 @@ func TestFacade_Snapshot_IncludesRuntimeMetrics(t *testing.T) {
 	}
 }
 
+func TestFacade_DeleteFRouter_EnsuresProxyConfigFRouterIDValid(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	eventBus := events.NewBus()
+	memStore := memory.NewStore(eventBus)
+
+	nodeRepo := memory.NewNodeRepo(memStore)
+	frouterRepo := memory.NewFRouterRepo(memStore)
+	settingsRepo := memory.NewSettingsRepo(memStore)
+
+	repos := repository.NewRepositories(memStore, nodeRepo, frouterRepo, nil, nil, nil, settingsRepo)
+	frouterSvc := frouter.NewService(context.Background(), frouterRepo, nodeRepo)
+
+	facade := NewFacade(nil, frouterSvc, nil, nil, nil, nil, nil, repos)
+
+	created, err := frouterRepo.Create(ctx, domain.FRouter{Name: "fr-1"})
+	if err != nil {
+		t.Fatalf("create frouter: %v", err)
+	}
+
+	cfg, err := settingsRepo.GetProxyConfig(ctx)
+	if err != nil {
+		t.Fatalf("get proxy config: %v", err)
+	}
+	cfg.FRouterID = created.ID
+	if _, err := settingsRepo.UpdateProxyConfig(ctx, cfg); err != nil {
+		t.Fatalf("update proxy config: %v", err)
+	}
+
+	if err := facade.DeleteFRouter(created.ID); err != nil {
+		t.Fatalf("delete frouter: %v", err)
+	}
+
+	updated, err := settingsRepo.GetProxyConfig(ctx)
+	if err != nil {
+		t.Fatalf("get updated proxy config: %v", err)
+	}
+	if updated.FRouterID == "" {
+		t.Fatalf("expected proxy config frouterId to be set")
+	}
+	if updated.FRouterID == created.ID {
+		t.Fatalf("expected proxy config frouterId to change after delete, still %s", updated.FRouterID)
+	}
+	if _, err := frouterRepo.Get(ctx, updated.FRouterID); err != nil {
+		t.Fatalf("expected proxy config frouterId to point to existing frouter, got err=%v", err)
+	}
+}
+
 type errorNodeRepo struct {
 	err error
 }
