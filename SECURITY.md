@@ -12,4 +12,4 @@ currently being supported with security updates.
 
 ## Reporting a Vulnerability
 
-Update an issue and send email to the contributer.
+Create an issue and send email to the contributer.
