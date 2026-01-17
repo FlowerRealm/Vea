@@ -26,7 +26,10 @@
 - 默认 TUN 网卡名从 `tun0` 调整为 `vea`：Linux 默认显式使用 `vea`；Windows/macOS 默认不强制写死设备名并兼容 legacy `tun0`（仍按地址判定就绪）。
 
 ### 修复
-- 修复走向图无法全屏查看的问题：详情卡片新增“全屏”入口、路由规则面板新增“走向图”入口，并修复多图同时存在时 SVG marker id 冲突（Issue #57）。
+- 修复走向图全屏窗口仍不够大的问题：全屏 Modal 改为占满应用视口（接近 100% 宽高），更适合复杂规则排障（Issue #57）。
+- 修复 Windows 下 TUN 就绪判定误报失败导致“内核已运行但 UI 显示启动失败”：识别 `wintun` 接口名、放宽非 Linux 兜底判定，并在错误信息中包含 `kernel.log` 路径提示（Issue #41/#32）。
+- 日志文件增加 7 天留存：启动会轮转 `app.log`/`kernel.log` 并清理过期轮转文件，便于上传调试（Issue #66）。
+- 订阅节点 ID 复用补强：identity 冲突时支持 `identity+name` 唯一消解；同步产生映射时可自动重写 FRouter 引用，减少“未知节点”回归。
 - 修复拉取节点后走向图节点与实际节点不同步的问题：走向图渲染会等待 nodes 列表加载完成，并在节点 id/name 变化时触发重渲染（Issue #56）。
 - 新增 FRouter 元信息更新接口 `PUT /frouters/:id/meta` 与主题页“重命名”入口；并修复 `PUT /frouters/:id` 未携带 `tags` 时意外清空 tags 的问题（Issue #62）。
 - 修复速度单位显示不一致的问题：前端主题/SDK/OpenAPI 将速度单位从 `Mbps` 修正为 `MB/s`（与实际测速计算单位一致）。

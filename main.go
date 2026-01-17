@@ -325,6 +325,10 @@ func setupAppLogging() (path string, startedAt time.Time, closeFn func()) {
 		return "", time.Time{}, nil
 	}
 
+	if err := shared.RotateLogFile(path, 7*24*time.Hour); err != nil {
+		log.Printf("[AppLog] rotate log failed (%s): %v", path, err)
+	}
+
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		log.Printf("[AppLog] open log file failed (%s): %v", path, err)

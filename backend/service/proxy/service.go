@@ -693,6 +693,9 @@ func (s *Service) startProcess(adapter adapters.CoreAdapter, engine domain.CoreE
 			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 				return nil, err
 			}
+			if err := shared.RotateLogFile(path, 7*24*time.Hour); err != nil {
+				log.Printf("[KernelLog] rotate log failed (%s): %v", path, err)
+			}
 			return os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 		}
 
@@ -776,7 +779,7 @@ func (s *Service) startProcess(adapter adapters.CoreAdapter, engine domain.CoreE
 					_ = adapter.Stop(handle)
 					s.mainHandle = nil
 					s.mainEngine = ""
-					return fmt.Errorf("TUN interface not ready: %w", err)
+					return wrapTUNNotReady(err, logPath)
 				}
 				tunIface = interfaceName
 			} else {
@@ -794,7 +797,7 @@ func (s *Service) startProcess(adapter adapters.CoreAdapter, engine domain.CoreE
 					_ = adapter.Stop(handle)
 					s.mainHandle = nil
 					s.mainEngine = ""
-					return fmt.Errorf("TUN interface not ready: %w", err)
+					return wrapTUNNotReady(err, logPath)
 				}
 				tunIface = ifaceName
 			}
@@ -813,7 +816,7 @@ func (s *Service) startProcess(adapter adapters.CoreAdapter, engine domain.CoreE
 			_ = adapter.Stop(handle)
 			s.mainHandle = nil
 			s.mainEngine = ""
-			return fmt.Errorf("TUN interface not ready: %w", err)
+			return wrapTUNNotReady(err, logPath)
 		}
 		s.tunIface = ifaceName
 
@@ -987,6 +990,10 @@ func isTunInterfaceName(name string) bool {
 	}
 
 	lower := strings.ToLower(name)
+	// Windows: sing-box / wintun 常见接口名包含 "wintun"。
+	if runtime.GOOS == "windows" && strings.Contains(lower, "wintun") {
+		return true
+	}
 	if strings.HasPrefix(lower, "tun") || strings.HasPrefix(lower, "utun") {
 		return true
 	}
@@ -1010,6 +1017,20 @@ func expectedTUNAddressesForEngine(engine domain.CoreEngineKind, cfg domain.Prox
 		return cfg.TUNSettings.Address
 	}
 	return nil
+}
+
+func wrapTUNNotReady(err error, logPath string) error {
+	msg := "TUN interface not ready"
+
+	if runtime.GOOS == "windows" {
+		msg += " (Windows: 可能需要以管理员运行，并确认 Wintun 驱动可用)"
+	}
+
+	logPath = strings.TrimSpace(logPath)
+	if logPath != "" {
+		msg += " (kernel log: " + logPath + ")"
+	}
+	return fmt.Errorf("%s: %w", msg, err)
 }
 
 func parseTUNAddressCIDRs(addrs []string) ([]*net.IPNet, error) {
@@ -1094,6 +1115,7 @@ func (s *Service) waitForTUNReadyByAddress(existing map[string]int, desiredName 
 	deadline := startedAt.Add(timeout)
 
 	fallback := ""
+	nameOnlyFallback := ""
 	for time.Now().Before(deadline) {
 		if done != nil {
 			select {
@@ -1123,6 +1145,13 @@ func (s *Service) waitForTUNReadyByAddress(existing map[string]int, desiredName 
 				if name == "" {
 					continue
 				}
+
+				if nameOnlyFallback == "" && isNewInterface(existing, iface) && looksLikeTunInterface(name, iface.Flags) {
+					if iface.Flags&net.FlagUp != 0 {
+						nameOnlyFallback = name
+					}
+				}
+
 				if !interfaceHasAnyCIDRAddr(iface, nets) {
 					continue
 				}
@@ -1138,12 +1167,17 @@ func (s *Service) waitForTUNReadyByAddress(existing map[string]int, desiredName 
 			if fallback != "" && time.Since(startedAt) > 2*time.Second {
 				return fallback, nil
 			}
+			// 某些平台/驱动下，TUN 网卡可能先出现、地址稍后才绑定；这里在等待一段时间后允许“新网卡+像 TUN”
+			// 的兜底路径，避免误判启动失败。
+			if nameOnlyFallback != "" && time.Since(startedAt) > 3*time.Second {
+				return nameOnlyFallback, nil
+			}
 		}
 
 		time.Sleep(500 * time.Millisecond)
 	}
 
-	return "", fmt.Errorf("no TUN interface detected after %v", timeout)
+	return "", fmt.Errorf("no TUN interface detected after %v (expected address: %v)", timeout, addresses)
 }
 
 // waitForNewTUNReady 等待一个“新出现的”TUN 接口（用于无法指定/无法预知接口名的内核）

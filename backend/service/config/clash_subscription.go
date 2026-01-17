@@ -1,7 +1,6 @@
 package config
 
 import (
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -50,7 +49,7 @@ func parseClashSubscription(configID string, payload string) (clashParseResult, 
 			warnings = append(warnings, err.Error())
 			continue
 		}
-		node.ID = stableNodeIDForConfig(configID, node)
+		node.ID = domain.StableNodeIDForConfig(configID, node)
 		nodes = append(nodes, node)
 		if proxyName != "" {
 			if prev, ok := proxyNameToNodeID[proxyName]; ok && prev != "" && prev != node.ID {
@@ -496,26 +495,6 @@ func compactClashSelectionEdges(edges []domain.ProxyEdge) []domain.ProxyEdge {
 func stableSlotIDForConfig(configID string, groupName string) string {
 	id := uuid.NewSHA1(uuid.NameSpaceOID, []byte(configID+"|clash-slot|"+strings.TrimSpace(groupName))).String()
 	return domain.EdgeNodeSlotPrefix + id
-}
-
-func stableNodeIDForConfig(configID string, node domain.Node) string {
-	type fingerprint struct {
-		Protocol  domain.NodeProtocol   `json:"protocol"`
-		Address   string                `json:"address"`
-		Port      int                   `json:"port"`
-		Security  *domain.NodeSecurity  `json:"security,omitempty"`
-		Transport *domain.NodeTransport `json:"transport,omitempty"`
-		TLS       *domain.NodeTLS       `json:"tls,omitempty"`
-	}
-	b, _ := json.Marshal(fingerprint{
-		Protocol:  node.Protocol,
-		Address:   node.Address,
-		Port:      node.Port,
-		Security:  node.Security,
-		Transport: node.Transport,
-		TLS:       node.TLS,
-	})
-	return uuid.NewSHA1(uuid.NameSpaceOID, append([]byte(configID+"|"), b...)).String()
 }
 
 func stableFRouterIDForConfig(configID string) string {

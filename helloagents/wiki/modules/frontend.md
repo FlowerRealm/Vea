@@ -33,6 +33,7 @@
 - 支持拖拽平移、滚轮缩放浏览
 - 双击适配视图（fit-to-view）
 - 支持全屏查看：在详情卡片点击“全屏”，或在「路由规则」面板点击“走向图”打开全屏窗口
+  - 全屏窗口占满应用视口（接近 100% 宽高），更适合复杂规则排障（Issue #57）
 
 ### 需求: 槽位管理（slot-*）
 **模块:** frontend/theme
@@ -121,3 +122,4 @@
 - [202601161635_fix-issue59-delete-frouter](../../history/2026-01/202601161635_fix-issue59-delete-frouter/) - FRouter：主题页右键菜单支持删除（Issue #59）
 - [202601161636_fix-issue57-flow-graph-fullscreen](../../history/2026-01/202601161636_fix-issue57-flow-graph-fullscreen/) - 主题页：走向图支持全屏查看，并修复多图 marker id 冲突（Issue #57）
 - [202601161700_fix-issue56-flow-graph-node-sync](../../history/2026-01/202601161700_fix-issue56-flow-graph-node-sync/) - 主题页：修复拉取节点后走向图节点不同步（Issue #56）
+- [202601162158_refactor-subscription-id-system](../../history/2026-01/202601162158_refactor-subscription-id-system/) - 主题页：走向图全屏窗口改为占满视口（更大画布），便于复杂规则查看（Issue #57）

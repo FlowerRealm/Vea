@@ -846,6 +846,165 @@ rules:
 	}
 }
 
+func TestService_SyncNodesFromPayload_ClashYAML_ReusesExistingNodeID_WhenIdentityConflicts_UsesNameToDisambiguate(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	store := memory.NewStore(events.NewBus())
+	configRepo := memory.NewConfigRepo(store)
+	nodeRepo := memory.NewNodeRepo(store)
+	frouterRepo := memory.NewFRouterRepo(store)
+	nodeSvc := nodes.NewService(context.Background(), nodeRepo)
+	svc := NewService(context.Background(), configRepo, nodeSvc, frouterRepo)
+
+	const configID = "cfg-1"
+	if _, err := configRepo.Create(ctx, domain.Config{
+		ID:     configID,
+		Name:   "cfg-1",
+		Format: domain.ConfigFormatSubscription,
+	}); err != nil {
+		t.Fatalf("create config: %v", err)
+	}
+
+	const (
+		nodeAID = "node-a-id"
+		nodeBID = "node-b-id"
+		uuidID  = "11111111-1111-1111-1111-111111111111"
+	)
+
+	if _, err := nodeRepo.Create(ctx, domain.Node{
+		ID:             nodeAID,
+		Name:           "A",
+		Address:        "example.com",
+		Port:           443,
+		Protocol:       domain.ProtocolVMess,
+		SourceConfigID: configID,
+		Security: &domain.NodeSecurity{
+			UUID:       uuidID,
+			AlterID:    0,
+			Encryption: "auto",
+		},
+		Transport: &domain.NodeTransport{
+			Type: "ws",
+			Path: "/a-old",
+		},
+		TLS: &domain.NodeTLS{
+			Enabled:     true,
+			Type:        "tls",
+			Fingerprint: "chrome",
+		},
+	}); err != nil {
+		t.Fatalf("create node a: %v", err)
+	}
+	if _, err := nodeRepo.Create(ctx, domain.Node{
+		ID:             nodeBID,
+		Name:           "B",
+		Address:        "example.com",
+		Port:           443,
+		Protocol:       domain.ProtocolVMess,
+		SourceConfigID: configID,
+		Security: &domain.NodeSecurity{
+			UUID:       uuidID,
+			AlterID:    0,
+			Encryption: "auto",
+		},
+		Transport: &domain.NodeTransport{
+			Type: "ws",
+			Path: "/b-old",
+		},
+		TLS: &domain.NodeTLS{
+			Enabled:     true,
+			Type:        "tls",
+			Fingerprint: "firefox",
+		},
+	}); err != nil {
+		t.Fatalf("create node b: %v", err)
+	}
+
+	if _, err := frouterRepo.Create(ctx, domain.FRouter{
+		ID:   "fr-1",
+		Name: "fr-1",
+		ChainProxy: domain.ChainProxySettings{
+			Slots: []domain.SlotNode{
+				{ID: "slot-a", Name: "A", BoundNodeID: nodeAID},
+				{ID: "slot-b", Name: "B", BoundNodeID: nodeBID},
+			},
+			Edges: []domain.ProxyEdge{
+				{ID: "e-a", From: domain.EdgeNodeLocal, To: "slot-a", Priority: 0, Enabled: true},
+				{ID: "e-b", From: domain.EdgeNodeLocal, To: "slot-b", Priority: 0, Enabled: true},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("create frouter: %v", err)
+	}
+
+	const payload = `
+proxies:
+  - name: A
+    type: vmess
+    server: example.com
+    port: 443
+    uuid: 11111111-1111-1111-1111-111111111111
+    alterId: 0
+    cipher: auto
+    tls: true
+    client-fingerprint: safari
+    network: ws
+    ws-opts:
+      path: /a-new
+  - name: B
+    type: vmess
+    server: example.com
+    port: 443
+    uuid: 11111111-1111-1111-1111-111111111111
+    alterId: 0
+    cipher: auto
+    tls: true
+    client-fingerprint: chrome
+    network: ws
+    ws-opts:
+      path: /b-new
+rules:
+  - MATCH,A
+`
+
+	if err := svc.syncNodesFromPayload(ctx, configID, payload); err != nil {
+		t.Fatalf("sync nodes: %v", err)
+	}
+
+	nodesAfter, err := nodeRepo.ListByConfigID(ctx, configID)
+	if err != nil {
+		t.Fatalf("list nodes: %v", err)
+	}
+	if len(nodesAfter) != 2 {
+		t.Fatalf("expected nodes=2 after sync, got %d", len(nodesAfter))
+	}
+
+	if _, err := nodeRepo.Get(ctx, nodeAID); err != nil {
+		t.Fatalf("expected node A id preserved=%s, got err=%v", nodeAID, err)
+	}
+	if _, err := nodeRepo.Get(ctx, nodeBID); err != nil {
+		t.Fatalf("expected node B id preserved=%s, got err=%v", nodeBID, err)
+	}
+
+	nodeA, err := nodeRepo.Get(ctx, nodeAID)
+	if err != nil {
+		t.Fatalf("get node A: %v", err)
+	}
+	if nodeA.Transport == nil || nodeA.Transport.Type != "ws" || nodeA.Transport.Path != "/a-new" {
+		t.Fatalf("expected node A transport updated to /a-new, got transport=%v", nodeA.Transport)
+	}
+
+	nodeB, err := nodeRepo.Get(ctx, nodeBID)
+	if err != nil {
+		t.Fatalf("get node B: %v", err)
+	}
+	if nodeB.Transport == nil || nodeB.Transport.Type != "ws" || nodeB.Transport.Path != "/b-new" {
+		t.Fatalf("expected node B transport updated to /b-new, got transport=%v", nodeB.Transport)
+	}
+}
+
 func waitUntil(t *testing.T, timeout time.Duration, cond func() bool) {
 	t.Helper()
 

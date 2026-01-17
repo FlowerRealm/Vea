@@ -105,8 +105,8 @@ func TestStableNodeIDForConfig_DiffConfigProducesDiffID(t *testing.T) {
 	t.Parallel()
 
 	n := domain.Node{Name: "n1", Protocol: domain.ProtocolVLESS, Address: "example.com", Port: 443}
-	id1 := stableNodeIDForConfig("cfg1", n)
-	id2 := stableNodeIDForConfig("cfg2", n)
+	id1 := domain.StableNodeIDForConfig("cfg1", n)
+	id2 := domain.StableNodeIDForConfig("cfg2", n)
 	if id1 == "" || id2 == "" {
 		t.Fatalf("expected stable ids to be non-empty")
 	}

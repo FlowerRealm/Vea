@@ -19,7 +19,9 @@ type nodeFingerprint struct {
 type existingNodeIDIndex struct {
 	byFingerprint      map[string]string
 	byIdentity         map[string]string
+	byIdentityName     map[string]string
 	ambiguousIdentites map[string]struct{}
+	ambiguousNames     map[string]struct{}
 }
 
 func buildExistingNodeIDIndex(nodes []domain.Node) existingNodeIDIndex {
@@ -29,7 +31,9 @@ func buildExistingNodeIDIndex(nodes []domain.Node) existingNodeIDIndex {
 
 	byFingerprint := make(map[string]string, len(nodes))
 	byIdentity := make(map[string]string, len(nodes))
+	byIdentityName := make(map[string]string, len(nodes))
 	ambiguousIdentites := make(map[string]struct{}, 8)
+	ambiguousNames := make(map[string]struct{}, 8)
 
 	for _, n := range nodes {
 		id := strings.TrimSpace(n.ID)
@@ -48,6 +52,20 @@ func buildExistingNodeIDIndex(nodes []domain.Node) existingNodeIDIndex {
 		if identity == "" {
 			continue
 		}
+
+		nameKey := identityNameKey(identity, n.Name)
+		if nameKey != "" {
+			if _, ok := ambiguousNames[nameKey]; ok {
+				continue
+			}
+			if prev, ok := byIdentityName[nameKey]; ok && prev != id {
+				ambiguousNames[nameKey] = struct{}{}
+				delete(byIdentityName, nameKey)
+			} else if !ok {
+				byIdentityName[nameKey] = id
+			}
+		}
+
 		if _, ok := ambiguousIdentites[identity]; ok {
 			continue
 		}
@@ -64,12 +82,14 @@ func buildExistingNodeIDIndex(nodes []domain.Node) existingNodeIDIndex {
 	return existingNodeIDIndex{
 		byFingerprint:      byFingerprint,
 		byIdentity:         byIdentity,
+		byIdentityName:     byIdentityName,
 		ambiguousIdentites: ambiguousIdentites,
+		ambiguousNames:     ambiguousNames,
 	}
 }
 
 func reuseNodeIDs(index existingNodeIDIndex, nodes []domain.Node) ([]domain.Node, map[string]string) {
-	if len(nodes) == 0 || (len(index.byFingerprint) == 0 && len(index.byIdentity) == 0) {
+	if len(nodes) == 0 || (len(index.byFingerprint) == 0 && len(index.byIdentity) == 0 && len(index.byIdentityName) == 0) {
 		return nodes, nil
 	}
 
@@ -95,13 +115,25 @@ func reuseNodeIDs(index existingNodeIDIndex, nodes []domain.Node) ([]domain.Node
 		if nextID == originalID {
 			identity := identityKey(nodes[i])
 			if identity != "" {
-				if _, ok := index.ambiguousIdentites[identity]; !ok {
-					if existingID := strings.TrimSpace(index.byIdentity[identity]); existingID != "" && existingID != originalID {
-						if _, ok := used[existingID]; !ok {
-							nextID = existingID
-							if originalID != "" {
-								mapping[originalID] = existingID
+				if _, ok := index.ambiguousIdentites[identity]; ok {
+					nameKey := identityNameKey(identity, nodes[i].Name)
+					if nameKey != "" {
+						if _, ok := index.ambiguousNames[nameKey]; !ok {
+							if existingID := strings.TrimSpace(index.byIdentityName[nameKey]); existingID != "" && existingID != originalID {
+								if _, ok := used[existingID]; !ok {
+									nextID = existingID
+									if originalID != "" {
+										mapping[originalID] = existingID
+									}
+								}
 							}
+						}
+					}
+				} else if existingID := strings.TrimSpace(index.byIdentity[identity]); existingID != "" && existingID != originalID {
+					if _, ok := used[existingID]; !ok {
+						nextID = existingID
+						if originalID != "" {
+							mapping[originalID] = existingID
 						}
 					}
 				}
@@ -118,6 +150,18 @@ func reuseNodeIDs(index existingNodeIDIndex, nodes []domain.Node) ([]domain.Node
 		return nodes, nil
 	}
 	return nodes, mapping
+}
+
+func identityNameKey(identity string, name string) string {
+	identity = strings.TrimSpace(identity)
+	if identity == "" {
+		return ""
+	}
+	name = strings.ToLower(strings.TrimSpace(name))
+	if name == "" {
+		return ""
+	}
+	return identity + "|" + name
 }
 
 func fingerprintKey(node domain.Node) string {

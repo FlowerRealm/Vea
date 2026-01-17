@@ -68,6 +68,7 @@
 | 202601161635 | fix-issue59-delete-frouter | 修复 | ✅已完成 | [2026-01/202601161635_fix-issue59-delete-frouter](2026-01/202601161635_fix-issue59-delete-frouter/) |
 | 202601161636 | fix-issue57-flow-graph-fullscreen | 修复 | ✅已完成 | [2026-01/202601161636_fix-issue57-flow-graph-fullscreen](2026-01/202601161636_fix-issue57-flow-graph-fullscreen/) |
 | 202601161700 | fix-issue56-flow-graph-node-sync | 修复 | ✅已完成 | [2026-01/202601161700_fix-issue56-flow-graph-node-sync](2026-01/202601161700_fix-issue56-flow-graph-node-sync/) |
+| 202601162158 | refactor-subscription-id-system | 修复 | ✅已完成 | [2026-01/202601162158_refactor-subscription-id-system](2026-01/202601162158_refactor-subscription-id-system/) |
 
 ## 按月归档
 
@@ -135,3 +136,4 @@
 - [202601161635_fix-issue59-delete-frouter](2026-01/202601161635_fix-issue59-delete-frouter/) - FRouter：支持删除，并在删除后自动修复 `ProxyConfig.frouterId`（删到空集合自动创建默认 FRouter）（Issue #59）
 - [202601161636_fix-issue57-flow-graph-fullscreen](2026-01/202601161636_fix-issue57-flow-graph-fullscreen/) - 主题页：走向图支持全屏查看，并修复多图 marker id 冲突（Issue #57）
 - [202601161700_fix-issue56-flow-graph-node-sync](2026-01/202601161700_fix-issue56-flow-graph-node-sync/) - 主题页：修复拉取节点后走向图节点不同步（Issue #56）
+- [202601162158_refactor-subscription-id-system](2026-01/202601162158_refactor-subscription-id-system/) - 订阅/代理/主题：订阅节点复用补强、Windows TUN 就绪判定兜底、走向图全屏窗口放大、日志 7 天留存（Issue #32/#41/#57/#66）

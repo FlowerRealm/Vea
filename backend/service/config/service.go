@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"reflect"
 	"strings"
 	"time"
 
@@ -254,9 +255,7 @@ func (s *Service) syncNodesFromPayload(ctx context.Context, configID, payload st
 
 	if len(nodes) > 0 {
 		// 分享链接订阅：仅更新节点；如之前生成过 Clash YAML 的订阅 FRouter，清理掉以避免残留。
-		if len(existingIndex.byFingerprint) > 0 || len(existingIndex.byIdentity) > 0 {
-			nodes, _ = reuseNodeIDs(existingIndex, nodes)
-		}
+		nodes, idMap := reuseNodeIDs(existingIndex, nodes)
 		if _, err := s.nodeService.ReplaceNodesForConfig(ctx, configID, nodes); err != nil {
 			log.Printf("[ConfigSync] update nodes failed for %s: %v", configID, err)
 			return err
@@ -267,6 +266,10 @@ func (s *Service) syncNodesFromPayload(ctx context.Context, configID, payload st
 				log.Printf("[ConfigSync] clear frouter failed for %s: %v", configID, err)
 				return err
 			}
+		}
+		if err := s.rewriteFRoutersNodeIDs(ctx, idMap); err != nil {
+			log.Printf("[ConfigSync] rewrite frouters failed for %s: %v", configID, err)
+			return err
 		}
 		return nil
 	}
@@ -299,11 +302,9 @@ func (s *Service) syncNodesFromPayload(ctx context.Context, configID, payload st
 			log.Printf("[ConfigSync] clash warning: %s", w)
 		}
 	}
-	if len(existingIndex.byFingerprint) > 0 || len(existingIndex.byIdentity) > 0 {
-		var idMap map[string]string
-		clashResult.Nodes, idMap = reuseNodeIDs(existingIndex, clashResult.Nodes)
-		clashResult.Chain = rewriteChainProxyNodeIDs(clashResult.Chain, idMap)
-	}
+	var idMap map[string]string
+	clashResult.Nodes, idMap = reuseNodeIDs(existingIndex, clashResult.Nodes)
+	clashResult.Chain = rewriteChainProxyNodeIDs(clashResult.Chain, idMap)
 	if _, err := s.nodeService.ReplaceNodesForConfig(ctx, configID, clashResult.Nodes); err != nil {
 		log.Printf("[ConfigSync] update nodes failed for %s: %v", configID, err)
 		return err
@@ -348,6 +349,10 @@ func (s *Service) syncNodesFromPayload(ctx context.Context, configID, payload st
 			return err
 		}
 	}
+	if err := s.rewriteFRoutersNodeIDs(ctx, idMap); err != nil {
+		log.Printf("[ConfigSync] rewrite frouters failed for %s: %v", configID, err)
+		return err
+	}
 	return nil
 }
 
@@ -366,6 +371,33 @@ func looksLikeClashSubscriptionYAML(payload string) bool {
 		}
 	}
 	return false
+}
+
+func (s *Service) rewriteFRoutersNodeIDs(ctx context.Context, idMap map[string]string) error {
+	if s == nil || s.frouterRepo == nil || len(idMap) == 0 {
+		return nil
+	}
+
+	frouters, err := s.frouterRepo.List(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, fr := range frouters {
+		chain := fr.ChainProxy
+		if len(chain.Edges) == 0 && len(chain.Slots) == 0 && len(chain.Positions) == 0 {
+			continue
+		}
+		next := rewriteChainProxyNodeIDs(chain, idMap)
+		if reflect.DeepEqual(chain, next) {
+			continue
+		}
+		fr.ChainProxy = next
+		if _, err := s.frouterRepo.Update(ctx, fr.ID, fr); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Service) downloadConfig(ctx context.Context, sourceURL string) (payload, checksum string, err error) {

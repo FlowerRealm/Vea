@@ -2,7 +2,6 @@ package memory
 
 import (
 	"context"
-	"encoding/json"
 	"sort"
 	"strings"
 	"time"
@@ -135,26 +134,6 @@ func (r *NodeRepo) ListByConfigID(_ context.Context, configID string) ([]domain.
 	return items, nil
 }
 
-func stableNodeIDForConfig(configID string, node domain.Node) string {
-	type fingerprint struct {
-		Protocol  domain.NodeProtocol   `json:"protocol"`
-		Address   string                `json:"address"`
-		Port      int                   `json:"port"`
-		Security  *domain.NodeSecurity  `json:"security,omitempty"`
-		Transport *domain.NodeTransport `json:"transport,omitempty"`
-		TLS       *domain.NodeTLS       `json:"tls,omitempty"`
-	}
-	b, _ := json.Marshal(fingerprint{
-		Protocol:  node.Protocol,
-		Address:   node.Address,
-		Port:      node.Port,
-		Security:  node.Security,
-		Transport: node.Transport,
-		TLS:       node.TLS,
-	})
-	return uuid.NewSHA1(uuid.NameSpaceOID, append([]byte(configID+"|"), b...)).String()
-}
-
 func (r *NodeRepo) ReplaceNodesForConfig(_ context.Context, configID string, nodes []domain.Node) ([]domain.Node, error) {
 	now := time.Now()
 	next := make([]domain.Node, 0, len(nodes))
@@ -165,7 +144,7 @@ func (r *NodeRepo) ReplaceNodesForConfig(_ context.Context, configID string, nod
 			node.Name = node.Address
 		}
 		if node.ID == "" {
-			node.ID = stableNodeIDForConfig(configID, node)
+			node.ID = domain.StableNodeIDForConfig(configID, node)
 		}
 		if node.CreatedAt.IsZero() {
 			node.CreatedAt = now
