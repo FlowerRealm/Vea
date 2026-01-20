@@ -70,6 +70,15 @@ export function bootstrapTheme({ createAPI, utils }) {
 	      let kernelLogsPanelInitialized = false;
 	      let appLogAutoScroll = true;
 	      let appLogsPanelInitialized = false;
+	      let kernelLogPathCache = "";
+	      let appLogPathCache = "";
+	      const APP_LOG_FILTER_STORAGE_KEY = "vea_app_log_filter";
+	      let appLogFilterValue = "";
+	      let appLogFilterTokens = [];
+	      let appLogKnownCategories = new Set();
+	      let appLogFilterInput = null;
+	      let appLogFilterDatalist = null;
+	      let appLogFilterClearBtn = null;
 	      let logsTabsInitialized = false;
 	      let nodesLoadPromise = null;
 	      let nodesGraphVersion = 0;
@@ -352,6 +361,119 @@ export function bootstrapTheme({ createAPI, utils }) {
 	        }
 	      }
 
+	      function parseLogFilterTokens(value) {
+	        const raw = String(value || "").trim();
+	        if (!raw) return [];
+	        return raw
+	          .split(",")
+	          .map((part) => String(part || "").trim())
+	          .filter(Boolean)
+	          .slice(0, 12);
+	      }
+
+	      function lineMatchesLogFilter(line, tokens) {
+	        if (!Array.isArray(tokens) || tokens.length === 0) return true;
+	        const text = String(line || "").toLowerCase();
+	        for (const rawToken of tokens) {
+	          const token = String(rawToken || "").trim().toLowerCase();
+	          if (!token) continue;
+	          if (token.startsWith("[") && token.endsWith("]")) {
+	            if (text.includes(token)) return true;
+	            continue;
+	          }
+	          if (text.includes("[" + token + "]") || text.includes("[" + token + "-")) return true;
+	        }
+	        return false;
+	      }
+
+	      function filterLogTextByTokens(text, tokens) {
+	        if (!Array.isArray(tokens) || tokens.length === 0) return text;
+	        const src = String(text || "");
+	        if (!src) return src;
+	        const endsWithNewline = src.endsWith("\n");
+	        const lines = src.split("\n");
+	        const out = [];
+	        for (const line of lines) {
+	          if (lineMatchesLogFilter(line, tokens)) {
+	            out.push(line);
+	          }
+	        }
+	        let joined = out.join("\n");
+	        if (endsWithNewline) joined += "\n";
+	        return joined;
+	      }
+
+	      function extractLogCategory(line) {
+	        const s = String(line || "");
+	        const start = s.indexOf("[");
+	        if (start < 0) return "";
+	        const end = s.indexOf("]", start + 1);
+	        if (end < 0) return "";
+	        const cat = s.slice(start + 1, end).trim();
+	        if (!cat || cat.length > 40) return "";
+	        if (cat.includes(" ")) return "";
+	        return cat;
+	      }
+
+	      function updateAppLogKnownCategoriesFromChunk(chunk) {
+	        if (!chunk) return;
+	        const lines = String(chunk).split("\n");
+	        for (const line of lines) {
+	          const cat = extractLogCategory(line);
+	          if (!cat) continue;
+	          appLogKnownCategories.add(cat);
+	        }
+	      }
+
+	      function baseNameFromPath(path) {
+	        const raw = String(path || "").trim();
+	        if (!raw) return "";
+	        const normalized = raw.replace(/\\/g, "/");
+	        const parts = normalized.split("/").filter(Boolean);
+	        return parts.length ? parts[parts.length - 1] : normalized;
+	      }
+
+	      function ensureAppLogFilterDatalist() {
+	        if (appLogFilterDatalist) return appLogFilterDatalist;
+	        const el = document.createElement("datalist");
+	        el.id = "app-log-filter-datalist";
+	        document.body.appendChild(el);
+	        appLogFilterDatalist = el;
+	        return el;
+	      }
+
+	      function refreshAppLogFilterDatalist() {
+	        if (!appLogFilterDatalist) return;
+	        const cats = Array.from(appLogKnownCategories || []).sort((a, b) => a.localeCompare(b, "en"));
+	        appLogFilterDatalist.innerHTML = cats.map((c) => `<option value="${escapeHtml(c)}"></option>`).join("");
+	      }
+
+	      function applyAppLogFilter(nextValue, { reload = true } = {}) {
+	        appLogFilterValue = String(nextValue || "").trim();
+	        appLogFilterTokens = parseLogFilterTokens(appLogFilterValue);
+
+	        try {
+	          localStorage.setItem(APP_LOG_FILTER_STORAGE_KEY, appLogFilterValue);
+	        } catch {
+	          // ignore
+	        }
+
+	        if (appLogFilterClearBtn) {
+	          appLogFilterClearBtn.disabled = !appLogFilterValue;
+	        }
+
+	        if (!reload) return;
+	        if (currentPanel !== "panel-logs" || currentLogsTab !== "app") return;
+
+	        appLogOffset = 0;
+	        appLogStartedAt = "";
+	        appLogKnownCategories = new Set();
+	        refreshAppLogFilterDatalist();
+	        const pre = document.getElementById("app-log-content");
+	        resetAppLogRender(pre);
+	        loadAppLogs({ forceFromStart: true });
+	      }
+
 	      function ensureFRoutersPolling() {
 	        if (froutersPollHandle) {
 	          return;
@@ -428,6 +550,31 @@ export function bootstrapTheme({ createAPI, utils }) {
 	            }
 	          });
 	        }
+
+	        const actions = document.querySelector("#kernel-log-card .log-actions");
+	        if (actions && !document.getElementById("kernel-log-copy-path")) {
+	          const btn = document.createElement("button");
+	          btn.id = "kernel-log-copy-path";
+	          btn.className = "mini-btn";
+	          btn.textContent = "路径";
+	          btn.addEventListener("click", async () => {
+	            const path = String(kernelLogPathCache || "").trim();
+	            if (!path) {
+	              showStatus("暂无日志路径", "info", 1500);
+	              return;
+	            }
+	            try {
+	              await navigator.clipboard.writeText(path);
+	              showStatus("日志路径已复制", "success", 1600);
+	            } catch (err) {
+	              showStatus(`复制失败：${err.message}`, "error", 3000);
+	            }
+	          });
+
+	          const anchor = actions.querySelector(".log-autoscroll");
+	          if (anchor) actions.insertBefore(btn, anchor);
+	          else actions.appendChild(btn);
+	        }
 	      }
 
 	      function ensureAppLogsPanel() {
@@ -455,6 +602,8 @@ export function bootstrapTheme({ createAPI, utils }) {
 	          refreshBtn.addEventListener("click", async () => {
 	            appLogOffset = 0;
 	            appLogStartedAt = "";
+	            appLogKnownCategories = new Set();
+	            refreshAppLogFilterDatalist();
 	            const pre = document.getElementById("app-log-content");
 	            resetAppLogRender(pre);
 	            await loadAppLogs();
@@ -476,6 +625,86 @@ export function bootstrapTheme({ createAPI, utils }) {
 	              showStatus(`复制失败：${err.message}`, "error", 3000);
 	            }
 	          });
+	        }
+
+	        const actions = document.querySelector("#app-log-card .log-actions");
+	        if (actions && !document.getElementById("app-log-copy-path")) {
+	          const btn = document.createElement("button");
+	          btn.id = "app-log-copy-path";
+	          btn.className = "mini-btn";
+	          btn.textContent = "路径";
+	          btn.addEventListener("click", async () => {
+	            const path = String(appLogPathCache || "").trim();
+	            if (!path) {
+	              showStatus("暂无日志路径", "info", 1500);
+	              return;
+	            }
+	            try {
+	              await navigator.clipboard.writeText(path);
+	              showStatus("日志路径已复制", "success", 1600);
+	            } catch (err) {
+	              showStatus(`复制失败：${err.message}`, "error", 3000);
+	            }
+	          });
+
+	          const anchor = actions.querySelector(".log-autoscroll");
+	          if (anchor) actions.insertBefore(btn, anchor);
+	          else actions.appendChild(btn);
+	        }
+
+	        if (actions && !document.getElementById("app-log-filter")) {
+	          // init filter state
+	          if (!appLogFilterValue) {
+	            try {
+	              appLogFilterValue = localStorage.getItem(APP_LOG_FILTER_STORAGE_KEY) || "";
+	            } catch {
+	              appLogFilterValue = "";
+	            }
+	            appLogFilterTokens = parseLogFilterTokens(appLogFilterValue);
+	          }
+
+	          const input = document.createElement("input");
+	          input.id = "app-log-filter";
+	          input.type = "text";
+	          input.className = "mini-select";
+	          input.placeholder = "分类过滤：TUN,Proxy";
+	          input.value = appLogFilterValue;
+	          input.autocomplete = "off";
+	          input.spellcheck = false;
+	          input.style.minWidth = "160px";
+
+	          const listEl = ensureAppLogFilterDatalist();
+	          input.setAttribute("list", listEl.id);
+
+	          input.addEventListener("keydown", (e) => {
+	            if (e.key !== "Enter") return;
+	            e.preventDefault();
+	            applyAppLogFilter(input.value);
+	            input.blur();
+	          });
+	          input.addEventListener("change", () => applyAppLogFilter(input.value));
+
+	          const clearBtn = document.createElement("button");
+	          clearBtn.id = "app-log-filter-clear";
+	          clearBtn.className = "mini-btn";
+	          clearBtn.textContent = "清除";
+	          clearBtn.disabled = !appLogFilterValue;
+	          clearBtn.addEventListener("click", () => {
+	            input.value = "";
+	            applyAppLogFilter("");
+	          });
+
+	          appLogFilterInput = input;
+	          appLogFilterClearBtn = clearBtn;
+
+	          const anchor = actions.querySelector(".log-autoscroll");
+	          if (anchor) {
+	            actions.insertBefore(clearBtn, anchor);
+	            actions.insertBefore(input, clearBtn);
+	          } else {
+	            actions.appendChild(input);
+	            actions.appendChild(clearBtn);
+	          }
 	        }
 	      }
 
@@ -586,6 +815,8 @@ export function bootstrapTheme({ createAPI, utils }) {
 	          const startedAt = data.startedAt || "";
 	          const lost = Boolean(data.lost);
 	          const chunk = data.text || "";
+	          const logPath = typeof data.path === "string" ? data.path : "";
+	          if (logPath) kernelLogPathCache = logPath;
 
 	          const sessionChanged = session && session !== kernelLogSession;
 	          const startedAtChanged = startedAt && startedAt !== kernelLogStartedAt;
@@ -619,8 +850,11 @@ export function bootstrapTheme({ createAPI, utils }) {
 	            if (data.running === false) parts.push("已停止");
 	            if (data.pid) parts.push(`pid ${data.pid}`);
 	            if (startedAt) parts.push(`启动于 ${formatTime(startedAt)}`);
+	            if (logPath) parts.push(`log ${baseNameFromPath(logPath)}`);
+	            parts.push("保留7天");
 	            if (data.error) parts.push(`错误：${data.error}`);
 	            metaEl.textContent = parts.length ? parts.join(" · ") : "-";
+	            metaEl.title = logPath || "";
 	          }
 
 	          if (kernelLogAutoScroll && logContainer) {
@@ -647,6 +881,8 @@ export function bootstrapTheme({ createAPI, utils }) {
 	          const startedAt = data.startedAt || "";
 	          const lost = Boolean(data.lost);
 	          const chunk = data.text || "";
+	          const logPath = typeof data.path === "string" ? data.path : "";
+	          if (logPath) appLogPathCache = logPath;
 
 	          const startedAtChanged = startedAt && startedAt !== appLogStartedAt;
 
@@ -658,9 +894,14 @@ export function bootstrapTheme({ createAPI, utils }) {
 
 	          const shouldReset = lost || startedAtChanged || appLogOffset === 0;
 	          if (shouldReset) {
+	            appLogKnownCategories = new Set();
+	            refreshAppLogFilterDatalist();
 	            resetAppLogRender(pre);
 	          }
-	          appendAppLogChunk(pre, chunk);
+	          updateAppLogKnownCategoriesFromChunk(chunk);
+	          refreshAppLogFilterDatalist();
+	          const filteredChunk = filterLogTextByTokens(chunk, appLogFilterTokens);
+	          appendAppLogChunk(pre, filteredChunk);
 
 	          appLogStartedAt = startedAt || appLogStartedAt;
 	          if (typeof data.to === "number") {
@@ -672,8 +913,12 @@ export function bootstrapTheme({ createAPI, utils }) {
 	            if (data.running === false) parts.push("已停止");
 	            if (data.pid) parts.push(`pid ${data.pid}`);
 	            if (startedAt) parts.push(`启动于 ${formatTime(startedAt)}`);
+	            if (logPath) parts.push(`log ${baseNameFromPath(logPath)}`);
+	            parts.push("保留7天");
+	            if (appLogFilterTokens.length) parts.push(`filter ${appLogFilterTokens.join(",")}`);
 	            if (data.error) parts.push(`错误：${data.error}`);
 	            metaEl.textContent = parts.length ? parts.join(" · ") : "-";
+	            metaEl.title = logPath || "";
 	          }
 
 	          if (appLogAutoScroll && logContainer) {
@@ -1436,23 +1681,61 @@ export function bootstrapTheme({ createAPI, utils }) {
 
         if (!tunCard || !tunValue) return;
 
-        const configured = Boolean(status.configured);
         const platform = status.platform || "unknown";
+        const configured = Boolean(status.configured);
+        const enabled = Boolean(tunSettingsCache && tunSettingsCache.enabled);
+        const coreRunning = Boolean(coreStatus && coreStatus.running);
+        const coreMode = coreStatus && typeof coreStatus.inboundMode === "string" ? coreStatus.inboundMode : "";
+        const tunRunning = coreRunning && coreMode === "tun";
+        const restartError = coreStatus && typeof coreStatus.lastRestartError === "string"
+          ? String(coreStatus.lastRestartError || "")
+          : "";
+
+        let valueText = "--";
+        let valueColor = "var(--text-secondary)";
+        let cardTitle = "";
 
         if (status.error) {
-          tunValue.textContent = "检查失败";
-          tunValue.style.color = "var(--error)";
-          tunCard.title = `错误：${status.error}`;
+          valueText = "检查失败";
+          valueColor = "var(--error)";
+          cardTitle = `错误：${status.error}`;
+        } else if (enabled) {
+          if (tunRunning) {
+            valueText = "运行中";
+            valueColor = "var(--success)";
+            cardTitle = `TUN 运行中（${platform}）`;
+          } else if (restartError) {
+            valueText = "启动失败";
+            valueColor = "var(--error)";
+            cardTitle = `启动失败：${restartError}`;
+          } else if (!configured) {
+            valueText = "未配置";
+            valueColor = "var(--warning)";
+            const setupCmd = status.setupCommand || "查看文档";
+            cardTitle = `已启用但未配置：${setupCmd}`;
+          } else if (coreRunning) {
+            valueText = "未生效";
+            valueColor = "var(--warning)";
+            cardTitle = "已启用，但当前内核未在 TUN 模式运行（可能需要重启内核）";
+          } else {
+            valueText = "已启用";
+            valueColor = "var(--warning)";
+            cardTitle = "已启用，等待启动内核";
+          }
         } else if (configured) {
-          tunValue.textContent = "已配置";
-          tunValue.style.color = "var(--success)";
-          tunCard.title = `TUN 模式已在 ${platform} 上配置`;
+          valueText = "未启用";
+          valueColor = "var(--text-secondary)";
+          cardTitle = `TUN 已配置（${platform}）`;
         } else {
-          tunValue.textContent = "未配置";
-          tunValue.style.color = "var(--warning)";
+          valueText = "未配置";
+          valueColor = "var(--warning)";
           const setupCmd = status.setupCommand || "查看文档";
-          tunCard.title = `点击查看配置方法：${setupCmd}`;
+          cardTitle = `点击查看配置方法：${setupCmd}`;
         }
+
+        tunValue.textContent = valueText;
+        tunValue.style.color = valueColor;
+        tunCard.title = cardTitle;
 
         // 更新设置面板中的 TUN 状态
         const tunConfigStatus = document.getElementById("tun-config-status");
