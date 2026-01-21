@@ -111,8 +111,8 @@ func (r *Router) checkTUNCapabilities(c *gin.Context) {
 		response["setupCommand"] = "sudo ./vea setup-tun"
 		response["description"] = "Creates vea-tun user and sets capabilities for core binary (cap_net_admin,cap_net_bind_service,cap_net_raw)"
 	case "windows":
-		response["setupCommand"] = "Run Vea as Administrator"
-		response["description"] = "TUN mode requires administrator privileges on Windows"
+		response["setupCommand"] = "无需额外配置"
+		response["description"] = "Windows 下 TUN 通常无需一次性配置；若启动失败请尝试以管理员身份运行 Vea，并确认 Wintun 驱动可用"
 	case "darwin":
 		response["setupCommand"] = "sudo vea"
 		response["description"] = "TUN mode requires root privileges on macOS"

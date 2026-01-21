@@ -5,17 +5,14 @@ package shared
 
 import (
 	"fmt"
-	"syscall"
 )
 
-var (
-	shell32           = syscall.NewLazyDLL("shell32.dll")
-	procIsUserAnAdmin = shell32.NewProc("IsUserAnAdmin")
-)
-
-// CheckTUNCapabilities 检查 Windows TUN 权限（管理员权限）
+// CheckTUNCapabilities 检查 Windows TUN 条件（无一次性配置步骤）
 func CheckTUNCapabilities() (bool, error) {
-	return isAdmin()
+	// Windows 下没有类似 Linux setcap 的“一次性配置”步骤。
+	// TUN 是否能成功工作更多取决于运行时环境（Wintun 是否可用/系统策略），
+	// 不应在能力检查阶段硬绑定为“当前进程是否管理员”来避免误报。
+	return true, nil
 }
 
 func CheckTUNCapabilitiesForBinary(binaryPath string) (bool, error) {
@@ -36,12 +33,6 @@ func SetupTUNForSingBoxBinary(binaryPath string) error {
 	return SetupTUNForBinary(binaryPath)
 }
 
-// isAdmin 检查当前进程是否以管理员身份运行
-func isAdmin() (bool, error) {
-	ret, _, _ := procIsUserAnAdmin.Call()
-	return ret != 0, nil
-}
-
 // TUNCapabilityStatus Windows stub
 type TUNCapabilityStatus struct {
 	UserExists      bool
@@ -54,17 +45,14 @@ type TUNCapabilityStatus struct {
 
 // GetTUNCapabilityStatus Windows 版本
 func GetTUNCapabilityStatus() TUNCapabilityStatus {
-	admin, _ := isAdmin()
 	return TUNCapabilityStatus{
-		FullyConfigured: admin,
+		FullyConfigured: true,
 	}
 }
 
-// EnsureTUNCapabilities Windows 下检查是否有管理员权限
+// EnsureTUNCapabilities Windows 下无一次性配置动作
 func EnsureTUNCapabilities() (bool, error) {
-	if admin, _ := isAdmin(); !admin {
-		return false, fmt.Errorf("TUN mode requires administrator privileges. Please run Vea as Administrator")
-	}
+	// Windows 下没有“一次性配置”动作；这里保持 no-op 以避免前端/状态误判。
 	return false, nil
 }
 

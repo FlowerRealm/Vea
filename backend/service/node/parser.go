@@ -89,6 +89,7 @@ func parseVLESS(link string) (domain.Node, error) {
 	if node.Name == "" {
 		node.Name = node.Address
 	}
+	node.SourceKey = deriveSubscriptionSourceKey(node.Name, node.Address)
 
 	return node, nil
 }
@@ -206,6 +207,7 @@ func parseVMess(link string) (domain.Node, error) {
 	if node.Name == "" {
 		node.Name = node.Address
 	}
+	node.SourceKey = deriveSubscriptionSourceKey(node.Name, node.Address)
 
 	return node, nil
 }
@@ -250,6 +252,7 @@ func parseTrojan(link string) (domain.Node, error) {
 	if node.Name == "" {
 		node.Name = node.Address
 	}
+	node.SourceKey = deriveSubscriptionSourceKey(node.Name, node.Address)
 
 	return node, nil
 }
@@ -333,6 +336,7 @@ func parseShadowsocks(link string) (domain.Node, error) {
 					if node.Name == "" {
 						node.Name = node.Address
 					}
+					node.SourceKey = deriveSubscriptionSourceKey(node.Name, node.Address)
 					return node, nil
 				}
 			}
@@ -502,4 +506,14 @@ func isLikelySubscriptionInfoNode(node domain.Node) bool {
 		}
 	}
 	return false
+}
+
+func deriveSubscriptionSourceKey(name string, address string) string {
+	if v := strings.ToLower(strings.TrimSpace(name)); v != "" {
+		return v
+	}
+	if v := strings.ToLower(strings.TrimSpace(address)); v != "" {
+		return v
+	}
+	return ""
 }

@@ -48,7 +48,7 @@ type ConfigRepository interface {
 	Delete(ctx context.Context, id string) error
 
 	// 同步状态更新
-	UpdateSyncStatus(ctx context.Context, id string, payload, checksum string, syncErr error) error
+	UpdateSyncStatus(ctx context.Context, id string, payload, checksum string, syncErr error, usageUsedBytes, usageTotalBytes *int64) error
 }
 
 // GeoRepository Geo 资源仓储接口

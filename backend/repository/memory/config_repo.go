@@ -155,7 +155,7 @@ func (r *ConfigRepo) Delete(ctx context.Context, id string) error {
 }
 
 // UpdateSyncStatus 更新同步状态
-func (r *ConfigRepo) UpdateSyncStatus(ctx context.Context, id string, payload, checksum string, syncErr error) error {
+func (r *ConfigRepo) UpdateSyncStatus(ctx context.Context, id string, payload, checksum string, syncErr error, usageUsedBytes, usageTotalBytes *int64) error {
 	r.store.Lock()
 
 	cfg, ok := r.store.Configs()[id]
@@ -171,6 +171,14 @@ func (r *ConfigRepo) UpdateSyncStatus(ctx context.Context, id string, payload, c
 		cfg.LastSyncError = syncErr.Error()
 	} else {
 		cfg.LastSyncError = ""
+	}
+	if usageUsedBytes != nil {
+		v := *usageUsedBytes
+		cfg.UsageUsedBytes = &v
+	}
+	if usageTotalBytes != nil {
+		v := *usageTotalBytes
+		cfg.UsageTotalBytes = &v
 	}
 	cfg.UpdatedAt = time.Now()
 	r.store.Configs()[id] = cfg

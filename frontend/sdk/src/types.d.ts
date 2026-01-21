@@ -51,6 +51,7 @@ export interface Node {
   transport?: NodeTransport
   tls?: NodeTLS
   sourceConfigId?: string
+  sourceKey?: string
   lastLatencyMs: number
   lastLatencyAt: string
   lastLatencyError?: string
@@ -124,6 +125,8 @@ export interface Config {
   autoUpdateInterval: number
   lastSyncedAt: string
   expireAt?: string | null
+  usageUsedBytes?: number
+  usageTotalBytes?: number
   createdAt: string
   updatedAt: string
 }

@@ -26,6 +26,7 @@ type Node struct {
 	Transport        *NodeTransport `json:"transport,omitempty"`
 	TLS              *NodeTLS       `json:"tls,omitempty"`
 	SourceConfigID   string         `json:"sourceConfigId,omitempty"`
+	SourceKey        string         `json:"sourceKey,omitempty"`
 	LastLatencyMS    int64          `json:"lastLatencyMs"`
 	LastLatencyAt    time.Time      `json:"lastLatencyAt"`
 	LastLatencyError string         `json:"lastLatencyError,omitempty"`
@@ -106,6 +107,8 @@ type Config struct {
 	AutoUpdateInterval time.Duration `json:"autoUpdateInterval"`
 	LastSyncedAt       time.Time     `json:"lastSyncedAt"`
 	ExpireAt           *time.Time    `json:"expireAt"`
+	UsageUsedBytes     *int64        `json:"usageUsedBytes,omitempty"`
+	UsageTotalBytes    *int64        `json:"usageTotalBytes,omitempty"`
 	CreatedAt          time.Time     `json:"createdAt"`
 	UpdatedAt          time.Time     `json:"updatedAt"`
 }

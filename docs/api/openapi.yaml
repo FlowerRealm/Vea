@@ -994,7 +994,11 @@ paths:
     get:
       tags: [tun]
       summary: 检查 TUN 能力
-      description: 检查当前系统是否具备 TUN 条件（需要权限、驱动、可用接口等）
+      description: |
+        检查当前系统是否具备 TUN 条件（不同平台语义略有差异）。
+
+        - Linux: 用于判断是否已完成一次性权限配置（setcap/capabilities）。
+        - Windows/macOS: 通常无需一次性配置；TUN 是否能启动取决于运行时环境（权限/驱动/系统策略等），启动失败时以错误信息为准。
       operationId: checkTUNCapabilities
       responses:
         '200':
@@ -1442,6 +1446,9 @@ components:
         sourceConfigId:
           type: string
           description: 来源配置 ID
+        sourceKey:
+          type: string
+          description: 订阅稳定键（用于分享链接订阅跨拉取稳定复用节点）
         lastLatencyMs:
           type: integer
           format: int64
@@ -1838,6 +1845,14 @@ components:
           type: string
           format: date-time
           nullable: true
+        usageUsedBytes:
+          type: integer
+          format: int64
+          description: 订阅已用字节数（upload+download；来自 subscription-userinfo）
+        usageTotalBytes:
+          type: integer
+          format: int64
+          description: 订阅总字节数（total；来自 subscription-userinfo）
         createdAt:
           type: string
           format: date-time

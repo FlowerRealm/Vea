@@ -69,6 +69,10 @@
 | 202601161636 | fix-issue57-flow-graph-fullscreen | 修复 | ✅已完成 | [2026-01/202601161636_fix-issue57-flow-graph-fullscreen](2026-01/202601161636_fix-issue57-flow-graph-fullscreen/) |
 | 202601161700 | fix-issue56-flow-graph-node-sync | 修复 | ✅已完成 | [2026-01/202601161700_fix-issue56-flow-graph-node-sync](2026-01/202601161700_fix-issue56-flow-graph-node-sync/) |
 | 202601162158 | refactor-subscription-id-system | 修复 | ✅已完成 | [2026-01/202601162158_refactor-subscription-id-system](2026-01/202601162158_refactor-subscription-id-system/) |
+| 202601202132 | fix-issue68-component-version | 修复 | ✅已完成 | [2026-01/202601202132_fix-issue68-component-version](2026-01/202601202132_fix-issue68-component-version/) |
+| 202601202136 | fix-windows-tun-admin-hint | 修复 | ✅已完成 | [2026-01/202601202136_fix-windows-tun-admin-hint](2026-01/202601202136_fix-windows-tun-admin-hint/) |
+| 202601202145 | clash-subscription-usage | 功能 | ✅已完成 | [2026-01/202601202145_clash-subscription-usage](2026-01/202601202145_clash-subscription-usage/) |
+| 202601210623 | subscription-sourcekey | 修复 | ✅已完成 | [2026-01/202601210623_subscription-sourcekey](2026-01/202601210623_subscription-sourcekey/) |
 
 ## 按月归档
 
@@ -137,3 +141,7 @@
 - [202601161636_fix-issue57-flow-graph-fullscreen](2026-01/202601161636_fix-issue57-flow-graph-fullscreen/) - 主题页：走向图支持全屏查看，并修复多图 marker id 冲突（Issue #57）
 - [202601161700_fix-issue56-flow-graph-node-sync](2026-01/202601161700_fix-issue56-flow-graph-node-sync/) - 主题页：修复拉取节点后走向图节点不同步（Issue #56）
 - [202601162158_refactor-subscription-id-system](2026-01/202601162158_refactor-subscription-id-system/) - 订阅/代理/主题：订阅节点复用补强、Windows TUN 就绪判定兜底、走向图全屏窗口放大、日志 7 天留存（Issue #32/#41/#57/#66）
+- [202601202132_fix-issue68-component-version](2026-01/202601202132_fix-issue68-component-version/) - 组件管理：修复 sing-box/mihomo 版本号不显示（Issue #68）
+- [202601202136_fix-windows-tun-admin-hint](2026-01/202601202136_fix-windows-tun-admin-hint/) - 后端/文档：修复 Windows 下 TUN 状态误报“需要管理员/未配置”
+- [202601202145_clash-subscription-usage](2026-01/202601202145_clash-subscription-usage/) - 订阅面板：展示订阅用量（已用/总量），订阅同步解析 `subscription-userinfo`
+- [202601210623_subscription-sourcekey](2026-01/202601210623_subscription-sourcekey/) - 订阅节点：引入 `sourceKey` 稳定复用/生成节点 ID，修复拉取节点后 FRouter 引用变未知 UUID

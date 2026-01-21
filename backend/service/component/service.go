@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -59,16 +60,51 @@ func (s *Service) List(ctx context.Context) ([]domain.CoreComponent, error) {
 		return nil, err
 	}
 
-	// 检测本地安装
+	// 检测本地安装 + 回填缺失的版本号（避免发布版自带内核但 UI 无法显示版本）
 	for i, comp := range components {
-		if comp.InstallDir == "" {
-			if info := s.detectInstalled(comp.Kind); info != nil {
-				comp.InstallDir = info.dir
-				comp.LastInstalledAt = info.modTime
-				components[i] = comp
-				// 更新存储
-				s.repo.SetInstalled(ctx, comp.ID, info.dir, comp.LastVersion, comp.Checksum)
+		installDir := strings.TrimSpace(comp.InstallDir)
+		if installDir == "" {
+			info := s.detectInstalled(comp.Kind)
+			if info == nil {
+				continue
 			}
+
+			comp.InstallDir = info.dir
+			comp.LastInstalledAt = info.modTime
+			comp.InstallStatus = domain.InstallStatusIdle
+			comp.InstallProgress = 0
+			comp.InstallMessage = ""
+
+			if strings.TrimSpace(comp.LastVersion) == "" {
+				if version, vErr := shared.DetectCoreBinaryVersion(string(comp.Kind), info.binaryPath); vErr == nil {
+					comp.LastVersion = version
+				}
+			}
+
+			components[i] = comp
+			if _, uErr := s.repo.Update(ctx, comp.ID, comp); uErr != nil {
+				log.Printf("[Components] persist detected install failed: %v", uErr)
+			}
+			continue
+		}
+
+		if strings.TrimSpace(comp.LastVersion) != "" {
+			continue
+		}
+
+		binaryPath, bErr := shared.FindBinaryInDir(installDir, componentBinaryCandidates(comp.Kind))
+		if bErr != nil {
+			continue
+		}
+		version, vErr := shared.DetectCoreBinaryVersion(string(comp.Kind), binaryPath)
+		if vErr != nil || strings.TrimSpace(version) == "" {
+			continue
+		}
+
+		comp.LastVersion = version
+		components[i] = comp
+		if _, uErr := s.repo.Update(ctx, comp.ID, comp); uErr != nil {
+			log.Printf("[Components] persist version backfill failed: %v", uErr)
 		}
 	}
 
@@ -188,28 +224,26 @@ func (s *Service) Install(ctx context.Context, id string) (domain.CoreComponent,
 // ========== 内部方法 ==========
 
 type installInfo struct {
-	dir     string
-	modTime time.Time
+	dir        string
+	binaryPath string
+	modTime    time.Time
 }
 
 func (s *Service) detectInstalled(kind domain.CoreComponentKind) *installInfo {
 	var subdir string
-	var binaries []string
 
 	switch kind {
 	case domain.ComponentSingBox:
 		subdir = "core/sing-box"
-		binaries = []string{"sing-box", "sing-box.exe"}
 	case domain.ComponentClash:
 		subdir = "core/clash"
-		binaries = []string{"mihomo", "mihomo.exe", "clash", "clash.exe"}
 	default:
 		return nil
 	}
 
 	for _, root := range shared.ArtifactsSearchRoots() {
 		dir := filepath.Join(root, subdir)
-		binaryPath, err := shared.FindBinaryInDir(dir, binaries)
+		binaryPath, err := shared.FindBinaryInDir(dir, componentBinaryCandidates(kind))
 		if err != nil {
 			continue
 		}
@@ -219,12 +253,24 @@ func (s *Service) detectInstalled(kind domain.CoreComponentKind) *installInfo {
 		}
 
 		return &installInfo{
-			dir:     dir,
-			modTime: info.ModTime(),
+			dir:        dir,
+			binaryPath: binaryPath,
+			modTime:    info.ModTime(),
 		}
 	}
 
 	return nil
+}
+
+func componentBinaryCandidates(kind domain.CoreComponentKind) []string {
+	switch kind {
+	case domain.ComponentSingBox:
+		return []string{"sing-box", "sing-box.exe"}
+	case domain.ComponentClash:
+		return []string{"mihomo", "mihomo.exe", "clash", "clash.exe"}
+	default:
+		return nil
+	}
 }
 
 func (s *Service) doInstall(id string) {

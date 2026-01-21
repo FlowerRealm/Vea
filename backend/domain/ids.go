@@ -2,6 +2,7 @@ package domain
 
 import (
 	"encoding/json"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -26,4 +27,18 @@ func StableNodeIDForConfig(configID string, node Node) string {
 		TLS:       node.TLS,
 	})
 	return uuid.NewSHA1(uuid.NameSpaceOID, append([]byte(configID+"|"), b...)).String()
+}
+
+// StableNodeIDForSourceKey 基于配置 ID 与订阅 sourceKey 生成稳定的节点 ID。
+//
+// 适用场景：
+// - 分享链接订阅：节点参数可能发生滚动更新（uuid/password/path/fp等），但用户希望按“订阅语义”保持稳定引用。
+// - sourceKey 由订阅解析层生成并持久化到 Node 上，用于跨拉取稳定复用。
+func StableNodeIDForSourceKey(configID string, sourceKey string) string {
+	configID = strings.TrimSpace(configID)
+	sourceKey = strings.ToLower(strings.TrimSpace(sourceKey))
+	if configID == "" || sourceKey == "" {
+		return ""
+	}
+	return uuid.NewSHA1(uuid.NameSpaceOID, []byte(configID+"|sourceKey|"+sourceKey)).String()
 }

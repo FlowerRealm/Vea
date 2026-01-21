@@ -667,6 +667,145 @@ func TestService_SyncNodesFromPayload_ReusesExistingNodeID_PreservesFRouterRefer
 	}
 }
 
+func TestService_SyncNodesFromPayload_ShareLinks_ReusesExistingNodeID_BySourceKey_WhenUUIDChanges(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	store := memory.NewStore(events.NewBus())
+	configRepo := memory.NewConfigRepo(store)
+	nodeRepo := memory.NewNodeRepo(store)
+	frouterRepo := memory.NewFRouterRepo(store)
+	nodeSvc := nodes.NewService(context.Background(), nodeRepo)
+	svc := NewService(context.Background(), configRepo, nodeSvc, frouterRepo)
+
+	const configID = "cfg-1"
+	if _, err := configRepo.Create(ctx, domain.Config{
+		ID:     configID,
+		Name:   "cfg-1",
+		Format: domain.ConfigFormatSubscription,
+	}); err != nil {
+		t.Fatalf("create config: %v", err)
+	}
+
+	const existingNodeID = "old-node-id"
+	if _, err := nodeRepo.Create(ctx, domain.Node{
+		ID:             existingNodeID,
+		Name:           "custom-name",
+		SourceKey:      "n1",
+		Address:        "example.com",
+		Port:           443,
+		Protocol:       domain.ProtocolVLESS,
+		SourceConfigID: configID,
+		Security: &domain.NodeSecurity{
+			UUID: "old-uuid",
+		},
+		Transport: &domain.NodeTransport{
+			Type: "tcp",
+		},
+		TLS: &domain.NodeTLS{
+			Enabled: true,
+			Type:    "tls",
+		},
+	}); err != nil {
+		t.Fatalf("create node: %v", err)
+	}
+
+	if _, err := frouterRepo.Create(ctx, domain.FRouter{
+		ID:   "fr-1",
+		Name: "fr-1",
+		ChainProxy: domain.ChainProxySettings{
+			Slots: []domain.SlotNode{
+				{ID: "slot-1", Name: "slot", BoundNodeID: existingNodeID},
+			},
+			Edges: []domain.ProxyEdge{
+				{ID: "e1", From: domain.EdgeNodeLocal, To: "slot-1", Priority: 0, Enabled: true},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("create frouter: %v", err)
+	}
+
+	const payload = "vless://new-uuid@example.com:443?security=tls#n1"
+	if err := svc.syncNodesFromPayload(ctx, configID, payload); err != nil {
+		t.Fatalf("sync nodes: %v", err)
+	}
+
+	n, err := nodeRepo.Get(ctx, existingNodeID)
+	if err != nil {
+		t.Fatalf("expected node %s to be preserved, got err=%v", existingNodeID, err)
+	}
+	if n.Name != "custom-name" {
+		t.Fatalf("expected node name preserved=%q, got %q", "custom-name", n.Name)
+	}
+	if n.SourceKey != "n1" {
+		t.Fatalf("expected node sourceKey=%q, got %q", "n1", n.SourceKey)
+	}
+	if n.Security == nil || n.Security.UUID != "new-uuid" {
+		t.Fatalf("expected node uuid updated=%q, got %+v", "new-uuid", n.Security)
+	}
+}
+
+func TestService_SyncNodesFromPayload_ShareLinks_LegacyNode_ReusesExistingNodeID_ByNameKey_WhenUUIDChanges(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	store := memory.NewStore(events.NewBus())
+	configRepo := memory.NewConfigRepo(store)
+	nodeRepo := memory.NewNodeRepo(store)
+	frouterRepo := memory.NewFRouterRepo(store)
+	nodeSvc := nodes.NewService(context.Background(), nodeRepo)
+	svc := NewService(context.Background(), configRepo, nodeSvc, frouterRepo)
+
+	const configID = "cfg-1"
+	if _, err := configRepo.Create(ctx, domain.Config{
+		ID:     configID,
+		Name:   "cfg-1",
+		Format: domain.ConfigFormatSubscription,
+	}); err != nil {
+		t.Fatalf("create config: %v", err)
+	}
+
+	const existingNodeID = "old-node-id"
+	if _, err := nodeRepo.Create(ctx, domain.Node{
+		ID:             existingNodeID,
+		Name:           "n1",
+		Address:        "example.com",
+		Port:           443,
+		Protocol:       domain.ProtocolVLESS,
+		SourceConfigID: configID,
+		Security: &domain.NodeSecurity{
+			UUID: "old-uuid",
+		},
+		Transport: &domain.NodeTransport{
+			Type: "tcp",
+		},
+		TLS: &domain.NodeTLS{
+			Enabled: true,
+			Type:    "tls",
+		},
+	}); err != nil {
+		t.Fatalf("create node: %v", err)
+	}
+
+	const payload = "vless://new-uuid@example.com:443?security=tls#n1"
+	if err := svc.syncNodesFromPayload(ctx, configID, payload); err != nil {
+		t.Fatalf("sync nodes: %v", err)
+	}
+
+	n, err := nodeRepo.Get(ctx, existingNodeID)
+	if err != nil {
+		t.Fatalf("expected node %s to be preserved, got err=%v", existingNodeID, err)
+	}
+	if n.SourceKey != "n1" {
+		t.Fatalf("expected node sourceKey backfilled=%q, got %q", "n1", n.SourceKey)
+	}
+	if n.Security == nil || n.Security.UUID != "new-uuid" {
+		t.Fatalf("expected node uuid updated=%q, got %+v", "new-uuid", n.Security)
+	}
+}
+
 func TestService_SyncNodesFromPayload_ClashYAML_ReusesExistingNodeID_RewritesChainProxy(t *testing.T) {
 	t.Parallel()
 

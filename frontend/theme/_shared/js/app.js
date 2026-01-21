@@ -3169,10 +3169,21 @@ export function bootstrapTheme({ createAPI, utils }) {
         }
         tbody.innerHTML = configs
           .map((cfg) => {
+            const usedBytes = typeof cfg.usageUsedBytes === "number" && Number.isFinite(cfg.usageUsedBytes)
+              ? cfg.usageUsedBytes
+              : null;
+            const totalBytes = typeof cfg.usageTotalBytes === "number" && Number.isFinite(cfg.usageTotalBytes)
+              ? cfg.usageTotalBytes
+              : null;
+            const usageText = usedBytes !== null && totalBytes !== null
+              ? `${formatBytes(usedBytes)} / ${formatBytes(totalBytes)}`
+              : "—";
+
             const syncErr = cfg.lastSyncError || "";
             const syncState = syncErr
               ? `<span class="badge error text-truncate" title="${escapeHtml(syncErr)}">失败：${escapeHtml(syncErr)}</span>`
               : '<span class="badge">正常</span>';
+            const statusHtml = `${syncState}<div class="muted">用量：${escapeHtml(usageText)}</div>`;
             const source = cfg.sourceUrl ? `<br /><div class="muted text-truncate" title="${escapeHtml(cfg.sourceUrl)}">${escapeHtml(cfg.sourceUrl)}</div>` : "";
             return `
           <tr data-id="${escapeHtml(cfg.id)}">
@@ -3180,7 +3191,7 @@ export function bootstrapTheme({ createAPI, utils }) {
 	            <td><span class="badge">${escapeHtml(cfg.format)}</span></td>
 	            <td>${formatInterval(cfg.autoUpdateInterval)}</td>
 	            <td>${formatTime(cfg.lastSyncedAt)}</td>
-	            <td>${syncState}</td>
+	            <td>${statusHtml}</td>
 	            <td>
 	              <button class="ghost" data-action="edit-config">编辑</button>
 	              <button class="ghost" data-action="pull-nodes">拉取节点</button>
@@ -3188,9 +3199,9 @@ export function bootstrapTheme({ createAPI, utils }) {
 	            </td>
 	          </tr>
 	        `;
-	          })
-	          .join("");
-	      }
+          })
+          .join("");
+      }
 
       function renderSystemProxy(settings) {
         if (!systemProxyIgnoreInput) return;

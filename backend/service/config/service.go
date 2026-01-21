@@ -116,7 +116,7 @@ func (s *Service) Create(ctx context.Context, cfg domain.Config) (domain.Config,
 					} else {
 						hash := sha256.Sum256([]byte(fallbackPayload))
 						checksum := hex.EncodeToString(hash[:])
-						if updateErr := s.repo.UpdateSyncStatus(bgCtx, createdID, fallbackPayload, checksum, nil); updateErr != nil {
+						if updateErr := s.repo.UpdateSyncStatus(bgCtx, createdID, fallbackPayload, checksum, nil, nil, nil); updateErr != nil {
 							log.Printf("[ConfigCreate] initial sync failed for %s: %v (fallback parsed but update sync status failed: %v)", createdID, err, updateErr)
 						} else {
 							log.Printf("[ConfigCreate] initial sync failed for %s: %v (fallback payload parsed successfully)", createdID, err)
@@ -155,9 +155,9 @@ func (s *Service) Sync(ctx context.Context, id string) error {
 		return nil // 没有 SourceURL，无需同步
 	}
 
-	payload, checksum, err := s.downloadConfig(ctx, cfg.SourceURL)
+	payload, checksum, usedBytes, totalBytes, err := s.downloadConfig(ctx, cfg.SourceURL)
 	if err != nil {
-		if updateErr := s.repo.UpdateSyncStatus(ctx, id, cfg.Payload, cfg.Checksum, err); updateErr != nil {
+		if updateErr := s.repo.UpdateSyncStatus(ctx, id, cfg.Payload, cfg.Checksum, err, nil, nil); updateErr != nil {
 			log.Printf("[ConfigSync] failed to update sync status for %s after download error: %v", id, updateErr)
 		}
 		return err
@@ -170,7 +170,7 @@ func (s *Service) Sync(ctx context.Context, id string) error {
 			configID: id,
 			message:  "订阅内容为空；未更新节点（如有现有节点将保持不变）",
 		}
-		if updateErr := s.repo.UpdateSyncStatus(ctx, id, cfg.Payload, cfg.Checksum, emptyErr); updateErr != nil {
+		if updateErr := s.repo.UpdateSyncStatus(ctx, id, cfg.Payload, cfg.Checksum, emptyErr, usedBytes, totalBytes); updateErr != nil {
 			log.Printf("[ConfigSync] failed to update sync status for %s after empty payload: %v", id, updateErr)
 		}
 		return emptyErr
@@ -178,12 +178,12 @@ func (s *Service) Sync(ctx context.Context, id string) error {
 
 	// 如果内容没变，只更新同步时间
 	if checksum == cfg.Checksum {
-		if updateErr := s.repo.UpdateSyncStatus(ctx, id, cfg.Payload, cfg.Checksum, nil); updateErr != nil {
+		if updateErr := s.repo.UpdateSyncStatus(ctx, id, cfg.Payload, cfg.Checksum, nil, usedBytes, totalBytes); updateErr != nil {
 			log.Printf("[ConfigSync] failed to update sync status for %s when checksum unchanged: %v", id, updateErr)
 		}
 		// 内容不变也要保证解析状态正确：否则会把 LastSyncError “误清空”。
 		if err := s.syncNodesFromPayload(ctx, id, cfg.Payload); err != nil {
-			if updateErr := s.repo.UpdateSyncStatus(ctx, id, cfg.Payload, cfg.Checksum, err); updateErr != nil {
+			if updateErr := s.repo.UpdateSyncStatus(ctx, id, cfg.Payload, cfg.Checksum, err, usedBytes, totalBytes); updateErr != nil {
 				log.Printf("[ConfigSync] failed to update sync status for %s after parse error: %v", id, updateErr)
 			}
 			return err
@@ -192,14 +192,14 @@ func (s *Service) Sync(ctx context.Context, id string) error {
 	}
 
 	// 更新内容
-	if updateErr := s.repo.UpdateSyncStatus(ctx, id, payload, checksum, nil); updateErr != nil {
+	if updateErr := s.repo.UpdateSyncStatus(ctx, id, payload, checksum, nil, usedBytes, totalBytes); updateErr != nil {
 		log.Printf("[ConfigSync] failed to update sync status for %s after download: %v", id, updateErr)
 	}
 
 	// 解析并更新节点（解析失败时不清空旧节点）。
 	if err := s.syncNodesFromPayload(ctx, id, payload); err != nil {
 		// 下载成功但解析失败：保留旧节点，同时把错误记录到配置上，便于前端展示。
-		if updateErr := s.repo.UpdateSyncStatus(ctx, id, payload, checksum, err); updateErr != nil {
+		if updateErr := s.repo.UpdateSyncStatus(ctx, id, payload, checksum, err, usedBytes, totalBytes); updateErr != nil {
 			log.Printf("[ConfigSync] failed to update sync status for %s after parse error: %v", id, updateErr)
 		}
 		return err
@@ -237,10 +237,13 @@ func (s *Service) syncNodesFromPayload(ctx context.Context, configID, payload st
 		return nil
 	}
 
+	existingNodes := []domain.Node(nil)
 	existingIndex := existingNodeIDIndex{}
 	if existing, err := s.nodeService.ListByConfigID(ctx, configID); err == nil && len(existing) > 0 {
+		existingNodes = existing
 		existingIndex = buildExistingNodeIDIndex(existing)
 	}
+	existingSubIndex := buildExistingSubscriptionNodeIndex(existingNodes)
 
 	trimmed := strings.TrimSpace(payload)
 	if trimmed == "" {
@@ -255,8 +258,12 @@ func (s *Service) syncNodesFromPayload(ctx context.Context, configID, payload st
 
 	if len(nodes) > 0 {
 		// 分享链接订阅：仅更新节点；如之前生成过 Clash YAML 的订阅 FRouter，清理掉以避免残留。
-		nodes, idMap := reuseNodeIDs(existingIndex, nodes)
-		if _, err := s.nodeService.ReplaceNodesForConfig(ctx, configID, nodes); err != nil {
+		nodes = normalizeAndDisambiguateSubscriptionSourceKeys(nodes)
+		nodes, _ = reuseNodeIDs(existingIndex, nodes)
+		nodes, _ = reuseNodeIDsBySubscriptionKey(existingSubIndex, nodes)
+
+		nextNodes, err := s.nodeService.ReplaceNodesForConfig(ctx, configID, nodes)
+		if err != nil {
 			log.Printf("[ConfigSync] update nodes failed for %s: %v", configID, err)
 			return err
 		}
@@ -267,6 +274,7 @@ func (s *Service) syncNodesFromPayload(ctx context.Context, configID, payload st
 				return err
 			}
 		}
+		idMap := buildSubscriptionNodeIDRewriteMap(existingNodes, nextNodes)
 		if err := s.rewriteFRoutersNodeIDs(ctx, idMap); err != nil {
 			log.Printf("[ConfigSync] rewrite frouters failed for %s: %v", configID, err)
 			return err
@@ -400,37 +408,39 @@ func (s *Service) rewriteFRoutersNodeIDs(ctx context.Context, idMap map[string]s
 	return nil
 }
 
-func (s *Service) downloadConfig(ctx context.Context, sourceURL string) (payload, checksum string, err error) {
+func (s *Service) downloadConfig(ctx context.Context, sourceURL string) (payload, checksum string, usedBytes, totalBytes *int64, err error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	// 使用订阅专用 User-Agent
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
 	if err != nil {
-		return "", "", err
+		return "", "", nil, nil, err
 	}
 	req.Header.Set("User-Agent", subscriptionUserAgent)
 
 	resp, err := shared.HTTPClient.Do(req)
 	if err != nil {
-		return "", "", err
+		return "", "", nil, nil, err
 	}
 	defer resp.Body.Close()
 
+	usedBytes, totalBytes = parseSubscriptionUserinfo(resp.Header.Get("subscription-userinfo"))
+
 	if resp.StatusCode != http.StatusOK {
-		return "", "", errors.New("download failed: " + resp.Status)
+		return "", "", usedBytes, totalBytes, errors.New("download failed: " + resp.Status)
 	}
 
 	// 限制下载大小
 	limitedReader := io.LimitReader(resp.Body, shared.MaxDownloadSize)
 	data, err := io.ReadAll(limitedReader)
 	if err != nil {
-		return "", "", err
+		return "", "", usedBytes, totalBytes, err
 	}
 
 	// 计算校验和
 	hash := sha256.Sum256(data)
 	checksum = hex.EncodeToString(hash[:])
 
-	return string(data), checksum, nil
+	return string(data), checksum, usedBytes, totalBytes, nil
 }

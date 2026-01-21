@@ -12,6 +12,7 @@
 ### 新增
 - 增加核心组件卸载能力：新增 `POST /components/:id/uninstall`，并在前端组件面板提供“卸载”按钮（代理运行中会拒绝卸载正在使用的引擎）。
 - 支持 Clash YAML 订阅解析：解析 `proxies` 并结合 `proxy-groups`/`rules` 自动生成订阅 FRouter（用于将订阅路由语义落到 Vea 的 `ChainProxySettings`）。
+- 订阅面板展示订阅用量（已用/总量）：订阅同步时解析响应头 `subscription-userinfo`（`upload/download/total`），并在订阅列表展示“已用/总量”。
 - 主题包（目录化 + ZIP 导入/导出）：主题以 `index.html` 为入口的目录形式存在；后端新增 `/themes`（list/import/export/delete）；Electron 启动从 userData/themes 加载并在缺失时复制内置主题；主题内提供“导入主题(.zip)”与“导出当前主题(.zip)”。
 - 主题包支持 `manifest.json`（单包多子主题）：在 `userData/themes/<packId>/manifest.json` 中描述包信息与子主题入口；`GET /themes` 展开子主题并返回 `entry`，用于切换与启动加载。
 - 补齐自定义主题/样式的开发文档与示例模板（Issue #46）。
@@ -29,8 +30,10 @@
 ### 修复
 - 修复走向图全屏窗口仍不够大的问题：全屏 Modal 改为占满应用视口（接近 100% 宽高），更适合复杂规则排障（Issue #57）。
 - 修复 Windows 下 TUN 就绪判定误报失败导致“内核已运行但 UI 显示启动失败”：识别 `wintun` 接口名、放宽非 Linux 兜底判定，并在错误信息中包含 `kernel.log` 路径提示（Issue #41/#32）。
+- 修复 Windows 下 TUN 能力检查误报“需要管理员/未配置”的显示问题：`/tun/check.configured` 在 Windows 表达“无需一次性配置”，并同步更新提示文案。
 - 日志文件增加 7 天留存：启动会轮转 `app.log`/`kernel.log` 并清理过期轮转文件，便于上传调试（Issue #66）。
 - 订阅节点 ID 复用补强：identity 冲突时支持 `identity+name` 唯一消解；同步产生映射时可自动重写 FRouter 引用，减少“未知节点”回归。
+- 修复分享链接订阅拉取节点导致 FRouter 引用显示“未知: uuid”的问题：为订阅节点引入 `sourceKey` 稳定复用/生成节点 ID，并在必要时自动重写 FRouter 引用。
 - 修复拉取节点后走向图节点与实际节点不同步的问题：走向图渲染会等待 nodes 列表加载完成，并在节点 id/name 变化时触发重渲染（Issue #56）。
 - 新增 FRouter 元信息更新接口 `PUT /frouters/:id/meta` 与主题页“重命名”入口；并修复 `PUT /frouters/:id` 未携带 `tags` 时意外清空 tags 的问题（Issue #62）。
 - 修复速度单位显示不一致的问题：前端主题/SDK/OpenAPI 将速度单位从 `Mbps` 修正为 `MB/s`（与实际测速计算单位一致）。
@@ -40,6 +43,7 @@
 - 修复 mihomo(Clash) TUN 模式在部分环境下因 DoH/QUIC 导致“可启动但访问异常/分流失效”的问题：默认开启 sniffer，并默认拒绝 QUIC（UDP/443）以强制回落到 TCP/HTTPS。
 - 修复 Linux 下 sing-box TUN 模式可能出现“IP 通但域名解析卡死”的问题：默认远程 DNS 从 `8.8.8.8:53(TCP)` 改为 DoH（Cloudflare `1.1.1.1:443`）。
 - 修复组件安装流程中 `.gz` 解压结果固定写入 `artifact.bin` 导致 mihomo 等单文件发行包安装不可靠的问题：改为使用 gzip header 中的原始文件名，并清理冗余归一化分支。
+- 修复发布版自带 sing-box/mihomo 时版本号不显示的问题：当组件已安装但 `lastVersion` 为空时，后端会从二进制路径/版本输出探测并回填（Issue #68）。
 - 修复 clash 安装归一化过程中 `os.Chmod` 错误被忽略的问题：当无法设置可执行权限时，直接返回错误，避免后续运行时失败。
 - 提取代理服务 TUN 默认值常量，避免 `applyConfigDefaults` 与默认判定逻辑重复导致的不一致风险。
 - 前端主题抽取 `updateEngineSetting` 的公共刷新逻辑，减少重复代码并降低后续维护成本。

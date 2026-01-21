@@ -35,6 +35,9 @@ func TestParseShareLink_VLESS(t *testing.T) {
 	if parsed.Name != "node-1" {
 		t.Fatalf("expected name %q, got %q", "node-1", parsed.Name)
 	}
+	if parsed.SourceKey != "node-1" {
+		t.Fatalf("expected sourceKey %q, got %q", "node-1", parsed.SourceKey)
+	}
 }
 
 func TestParseMultipleLinks_CollectsErrorsAndKeepsValidNodes(t *testing.T) {

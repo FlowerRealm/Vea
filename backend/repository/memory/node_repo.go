@@ -144,7 +144,12 @@ func (r *NodeRepo) ReplaceNodesForConfig(_ context.Context, configID string, nod
 			node.Name = node.Address
 		}
 		if node.ID == "" {
-			node.ID = domain.StableNodeIDForConfig(configID, node)
+			if strings.TrimSpace(node.SourceKey) != "" {
+				node.ID = domain.StableNodeIDForSourceKey(configID, node.SourceKey)
+			}
+			if node.ID == "" {
+				node.ID = domain.StableNodeIDForConfig(configID, node)
+			}
 		}
 		if node.CreatedAt.IsZero() {
 			node.CreatedAt = now
@@ -200,6 +205,9 @@ func (r *NodeRepo) ReplaceNodesForConfig(_ context.Context, configID string, nod
 			node.LastSpeedError = existing.LastSpeedError
 			if strings.TrimSpace(existing.Name) != "" {
 				node.Name = existing.Name
+			}
+			if strings.TrimSpace(existing.SourceKey) != "" {
+				node.SourceKey = existing.SourceKey
 			}
 			if existing.Tags != nil {
 				node.Tags = existing.Tags

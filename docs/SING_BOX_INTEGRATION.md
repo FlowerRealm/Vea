@@ -182,7 +182,7 @@ curl -X POST http://localhost:19080/proxy/stop
 
 ### Windows
 
-需要以**管理员身份**运行 Vea。无需额外配置。
+Windows 下 TUN 通常无需额外“一次性配置”；若启动失败，请尝试以**管理员身份**运行 Vea，并确认 Wintun 驱动可用。
 
 ### macOS
 
@@ -215,10 +215,10 @@ curl http://localhost:19080/tun/check
 **Windows 响应**：
 ```json
 {
-  "configured": false,
+  "configured": true,
   "platform": "windows",
-  "setupCommand": "Run Vea as Administrator",
-  "description": "TUN mode requires administrator privileges on Windows"
+  "setupCommand": "无需额外配置",
+  "description": "Windows 下 TUN 通常无需一次性配置；若启动失败请尝试以管理员身份运行 Vea，并确认 Wintun 驱动可用"
 }
 ```
 
