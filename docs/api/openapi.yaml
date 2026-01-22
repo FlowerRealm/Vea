@@ -934,6 +934,9 @@ paths:
                     type: string
                   inboundPort:
                     type: integer
+                  tunIface:
+                    type: string
+                    description: TUN 模式下实际使用/识别到的虚拟网卡名（用于排障；Windows/macOS 可能与配置中的 interfaceName 不同）
                   frouterId:
                     type: string
                   lastRestartAt:

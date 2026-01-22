@@ -254,6 +254,15 @@ sudo ./vea setup-tun
 sudo ./vea
 ```
 
+### Windows：启用 TUN 超时 / `TUN interface not ready`
+
+**现象**：打开 TUN 后等待约 10~30 秒提示失败（sing-box / mihomo 均可能出现）。
+
+**排查步骤**：
+1. 打开应用“日志”面板，复制 `kernel.log` 路径，并截取当次启动日志（从 `----- kernel start ... -----` 到报错位置）。
+2. 在 `kernel.log` 中搜索关键词：`wintun`、`access is denied`、`requires elevation`、`failed`，优先以日志为准定位真实失败原因。
+3. 确认以管理员身份运行；若系统安装了其它 VPN/加速器/安全软件网络防护，可能与 TUN/路由表冲突，建议先暂时关闭或卸载后复测。
+
 ### Hysteria2 节点无法连接
 
 **检查**：

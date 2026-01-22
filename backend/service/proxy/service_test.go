@@ -348,6 +348,67 @@ func TestTuneTUNSettingsForEngine_ClashLinux_DoesNotOverrideCustomMTU(t *testing
 	}
 }
 
+func TestParseTUNAddressCIDRs_Empty(t *testing.T) {
+	_, err := parseTUNAddressCIDRs(nil)
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+}
+
+func TestMatchTUNAddrs_ExactMatch(t *testing.T) {
+	expected, err := parseTUNAddressCIDRs([]string{"172.19.0.1/30"})
+	if err != nil {
+		t.Fatalf("parseTUNAddressCIDRs: %v", err)
+	}
+
+	addrs := []net.Addr{
+		&net.IPNet{
+			IP:   net.IPv4(172, 19, 0, 1),
+			Mask: net.CIDRMask(30, 32),
+		},
+	}
+
+	if got := matchTUNAddrs(addrs, expected); got != tunAddrMatchExact {
+		t.Fatalf("expected match kind %v, got %v", tunAddrMatchExact, got)
+	}
+}
+
+func TestMatchTUNAddrs_MoreSpecificPrefixIsStillExact(t *testing.T) {
+	expected, err := parseTUNAddressCIDRs([]string{"172.19.0.1/30"})
+	if err != nil {
+		t.Fatalf("parseTUNAddressCIDRs: %v", err)
+	}
+
+	addrs := []net.Addr{
+		&net.IPNet{
+			IP:   net.IPv4(172, 19, 0, 1),
+			Mask: net.CIDRMask(32, 32),
+		},
+	}
+
+	if got := matchTUNAddrs(addrs, expected); got != tunAddrMatchExact {
+		t.Fatalf("expected match kind %v, got %v", tunAddrMatchExact, got)
+	}
+}
+
+func TestMatchTUNAddrs_PrefixMismatchFallsBackToNetworkMatch(t *testing.T) {
+	expected, err := parseTUNAddressCIDRs([]string{"172.19.0.1/30"})
+	if err != nil {
+		t.Fatalf("parseTUNAddressCIDRs: %v", err)
+	}
+
+	addrs := []net.Addr{
+		&net.IPNet{
+			IP:   net.IPv4(172, 19, 0, 1),
+			Mask: net.CIDRMask(16, 32),
+		},
+	}
+
+	if got := matchTUNAddrs(addrs, expected); got != tunAddrMatchNetwork {
+		t.Fatalf("expected match kind %v, got %v", tunAddrMatchNetwork, got)
+	}
+}
+
 func TestService_Start_DoesNotStopPreviousProxyOnCompileError(t *testing.T) {
 	ctx := context.Background()
 

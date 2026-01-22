@@ -30,6 +30,7 @@
 ### 修复
 - 修复走向图全屏窗口仍不够大的问题：全屏 Modal 改为占满应用视口（接近 100% 宽高），更适合复杂规则排障（Issue #57）。
 - 修复 Windows 下 TUN 就绪判定误报失败导致“内核已运行但 UI 显示启动失败”：识别 `wintun` 接口名、放宽非 Linux 兜底判定，并在错误信息中包含 `kernel.log` 路径提示（Issue #41/#32）。
+- 修复 Windows 下 TUN 启动偶发 10s 超时：增强“复用旧网卡/名称不可控”场景的就绪兜底（优先精确 IP+prefix 匹配避免误命中虚拟网卡），并将 Windows 下等待上限调整为 25s；`/proxy/status` 增加 `tunIface` 便于排障。
 - 修复 Windows 下 TUN 能力检查误报“需要管理员/未配置”的显示问题：`/tun/check.configured` 在 Windows 表达“无需一次性配置”，并同步更新提示文案。
 - 日志文件增加 7 天留存：启动会轮转 `app.log`/`kernel.log` 并清理过期轮转文件，便于上传调试（Issue #66）。
 - 订阅节点 ID 复用补强：identity 冲突时支持 `identity+name` 唯一消解；同步产生映射时可自动重写 FRouter 引用，减少“未知节点”回归。

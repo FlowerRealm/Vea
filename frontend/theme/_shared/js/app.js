@@ -1644,7 +1644,7 @@ export function bootstrapTheme({ createAPI, utils }) {
             if (!frouterId) {
               throw new Error("请先选择一个 FRouter");
             }
-            showStatus(enabled ? "正在启动 TUN 内核..." : "正在重启内核...", "info", 2000);
+            showStatus(enabled ? "正在启动 TUN 内核..." : "正在重启内核...", "info", enabled ? 0 : 2000);
             await api.post("/proxy/start", { frouterId });
           }
 
@@ -1687,6 +1687,9 @@ export function bootstrapTheme({ createAPI, utils }) {
         const coreRunning = Boolean(coreStatus && coreStatus.running);
         const coreMode = coreStatus && typeof coreStatus.inboundMode === "string" ? coreStatus.inboundMode : "";
         const tunRunning = coreRunning && coreMode === "tun";
+        const tunIface = coreStatus && typeof coreStatus.tunIface === "string"
+          ? String(coreStatus.tunIface || "").trim()
+          : "";
         const restartError = coreStatus && typeof coreStatus.lastRestartError === "string"
           ? String(coreStatus.lastRestartError || "")
           : "";
@@ -1703,7 +1706,7 @@ export function bootstrapTheme({ createAPI, utils }) {
           if (tunRunning) {
             valueText = "运行中";
             valueColor = "var(--success)";
-            cardTitle = `TUN 运行中（${platform}）`;
+            cardTitle = `TUN 运行中（${platform}${tunIface ? `, ${tunIface}` : ""}）`;
           } else if (restartError) {
             valueText = "启动失败";
             valueColor = "var(--error)";

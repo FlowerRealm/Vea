@@ -407,6 +407,9 @@ func (s *Service) Status(ctx context.Context) map[string]interface{} {
 	if s.activeCfg.InboundMode != "" {
 		status["inboundMode"] = string(s.activeCfg.InboundMode)
 	}
+	if s.tunIface != "" {
+		status["tunIface"] = s.tunIface
+	}
 	if s.activeCfg.InboundPort > 0 {
 		status["inboundPort"] = s.activeCfg.InboundPort
 	}
@@ -760,6 +763,13 @@ func (s *Service) startProcess(adapter adapters.CoreAdapter, engine domain.CoreE
 
 	if cfg.InboundMode == domain.InboundTUN {
 		if engine == domain.EngineSingBox || engine == domain.EngineClash {
+			tunTimeout := 10 * time.Second
+			if runtime.GOOS == "windows" {
+				tunTimeout = 25 * time.Second
+			} else if runtime.GOOS == "darwin" {
+				tunTimeout = 20 * time.Second
+			}
+
 			interfaceName := defaultTunInterfaceName
 			if cfg.TUNSettings != nil && cfg.TUNSettings.InterfaceName != "" {
 				interfaceName = cfg.TUNSettings.InterfaceName
@@ -774,7 +784,7 @@ func (s *Service) startProcess(adapter adapters.CoreAdapter, engine domain.CoreE
 
 			tunIface := ""
 			if runtime.GOOS == "linux" {
-				if err := s.waitForTUNReadyWithIndex(interfaceName, prevIndex, 10*time.Second, done); err != nil {
+				if err := s.waitForTUNReadyWithIndex(interfaceName, prevIndex, tunTimeout, done); err != nil {
 					// TUN 接口没起来就宣告成功是误导；直接失败并回收进程。
 					_ = adapter.Stop(handle)
 					s.mainHandle = nil
@@ -791,7 +801,7 @@ func (s *Service) startProcess(adapter adapters.CoreAdapter, engine domain.CoreE
 					desiredName = ""
 				}
 				expectedAddrs := expectedTUNAddressesForEngine(engine, cfg)
-				ifaceName, err := s.waitForTUNReadyByAddress(existingIfaces, desiredName, expectedAddrs, 10*time.Second, done)
+				ifaceName, err := s.waitForTUNReadyByAddress(existingIfaces, desiredName, expectedAddrs, tunTimeout, done)
 				if err != nil {
 					// TUN 接口没起来就宣告成功是误导；直接失败并回收进程。
 					_ = adapter.Stop(handle)
@@ -1028,43 +1038,72 @@ func wrapTUNNotReady(err error, logPath string) error {
 
 	logPath = strings.TrimSpace(logPath)
 	if logPath != "" {
-		msg += " (kernel log: " + logPath + ")"
+		msg += " (kernel log: " + logPath + "；可在日志面板复制路径)"
 	}
 	return fmt.Errorf("%s: %w", msg, err)
 }
 
-func parseTUNAddressCIDRs(addrs []string) ([]*net.IPNet, error) {
-	nets := []*net.IPNet{}
+type tunAddressSpec struct {
+	IP     net.IP
+	Net    *net.IPNet
+	Prefix int
+	Raw    string
+}
+
+type tunAddrMatchKind int
+
+const (
+	tunAddrMatchNone tunAddrMatchKind = iota
+	tunAddrMatchNetwork
+	tunAddrMatchExact
+)
+
+func parseTUNAddressCIDRs(addrs []string) ([]tunAddressSpec, error) {
+	out := []tunAddressSpec{}
 	for _, raw := range addrs {
 		raw = strings.TrimSpace(raw)
 		if raw == "" {
 			continue
 		}
-		_, ipNet, err := net.ParseCIDR(raw)
-		if err != nil || ipNet == nil {
+		ip, ipNet, err := net.ParseCIDR(raw)
+		if err != nil || ipNet == nil || ip == nil {
 			continue
 		}
-		nets = append(nets, ipNet)
+		ones, bits := ipNet.Mask.Size()
+		if ones <= 0 || bits <= 0 {
+			continue
+		}
+		out = append(out, tunAddressSpec{
+			IP:     ip,
+			Net:    ipNet,
+			Prefix: ones,
+			Raw:    raw,
+		})
 	}
-	if len(nets) == 0 {
+	if len(out) == 0 {
 		return nil, errors.New("tun address is empty or invalid")
 	}
-	return nets, nil
+	return out, nil
 }
 
-func interfaceHasAnyCIDRAddr(iface net.Interface, nets []*net.IPNet) bool {
-	if len(nets) == 0 {
-		return false
+func matchTUNAddrs(addrs []net.Addr, expected []tunAddressSpec) tunAddrMatchKind {
+	if len(expected) == 0 || len(addrs) == 0 {
+		return tunAddrMatchNone
 	}
-	addrs, err := iface.Addrs()
-	if err != nil || len(addrs) == 0 {
-		return false
-	}
+
+	best := tunAddrMatchNone
 	for _, addr := range addrs {
 		var ip net.IP
+		prefix := -1
 		switch v := addr.(type) {
 		case *net.IPNet:
 			ip = v.IP
+			if v.Mask != nil {
+				ones, bits := v.Mask.Size()
+				if ones > 0 && bits > 0 {
+					prefix = ones
+				}
+			}
 		case *net.IPAddr:
 			ip = v.IP
 		default:
@@ -1073,13 +1112,26 @@ func interfaceHasAnyCIDRAddr(iface net.Interface, nets []*net.IPNet) bool {
 		if ip == nil {
 			continue
 		}
-		for _, n := range nets {
-			if n != nil && n.Contains(ip) {
-				return true
+
+		for _, spec := range expected {
+			// 精确匹配：IP 相等且 mask 前缀不小于期望值（允许 /32 这类更“严格”的表达）。
+			if spec.IP != nil && ip.Equal(spec.IP) && prefix >= spec.Prefix && spec.Prefix > 0 {
+				return tunAddrMatchExact
+			}
+			if best < tunAddrMatchNetwork && spec.Net != nil && spec.Net.Contains(ip) {
+				best = tunAddrMatchNetwork
 			}
 		}
 	}
-	return false
+	return best
+}
+
+func interfaceTUNAddrMatch(iface net.Interface, expected []tunAddressSpec) tunAddrMatchKind {
+	addrs, err := iface.Addrs()
+	if err != nil || len(addrs) == 0 {
+		return tunAddrMatchNone
+	}
+	return matchTUNAddrs(addrs, expected)
 }
 
 func isNewInterface(existing map[string]int, iface net.Interface) bool {
@@ -1106,7 +1158,7 @@ func looksLikeTunInterface(name string, flags net.Flags) bool {
 func (s *Service) waitForTUNReadyByAddress(existing map[string]int, desiredName string, addresses []string, timeout time.Duration, done <-chan struct{}) (string, error) {
 	desiredName = strings.TrimSpace(desiredName)
 
-	nets, err := parseTUNAddressCIDRs(addresses)
+	expected, err := parseTUNAddressCIDRs(addresses)
 	if err != nil {
 		return "", err
 	}
@@ -1114,7 +1166,8 @@ func (s *Service) waitForTUNReadyByAddress(existing map[string]int, desiredName 
 	startedAt := time.Now()
 	deadline := startedAt.Add(timeout)
 
-	fallback := ""
+	exactFallback := ""
+	addrFallback := ""
 	nameOnlyFallback := ""
 	for time.Now().Before(deadline) {
 		if done != nil {
@@ -1133,7 +1186,7 @@ func (s *Service) waitForTUNReadyByAddress(existing map[string]int, desiredName 
 					if strings.TrimSpace(iface.Name) != desiredName {
 						continue
 					}
-					if interfaceHasAnyCIDRAddr(iface, nets) {
+					if interfaceTUNAddrMatch(iface, expected) != tunAddrMatchNone {
 						return desiredName, nil
 					}
 				}
@@ -1152,20 +1205,33 @@ func (s *Service) waitForTUNReadyByAddress(existing map[string]int, desiredName 
 					}
 				}
 
-				if !interfaceHasAnyCIDRAddr(iface, nets) {
+				matchKind := interfaceTUNAddrMatch(iface, expected)
+				if matchKind == tunAddrMatchNone {
 					continue
 				}
 				if isNewInterface(existing, iface) {
 					return name, nil
 				}
-				// 旧接口仅作为兜底候选：要求更像 TUN，且等待一小段时间优先给“新网卡”机会。
-				if fallback == "" && looksLikeTunInterface(name, iface.Flags) {
-					fallback = name
+
+				// 旧接口：当内核复用既有网卡/名称不可控时，可能不会满足“新网卡”语义。
+				// - exact: 强证据（IP+prefix 匹配），无需依赖网卡名特征；
+				// - network: 弱证据（仅网段包含），要求更像 TUN 以避免误命中 Docker/虚拟网卡。
+				if matchKind == tunAddrMatchExact {
+					if exactFallback == "" && iface.Flags&net.FlagUp != 0 {
+						exactFallback = name
+					}
+					continue
+				}
+				if addrFallback == "" && looksLikeTunInterface(name, iface.Flags) && iface.Flags&net.FlagUp != 0 {
+					addrFallback = name
 				}
 			}
 
-			if fallback != "" && time.Since(startedAt) > 2*time.Second {
-				return fallback, nil
+			if exactFallback != "" && time.Since(startedAt) > 2*time.Second {
+				return exactFallback, nil
+			}
+			if addrFallback != "" && time.Since(startedAt) > 2*time.Second {
+				return addrFallback, nil
 			}
 			// 某些平台/驱动下，TUN 网卡可能先出现、地址稍后才绑定；这里在等待一段时间后允许“新网卡+像 TUN”
 			// 的兜底路径，避免误判启动失败。
