@@ -806,6 +806,104 @@ func TestService_SyncNodesFromPayload_ShareLinks_LegacyNode_ReusesExistingNodeID
 	}
 }
 
+func TestService_SyncNodesFromPayload_ShareLinks_DuplicateNames_WhenUUIDChanges_DoesNotBreakFRouterRefs(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	store := memory.NewStore(events.NewBus())
+	configRepo := memory.NewConfigRepo(store)
+	nodeRepo := memory.NewNodeRepo(store)
+	frouterRepo := memory.NewFRouterRepo(store)
+	nodeSvc := nodes.NewService(context.Background(), nodeRepo)
+	svc := NewService(context.Background(), configRepo, nodeSvc, frouterRepo)
+
+	const configID = "cfg-1"
+	if _, err := configRepo.Create(ctx, domain.Config{
+		ID:     configID,
+		Name:   "cfg-1",
+		Format: domain.ConfigFormatSubscription,
+	}); err != nil {
+		t.Fatalf("create config: %v", err)
+	}
+
+	const (
+		addrA = "a.example.com"
+		addrB = "b.example.com"
+	)
+
+	const payload1 = `
+vless://old-uuid-a@a.example.com:443?security=tls#dup
+vless://old-uuid-b@b.example.com:443?security=tls#dup
+`
+	if err := svc.syncNodesFromPayload(ctx, configID, payload1); err != nil {
+		t.Fatalf("sync nodes 1: %v", err)
+	}
+
+	nodesAfter1, err := nodeRepo.ListByConfigID(ctx, configID)
+	if err != nil {
+		t.Fatalf("list nodes 1: %v", err)
+	}
+	if len(nodesAfter1) != 2 {
+		t.Fatalf("expected nodes=2 after sync 1, got %d", len(nodesAfter1))
+	}
+
+	idA := ""
+	idB := ""
+	for _, n := range nodesAfter1 {
+		addr := strings.ToLower(strings.TrimSpace(n.Address))
+		if addr == addrA {
+			idA = n.ID
+		} else if addr == addrB {
+			idB = n.ID
+		}
+	}
+	if strings.TrimSpace(idA) == "" || strings.TrimSpace(idB) == "" {
+		t.Fatalf("expected node ids for %s/%s, got idA=%q idB=%q", addrA, addrB, idA, idB)
+	}
+
+	if _, err := frouterRepo.Create(ctx, domain.FRouter{
+		ID:   "fr-1",
+		Name: "fr-1",
+		ChainProxy: domain.ChainProxySettings{
+			Slots: []domain.SlotNode{
+				{ID: "slot-a", Name: "A", BoundNodeID: idA},
+				{ID: "slot-b", Name: "B", BoundNodeID: idB},
+			},
+			Edges: []domain.ProxyEdge{
+				{ID: "e-a", From: domain.EdgeNodeLocal, To: "slot-a", Priority: 0, Enabled: true},
+				{ID: "e-b", From: domain.EdgeNodeLocal, To: "slot-b", Priority: 0, Enabled: true},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("create frouter: %v", err)
+	}
+
+	const payload2 = `
+vless://new-uuid-a@a.example.com:443?security=tls#dup
+vless://new-uuid-b@b.example.com:443?security=tls#dup
+`
+	if err := svc.syncNodesFromPayload(ctx, configID, payload2); err != nil {
+		t.Fatalf("sync nodes 2: %v", err)
+	}
+
+	fr, err := frouterRepo.Get(ctx, "fr-1")
+	if err != nil {
+		t.Fatalf("get frouter: %v", err)
+	}
+	if len(fr.ChainProxy.Slots) != 2 {
+		t.Fatalf("expected slots=2 after sync 2, got %d", len(fr.ChainProxy.Slots))
+	}
+	for _, slot := range fr.ChainProxy.Slots {
+		if strings.TrimSpace(slot.BoundNodeID) == "" {
+			t.Fatalf("expected slot %s bound node id not empty", slot.ID)
+		}
+		if _, err := nodeRepo.Get(ctx, slot.BoundNodeID); err != nil {
+			t.Fatalf("expected slot %s bound node %s to exist, got err=%v", slot.ID, slot.BoundNodeID, err)
+		}
+	}
+}
+
 func TestService_SyncNodesFromPayload_ClashYAML_ReusesExistingNodeID_RewritesChainProxy(t *testing.T) {
 	t.Parallel()
 

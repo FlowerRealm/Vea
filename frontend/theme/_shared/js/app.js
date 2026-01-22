@@ -3132,6 +3132,156 @@ export function bootstrapTheme({ createAPI, utils }) {
         }
       });
 
+      // ===== Prompt Modal (替代 window.prompt，兼容 Electron/Windows) =====
+      let promptModalEl = null;
+      let promptModalTitleEl = null;
+      let promptModalLabelEl = null;
+      let promptModalInputEl = null;
+      let promptModalOkEl = null;
+      let promptModalCancelEl = null;
+      let promptModalResolve = null;
+
+      function ensurePromptModal() {
+        if (promptModalEl) return promptModalEl;
+
+        const existing = document.getElementById("prompt-modal");
+        if (existing) {
+          promptModalEl = existing;
+          promptModalTitleEl = existing.querySelector("#prompt-modal-title");
+          promptModalLabelEl = existing.querySelector("#prompt-modal-label");
+          promptModalInputEl = existing.querySelector("#prompt-modal-input");
+          promptModalOkEl = existing.querySelector("#prompt-modal-ok");
+          promptModalCancelEl = existing.querySelector("#prompt-modal-cancel");
+          if (existing.dataset.wiredPromptModal !== "1") {
+            existing.dataset.wiredPromptModal = "1";
+            const backdrop = existing.querySelector(".modal-backdrop");
+            const closeBtn = existing.querySelector("#prompt-modal-close");
+            const form = existing.querySelector("#prompt-modal-form");
+
+            const cancel = () => closePromptModal(null);
+            if (backdrop) backdrop.addEventListener("click", cancel);
+            if (closeBtn) closeBtn.addEventListener("click", cancel);
+            if (promptModalCancelEl) promptModalCancelEl.addEventListener("click", cancel);
+            if (form) {
+              form.addEventListener("submit", (e) => {
+                e.preventDefault();
+                closePromptModal(promptModalInputEl ? promptModalInputEl.value : "");
+              });
+            }
+            document.addEventListener("keydown", (event) => {
+              if (event.key === "Escape" && promptModalEl?.classList.contains("open")) {
+                cancel();
+              }
+            });
+          }
+          return existing;
+        }
+
+        const modal = document.createElement("div");
+        modal.id = "prompt-modal";
+        modal.className = "modal";
+        modal.innerHTML = `
+          <div class="modal-backdrop"></div>
+          <div class="modal-content" style="width:520px; max-width:calc(100% - 40px); padding:32px;">
+            <button id="prompt-modal-close" class="modal-close"
+              style="position:absolute; top:24px; right:24px; background:none; border:none; color:var(--text-secondary); font-size:20px; cursor:pointer;">×</button>
+            <form id="prompt-modal-form" class="form-grid" novalidate>
+              <h3 id="prompt-modal-title" style="grid-column:1/-1; margin-bottom:16px; font-size:18px; font-weight:600; color:var(--text-primary);">
+                输入</h3>
+              <label style="grid-column:1/-1;">
+                <span id="prompt-modal-label">内容</span>
+                <input id="prompt-modal-input" type="text" autocomplete="off">
+              </label>
+              <div class="form-actions">
+                <button type="button" id="prompt-modal-cancel">取消</button>
+                <button type="submit" class="primary" id="prompt-modal-ok">确定</button>
+              </div>
+            </form>
+          </div>
+        `;
+        document.body.appendChild(modal);
+        modal.dataset.wiredPromptModal = "1";
+
+        promptModalEl = modal;
+        promptModalTitleEl = modal.querySelector("#prompt-modal-title");
+        promptModalLabelEl = modal.querySelector("#prompt-modal-label");
+        promptModalInputEl = modal.querySelector("#prompt-modal-input");
+        promptModalOkEl = modal.querySelector("#prompt-modal-ok");
+        promptModalCancelEl = modal.querySelector("#prompt-modal-cancel");
+
+        const backdrop = modal.querySelector(".modal-backdrop");
+        const closeBtn = modal.querySelector("#prompt-modal-close");
+        const form = modal.querySelector("#prompt-modal-form");
+
+        const cancel = () => closePromptModal(null);
+
+        if (backdrop) backdrop.addEventListener("click", cancel);
+        if (closeBtn) closeBtn.addEventListener("click", cancel);
+        if (promptModalCancelEl) promptModalCancelEl.addEventListener("click", cancel);
+        if (form) {
+          form.addEventListener("submit", (e) => {
+            e.preventDefault();
+            closePromptModal(promptModalInputEl ? promptModalInputEl.value : "");
+          });
+        }
+        document.addEventListener("keydown", (event) => {
+          if (event.key === "Escape" && promptModalEl?.classList.contains("open")) {
+            cancel();
+          }
+        });
+
+        return modal;
+      }
+
+      function closePromptModal(valueOrNull) {
+        if (promptModalEl) {
+          promptModalEl.classList.remove("open");
+        }
+        if (promptModalResolve) {
+          const resolve = promptModalResolve;
+          promptModalResolve = null;
+          resolve(valueOrNull);
+        }
+      }
+
+      async function openTextPrompt(title, { label = "", defaultValue = "", placeholder = "", okText = "确定", cancelText = "取消" } = {}) {
+        const modal = ensurePromptModal();
+        if (!modal || !promptModalInputEl) {
+          try {
+            const v = prompt(String(title || ""), String(defaultValue || ""));
+            return v === null ? null : String(v);
+          } catch {
+            return null;
+          }
+        }
+
+        if (promptModalResolve) {
+          closePromptModal(null);
+        }
+
+        if (promptModalTitleEl) promptModalTitleEl.textContent = String(title || "输入");
+        if (promptModalLabelEl) promptModalLabelEl.textContent = String(label || "");
+        if (promptModalOkEl) promptModalOkEl.textContent = String(okText || "确定");
+        if (promptModalCancelEl) promptModalCancelEl.textContent = String(cancelText || "取消");
+
+        promptModalInputEl.value = String(defaultValue || "");
+        promptModalInputEl.placeholder = String(placeholder || "");
+
+        modal.classList.add("open");
+        await new Promise((r) => requestAnimationFrame(r));
+
+        try {
+          promptModalInputEl.focus();
+          promptModalInputEl.select();
+        } catch {
+          // ignore
+        }
+
+        return await new Promise((resolve) => {
+          promptModalResolve = resolve;
+        });
+      }
+
 	      async function loadConfigs({ notify = false } = {}) {
 	        configsLoadNotify = configsLoadNotify || Boolean(notify);
 	        if (configsLoadPromise) {
@@ -4788,13 +4938,17 @@ export function bootstrapTheme({ createAPI, utils }) {
           return;
         }
 
-        const current = Array.isArray(froutersCache)
-          ? froutersCache.find((r) => r && r.id === frouterId)
-          : null;
-        const prev = current && Array.isArray(current.tags) ? current.tags.join(",") : "";
-        const input = prompt("编辑 FRouter 标签（逗号分隔）", prev);
-        if (input === null) return;
-        const tags = parseList(input);
+	        const current = Array.isArray(froutersCache)
+	          ? froutersCache.find((r) => r && r.id === frouterId)
+	          : null;
+	        const prev = current && Array.isArray(current.tags) ? current.tags.join(",") : "";
+	        const input = await openTextPrompt("编辑 FRouter 标签", {
+	          label: "标签（逗号分隔）",
+	          defaultValue: prev,
+	          placeholder: "例如: 香港,IPLC,游戏",
+	        });
+	        if (input === null) return;
+	        const tags = parseList(input);
 
         try {
           await api.put(`/frouters/${frouterId}/meta`, { tags });
@@ -4876,15 +5030,19 @@ export function bootstrapTheme({ createAPI, utils }) {
                 showStatus("未找到 FRouter", "error", 4000);
                 return;
               }
-              const current = Array.isArray(froutersCache)
-                ? froutersCache.find((r) => r && r.id === frouterId)
-                : null;
-              const prevName = current && current.name ? String(current.name) : "";
-              const input = prompt("重命名 FRouter", prevName);
-              if (input === null) return;
-              const nextName = String(input || "").trim();
-              if (!nextName) {
-                showStatus("名称不能为空", "error", 4000);
+	              const current = Array.isArray(froutersCache)
+	                ? froutersCache.find((r) => r && r.id === frouterId)
+	                : null;
+	              const prevName = current && current.name ? String(current.name) : "";
+	              const input = await openTextPrompt("重命名 FRouter", {
+	                label: "新名称",
+	                defaultValue: prevName,
+	                placeholder: "例如: 香港线路01",
+	              });
+	              if (input === null) return;
+	              const nextName = String(input || "").trim();
+	              if (!nextName) {
+	                showStatus("名称不能为空", "error", 4000);
                 return;
               }
               try {

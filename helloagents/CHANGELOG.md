@@ -35,8 +35,10 @@
 - 日志文件增加 7 天留存：启动会轮转 `app.log`/`kernel.log` 并清理过期轮转文件，便于上传调试（Issue #66）。
 - 订阅节点 ID 复用补强：identity 冲突时支持 `identity+name` 唯一消解；同步产生映射时可自动重写 FRouter 引用，减少“未知节点”回归。
 - 修复分享链接订阅拉取节点导致 FRouter 引用显示“未知: uuid”的问题：为订阅节点引入 `sourceKey` 稳定复用/生成节点 ID，并在必要时自动重写 FRouter 引用。
+- 修复分享链接订阅存在“同名节点”时，uuid/password 等参数滚动更新导致 `sourceKey` 后缀漂移，从而引发节点 ID 变化与 FRouter 引用断裂的问题（Issue #69/#18）。
 - 修复拉取节点后走向图节点与实际节点不同步的问题：走向图渲染会等待 nodes 列表加载完成，并在节点 id/name 变化时触发重渲染（Issue #56）。
 - 新增 FRouter 元信息更新接口 `PUT /frouters/:id/meta` 与主题页“重命名”入口；并修复 `PUT /frouters/:id` 未携带 `tags` 时意外清空 tags 的问题（Issue #62）。
+- 修复 Windows 下 FRouter “重命名/编辑标签”点击无响应的问题：不再依赖 `window.prompt`，改用应用内输入框弹窗（Issue #70）。
 - 修复速度单位显示不一致的问题：前端主题/SDK/OpenAPI 将速度单位从 `Mbps` 修正为 `MB/s`（与实际测速计算单位一致）。
 - 修复前端“系统代理端口（proxy.port）”不生效的问题：端口变更会联动更新 `ProxyConfig.inboundPort`；内核运行中修改端口会自动重启并在系统代理启用时重新应用系统代理设置；启动时从后端同步实际端口避免 UI 默认值误导。
 - 修复 Windows 下 sing-box `mixed` 入站端口占用导致启动失败的问题：默认入站端口从 `1080` 调整为 `31346`，并在启动前检测端口占用，冲突时 fail-fast 返回明确错误提示（不自动换端口）。
