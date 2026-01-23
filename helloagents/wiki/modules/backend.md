@@ -5,7 +5,7 @@
 - 适配多内核：在 `backend/service/adapters/` 生成 sing-box / mihomo 的配置
 - 进程管理：启动/停止内核，收集日志与状态
 - 日志留存：应用日志 `app.log` 与内核日志 `kernel.log` 会轮转并保留最近 7 天，便于上传排障
-- TUN 就绪判定：Linux 以 `interface_name` 为准等待网卡就绪；Windows/macOS 以 TUN 地址识别实际网卡（优先精确 IP+prefix 匹配，避免误命中虚拟网卡），默认不强制依赖网卡名称（`vea`/legacy `tun0`），且 Windows 下默认等待更久（25s）降低慢创建误判
+- TUN 就绪判定：Linux 以 `interface_name` 为准等待网卡就绪；Windows/macOS 以 TUN 地址识别实际网卡（优先精确 IP 命中；地址无 mask 的 *net.IPAddr 仍视为精确；必要时用“新网卡 + MTU”兜底），默认不强制依赖网卡名称（`vea`/legacy `tun0`），且 Windows 下默认等待更久（25s）降低慢创建误判
 - 代理状态：`GET /proxy/status` 会在 TUN 模式下返回 `tunIface`（实际创建/识别到的网卡名），用于 UI 展示与排障
 - 核心组件管理：安装/卸载 sing-box / mihomo 等核心组件；当检测到已安装但 `lastVersion` 为空时，会从二进制路径/版本输出探测并回填用于 UI 展示
 - 提供健康检查：`GET /health` 返回 `pid` 与 `userDataRoot`，便于前端判定“端口占用者是否为同一实例”，避免多实例导致后端启动即退出

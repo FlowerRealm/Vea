@@ -42,24 +42,37 @@ func parseClashSubscription(configID string, payload string) (clashParseResult, 
 	warnings := make([]string, 0, 8)
 
 	nodes := make([]domain.Node, 0, len(sub.Proxies))
-	proxyNameToNodeID := make(map[string]string, len(sub.Proxies))
+	proxyNames := make([]string, 0, len(sub.Proxies))
 	for _, p := range sub.Proxies {
 		node, proxyName, err := parseClashProxyToNode(p)
 		if err != nil {
 			warnings = append(warnings, err.Error())
 			continue
 		}
-		node.ID = domain.StableNodeIDForConfig(configID, node)
 		nodes = append(nodes, node)
-		if proxyName != "" {
-			if prev, ok := proxyNameToNodeID[proxyName]; ok && prev != "" && prev != node.ID {
-				warnings = append(warnings, fmt.Sprintf("duplicate proxy name %q; overriding previous node %s", proxyName, prev))
-			}
-			proxyNameToNodeID[proxyName] = node.ID
-		}
+		proxyNames = append(proxyNames, proxyName)
 	}
 	if len(nodes) == 0 {
 		return clashParseResult{}, fmt.Errorf("clash yaml has no supported proxies")
+	}
+
+	nodes = normalizeAndDisambiguateSubscriptionSourceKeys(nodes)
+	proxyNameToNodeID := make(map[string]string, len(nodes))
+	for i := range nodes {
+		if strings.TrimSpace(nodes[i].SourceKey) != "" {
+			nodes[i].ID = domain.StableNodeIDForSourceKey(configID, nodes[i].SourceKey)
+		}
+		if strings.TrimSpace(nodes[i].ID) == "" {
+			nodes[i].ID = domain.StableNodeIDForConfig(configID, nodes[i])
+		}
+		proxyName := strings.TrimSpace(proxyNames[i])
+		if proxyName == "" || strings.TrimSpace(nodes[i].ID) == "" {
+			continue
+		}
+		if prev, ok := proxyNameToNodeID[proxyName]; ok && prev != "" && prev != nodes[i].ID {
+			warnings = append(warnings, fmt.Sprintf("duplicate proxy name %q; overriding previous node %s", proxyName, prev))
+		}
+		proxyNameToNodeID[proxyName] = nodes[i].ID
 	}
 
 	groupMembers := make(map[string][]string, len(sub.ProxyGroups))

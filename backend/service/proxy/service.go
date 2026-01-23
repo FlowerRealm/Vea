@@ -801,7 +801,11 @@ func (s *Service) startProcess(adapter adapters.CoreAdapter, engine domain.CoreE
 					desiredName = ""
 				}
 				expectedAddrs := expectedTUNAddressesForEngine(engine, cfg)
-				ifaceName, err := s.waitForTUNReadyByAddress(existingIfaces, desiredName, expectedAddrs, tunTimeout, done)
+				expectedMTU := 0
+				if cfg.TUNSettings != nil && cfg.TUNSettings.MTU > 0 {
+					expectedMTU = cfg.TUNSettings.MTU
+				}
+				ifaceName, err := s.waitForTUNReadyByAddress(existingIfaces, desiredName, expectedAddrs, expectedMTU, tunTimeout, done)
 				if err != nil {
 					// TUN 接口没起来就宣告成功是误导；直接失败并回收进程。
 					_ = adapter.Stop(handle)
@@ -1115,7 +1119,10 @@ func matchTUNAddrs(addrs []net.Addr, expected []tunAddressSpec) tunAddrMatchKind
 
 		for _, spec := range expected {
 			// 精确匹配：IP 相等且 mask 前缀不小于期望值（允许 /32 这类更“严格”的表达）。
-			if spec.IP != nil && ip.Equal(spec.IP) && prefix >= spec.Prefix && spec.Prefix > 0 {
+			//
+			// 在部分平台上 iface.Addrs() 可能返回 *net.IPAddr（无 mask 信息），此时 prefix=-1；
+			// 这种情况仍可视为“精确 IP 命中”（避免误降级为 network match）。
+			if spec.IP != nil && ip.Equal(spec.IP) && spec.Prefix > 0 && (prefix < 0 || prefix >= spec.Prefix) {
 				return tunAddrMatchExact
 			}
 			if best < tunAddrMatchNetwork && spec.Net != nil && spec.Net.Contains(ip) {
@@ -1153,9 +1160,25 @@ func looksLikeTunInterface(name string, flags net.Flags) bool {
 	return isTunInterfaceName(name)
 }
 
+func appendLimitedUniqueNames(dst []string, name string, limit int) []string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return dst
+	}
+	for _, existing := range dst {
+		if existing == name {
+			return dst
+		}
+	}
+	if limit > 0 && len(dst) >= limit {
+		return dst
+	}
+	return append(dst, name)
+}
+
 // waitForTUNReadyByAddress 在非 Linux 平台用 “地址匹配 + 新网卡” 识别 TUN。
 // 返回实际创建的网卡名（用于诊断/展示；Linux 仍使用固定 interface_name 逻辑）。
-func (s *Service) waitForTUNReadyByAddress(existing map[string]int, desiredName string, addresses []string, timeout time.Duration, done <-chan struct{}) (string, error) {
+func (s *Service) waitForTUNReadyByAddress(existing map[string]int, desiredName string, addresses []string, expectedMTU int, timeout time.Duration, done <-chan struct{}) (string, error) {
 	desiredName = strings.TrimSpace(desiredName)
 
 	expected, err := parseTUNAddressCIDRs(addresses)
@@ -1169,6 +1192,10 @@ func (s *Service) waitForTUNReadyByAddress(existing map[string]int, desiredName 
 	exactFallback := ""
 	addrFallback := ""
 	nameOnlyFallback := ""
+	anyNewIfaceFallback := ""
+	seenNewIfaces := []string(nil)
+	seenTunLikeIfaces := []string(nil)
+	seenMatchedIfaces := []string(nil)
 	for time.Now().Before(deadline) {
 		if done != nil {
 			select {
@@ -1199,8 +1226,28 @@ func (s *Service) waitForTUNReadyByAddress(existing map[string]int, desiredName 
 					continue
 				}
 
-				if nameOnlyFallback == "" && isNewInterface(existing, iface) && looksLikeTunInterface(name, iface.Flags) {
-					if iface.Flags&net.FlagUp != 0 {
+				isNew := isNewInterface(existing, iface)
+				isUp := iface.Flags&net.FlagUp != 0
+				tunLike := looksLikeTunInterface(name, iface.Flags)
+				if runtime.GOOS == "windows" && expectedMTU > 0 && iface.MTU == expectedMTU {
+					// Windows 下 tun 设备名可能是本地化的通用名称（如“以太网 X”），不包含 wintun/tun 关键字。
+					// 这时用 MTU 作为轻量特征兜底（结合“新网卡”语义），避免完全依赖名称/地址可见性。
+					tunLike = true
+				}
+				if isNew {
+					seenNewIfaces = appendLimitedUniqueNames(seenNewIfaces, name, 6)
+					if anyNewIfaceFallback == "" {
+						anyNewIfaceFallback = name
+					}
+				}
+				if tunLike {
+					seenTunLikeIfaces = appendLimitedUniqueNames(seenTunLikeIfaces, name, 6)
+				}
+
+				if nameOnlyFallback == "" && isNew && tunLike {
+					// 某些平台/驱动下，TUN 网卡可能先出现、地址稍后才绑定；这里允许“新网卡 + 像 TUN”
+					// 的兜底路径，避免误判启动失败。
+					if runtime.GOOS == "windows" || isUp {
 						nameOnlyFallback = name
 					}
 				}
@@ -1209,6 +1256,7 @@ func (s *Service) waitForTUNReadyByAddress(existing map[string]int, desiredName 
 				if matchKind == tunAddrMatchNone {
 					continue
 				}
+				seenMatchedIfaces = appendLimitedUniqueNames(seenMatchedIfaces, name, 6)
 				if isNewInterface(existing, iface) {
 					return name, nil
 				}
@@ -1217,12 +1265,12 @@ func (s *Service) waitForTUNReadyByAddress(existing map[string]int, desiredName 
 				// - exact: 强证据（IP+prefix 匹配），无需依赖网卡名特征；
 				// - network: 弱证据（仅网段包含），要求更像 TUN 以避免误命中 Docker/虚拟网卡。
 				if matchKind == tunAddrMatchExact {
-					if exactFallback == "" && iface.Flags&net.FlagUp != 0 {
+					if exactFallback == "" && (runtime.GOOS == "windows" || isUp) {
 						exactFallback = name
 					}
 					continue
 				}
-				if addrFallback == "" && looksLikeTunInterface(name, iface.Flags) && iface.Flags&net.FlagUp != 0 {
+				if addrFallback == "" && tunLike && (runtime.GOOS == "windows" || isUp) {
 					addrFallback = name
 				}
 			}
@@ -1233,17 +1281,32 @@ func (s *Service) waitForTUNReadyByAddress(existing map[string]int, desiredName 
 			if addrFallback != "" && time.Since(startedAt) > 2*time.Second {
 				return addrFallback, nil
 			}
-			// 某些平台/驱动下，TUN 网卡可能先出现、地址稍后才绑定；这里在等待一段时间后允许“新网卡+像 TUN”
-			// 的兜底路径，避免误判启动失败。
 			if nameOnlyFallback != "" && time.Since(startedAt) > 3*time.Second {
 				return nameOnlyFallback, nil
+			}
+			// 兜底：如果地址绑定不可见/滞后且网卡名不可识别，仍尽量避免“第一次必失败”的糟糕 UX。
+			// Windows 上“启动 TUN”通常不会引入其他新网卡；若仅观测到一个新网卡，则可将其视为候选。
+			if runtime.GOOS == "windows" && anyNewIfaceFallback != "" && len(seenNewIfaces) == 1 && time.Since(startedAt) > 5*time.Second {
+				return anyNewIfaceFallback, nil
 			}
 		}
 
 		time.Sleep(500 * time.Millisecond)
 	}
 
-	return "", fmt.Errorf("no TUN interface detected after %v (expected address: %v)", timeout, addresses)
+	msg := fmt.Sprintf("no TUN interface detected after %v (expected address: %v)", timeout, addresses)
+	if runtime.GOOS == "windows" {
+		if len(seenNewIfaces) > 0 {
+			msg += fmt.Sprintf("; seen new ifaces: %v", seenNewIfaces)
+		}
+		if len(seenMatchedIfaces) > 0 {
+			msg += fmt.Sprintf("; matched ifaces: %v", seenMatchedIfaces)
+		}
+		if len(seenTunLikeIfaces) > 0 {
+			msg += fmt.Sprintf("; tun-like ifaces: %v", seenTunLikeIfaces)
+		}
+	}
+	return "", errors.New(msg)
 }
 
 // waitForNewTUNReady 等待一个“新出现的”TUN 接口（用于无法指定/无法预知接口名的内核）

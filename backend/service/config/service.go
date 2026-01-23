@@ -310,10 +310,38 @@ func (s *Service) syncNodesFromPayload(ctx context.Context, configID, payload st
 			log.Printf("[ConfigSync] clash warning: %s", w)
 		}
 	}
+	originalIDs := make([]string, len(clashResult.Nodes))
+	for i := range clashResult.Nodes {
+		originalIDs[i] = strings.TrimSpace(clashResult.Nodes[i].ID)
+	}
+
 	var idMap map[string]string
 	clashResult.Nodes, idMap = reuseNodeIDs(existingIndex, clashResult.Nodes)
+	var idMapBySubKey map[string]string
+	clashResult.Nodes, idMapBySubKey = reuseNodeIDsBySubscriptionKeyOverride(existingSubIndex, clashResult.Nodes, originalIDs)
+	if len(idMapBySubKey) > 0 {
+		if idMap == nil {
+			idMap = make(map[string]string, len(idMapBySubKey))
+		}
+		for from, to := range idMapBySubKey {
+			if strings.TrimSpace(from) == "" || strings.TrimSpace(to) == "" || from == to {
+				continue
+			}
+			if prev, ok := idMap[from]; ok {
+				if prev != to {
+					continue
+				}
+			} else {
+				idMap[from] = to
+			}
+		}
+		if len(idMap) == 0 {
+			idMap = nil
+		}
+	}
 	clashResult.Chain = rewriteChainProxyNodeIDs(clashResult.Chain, idMap)
-	if _, err := s.nodeService.ReplaceNodesForConfig(ctx, configID, clashResult.Nodes); err != nil {
+	nextNodes, err := s.nodeService.ReplaceNodesForConfig(ctx, configID, clashResult.Nodes)
+	if err != nil {
 		log.Printf("[ConfigSync] update nodes failed for %s: %v", configID, err)
 		return err
 	}
@@ -357,7 +385,8 @@ func (s *Service) syncNodesFromPayload(ctx context.Context, configID, payload st
 			return err
 		}
 	}
-	if err := s.rewriteFRoutersNodeIDs(ctx, idMap); err != nil {
+	rewriteMap := buildSubscriptionNodeIDRewriteMap(existingNodes, nextNodes)
+	if err := s.rewriteFRoutersNodeIDs(ctx, rewriteMap); err != nil {
 		log.Printf("[ConfigSync] rewrite frouters failed for %s: %v", configID, err)
 		return err
 	}

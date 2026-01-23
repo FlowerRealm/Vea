@@ -409,6 +409,21 @@ func TestMatchTUNAddrs_PrefixMismatchFallsBackToNetworkMatch(t *testing.T) {
 	}
 }
 
+func TestMatchTUNAddrs_IPAddrExactMatchTreatsAsExact(t *testing.T) {
+	expected, err := parseTUNAddressCIDRs([]string{"172.19.0.1/30"})
+	if err != nil {
+		t.Fatalf("parseTUNAddressCIDRs: %v", err)
+	}
+
+	addrs := []net.Addr{
+		&net.IPAddr{IP: net.IPv4(172, 19, 0, 1)},
+	}
+
+	if got := matchTUNAddrs(addrs, expected); got != tunAddrMatchExact {
+		t.Fatalf("expected match kind %v, got %v", tunAddrMatchExact, got)
+	}
+}
+
 func TestService_Start_DoesNotStopPreviousProxyOnCompileError(t *testing.T) {
 	ctx := context.Background()
 

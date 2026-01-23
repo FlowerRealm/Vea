@@ -195,6 +195,60 @@ func reuseNodeIDsBySubscriptionKey(index existingSubscriptionNodeIndex, nodes []
 	return nodes, mapping
 }
 
+func reuseNodeIDsBySubscriptionKeyOverride(index existingSubscriptionNodeIndex, nodes []domain.Node, onlyFromIDs []string) ([]domain.Node, map[string]string) {
+	if len(nodes) == 0 || (len(index.bySourceKey) == 0 && len(index.byStableKey) == 0 && len(index.byLegacyKey) == 0) {
+		return nodes, nil
+	}
+
+	used := make(map[string]struct{}, len(nodes))
+	for i := range nodes {
+		id := strings.TrimSpace(nodes[i].ID)
+		if id != "" {
+			used[id] = struct{}{}
+		}
+	}
+
+	mapping := make(map[string]string, 8)
+
+	for i := range nodes {
+		originalID := strings.TrimSpace(nodes[i].ID)
+		if len(onlyFromIDs) == len(nodes) && originalID != strings.TrimSpace(onlyFromIDs[i]) {
+			continue
+		}
+
+		sourceKey := normalizeSourceKey(nodes[i].SourceKey)
+		stableKey := normalizeSourceKey(subscriptionStableKey(nodes[i]))
+		legacyKey := subscriptionLegacyKey(nodes[i])
+
+		existingID := ""
+		if sourceKey != "" {
+			existingID = strings.TrimSpace(index.bySourceKey[sourceKey])
+		}
+		if existingID == "" && stableKey != "" {
+			existingID = strings.TrimSpace(index.byStableKey[stableKey])
+		}
+		if existingID == "" && legacyKey != "" {
+			existingID = strings.TrimSpace(index.byLegacyKey[legacyKey])
+		}
+		if existingID == "" || existingID == originalID {
+			continue
+		}
+		if _, ok := used[existingID]; ok {
+			continue
+		}
+		nodes[i].ID = existingID
+		used[existingID] = struct{}{}
+		if originalID != "" {
+			mapping[originalID] = existingID
+		}
+	}
+
+	if len(mapping) == 0 {
+		return nodes, nil
+	}
+	return nodes, mapping
+}
+
 func buildSubscriptionNodeIDRewriteMap(existing []domain.Node, next []domain.Node) map[string]string {
 	if len(existing) == 0 || len(next) == 0 {
 		return nil
