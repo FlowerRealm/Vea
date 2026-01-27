@@ -196,12 +196,21 @@ func (a *ClashAdapter) applyInbound(cfg map[string]interface{}, profile domain.P
 	allowLan := false
 	var auth *domain.InboundAuthentication
 	if profile.InboundConfig != nil {
-		if strings.TrimSpace(profile.InboundConfig.Listen) != "" {
-			bindAddr = strings.TrimSpace(profile.InboundConfig.Listen)
-		} else if profile.InboundConfig.AllowLAN {
+		host := strings.TrimSpace(profile.InboundConfig.Listen)
+		allowLan = profile.InboundConfig.AllowLAN
+		if host != "" {
+			// allowLan 的语义是“允许局域网连接”，即在默认 loopback 监听时改为监听全网卡。
+			// 若用户显式配置了非 loopback 地址，则保持用户配置。
+			if allowLan && (host == "127.0.0.1" || host == "localhost") {
+				bindAddr = "0.0.0.0"
+			} else if allowLan && host == "::1" {
+				bindAddr = "::"
+			} else {
+				bindAddr = host
+			}
+		} else if allowLan {
 			bindAddr = "0.0.0.0"
 		}
-		allowLan = profile.InboundConfig.AllowLAN
 		auth = profile.InboundConfig.Authentication
 	}
 	cfg["bind-address"] = bindAddr

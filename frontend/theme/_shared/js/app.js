@@ -6348,6 +6348,7 @@ export function bootstrapTheme({ createAPI, utils }) {
       // 注意：
       // - sing-box / mihomo(clash): mixed 端口同时提供 HTTP + SOCKS
       let proxyPortApplyTimeout = null;
+      let inboundAllowLanApplyTimeout = null;
 
       async function syncProxyPortFromBackend() {
         try {
@@ -6358,6 +6359,17 @@ export function bootstrapTheme({ createAPI, utils }) {
           }
         } catch (err) {
           console.warn("[Settings] 同步代理端口失败:", err.message);
+        }
+      }
+
+      async function syncInboundAllowLanFromBackend() {
+        try {
+          const cfg = await api.get("/proxy/config");
+          const inboundCfg = cfg && cfg.inboundConfig ? cfg.inboundConfig : null;
+          const allowLan = inboundCfg && typeof inboundCfg.allowLan === "boolean" ? inboundCfg.allowLan : false;
+          settingsManager.values["inbound.allowLan"] = allowLan; // 直接写入，避免触发监听器
+        } catch (err) {
+          console.warn("[Settings] 同步允许局域网连接失败:", err.message);
         }
       }
 
@@ -6455,6 +6467,64 @@ export function bootstrapTheme({ createAPI, utils }) {
         }
       }
 
+      async function applyInboundAllowLanSetting(allowLan) {
+        const enabled = Boolean(allowLan);
+
+        let currentCfg = null;
+        try {
+          currentCfg = await api.get("/proxy/config");
+        } catch {
+          currentCfg = null;
+        }
+
+        const inboundConfig = currentCfg && currentCfg.inboundConfig ? currentCfg.inboundConfig : {};
+        const nextInboundConfig = { ...inboundConfig, allowLan: enabled };
+
+        try {
+          await api.put("/proxy/config", { inboundConfig: nextInboundConfig });
+        } catch (err) {
+          showStatus(`保存入站配置失败：${err.message}`, "error", 6000);
+          return;
+        }
+
+        // 如果内核正在运行，需要重启才能让配置生效。
+        let status = null;
+        try {
+          status = await api.proxy.status();
+          coreStatus = status || coreStatus;
+        } catch {
+          status = null;
+        }
+
+        const running = Boolean(status && status.running);
+        if (running) {
+          const frouterId = (status && status.frouterId) ? status.frouterId : (getCurrentFRouter()?.id || "");
+          if (!frouterId) {
+            showStatus("已更新入站配置，但无法自动重启：请先选择一个 FRouter", "warn", 6000);
+            return;
+          }
+
+          showStatus("正在应用入站配置（重启内核）...", "info", 2000);
+          try {
+            await api.post("/proxy/start", { frouterId });
+            await new Promise((r) => setTimeout(r, 500));
+          } catch (err) {
+            showStatus(`重启内核失败：${err.message}`, "error", 6000);
+            return;
+          }
+        }
+
+        await refreshCoreStatus();
+        await loadSystemProxySettings();
+        await loadIPGeo();
+
+        if (enabled) {
+          showStatus("已开启允许局域网连接（监听 0.0.0.0）", "success", 2500);
+        } else {
+          showStatus("已关闭允许局域网连接（仅本机可连）", "success", 2500);
+        }
+      }
+
       // 监听设置变化，保存到后端 API
       let saveTimeout = null;
       for (const category of SETTINGS_SCHEMA.categories) {
@@ -6473,6 +6543,14 @@ export function bootstrapTheme({ createAPI, utils }) {
                 await applyProxyPortSetting(value);
               }, 300);
             }
+
+            // 特殊联动：允许局域网连接 -> 后端 ProxyConfig.inboundConfig.allowLan
+            if (key === "inbound.allowLan") {
+              if (inboundAllowLanApplyTimeout) clearTimeout(inboundAllowLanApplyTimeout);
+              inboundAllowLanApplyTimeout = setTimeout(async () => {
+                await applyInboundAllowLanSetting(value);
+              }, 300);
+            }
           });
         }
       }
@@ -6481,6 +6559,7 @@ export function bootstrapTheme({ createAPI, utils }) {
       (async function loadSettingsFromAPI() {
         await settingsManager.loadFromAPI(api.client.baseURL);
         await syncProxyPortFromBackend();
+        await syncInboundAllowLanFromBackend();
         renderAllSettings();
         await maybeRedirectToSavedTheme();
       })();

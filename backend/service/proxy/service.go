@@ -315,11 +315,20 @@ func (s *Service) Start(ctx context.Context, cfg domain.ProxyConfig) error {
 
 func inboundListenAddrForEngine(engine domain.CoreEngineKind, cfg domain.ProxyConfig) string {
 	if cfg.InboundConfig != nil {
-		if host := strings.TrimSpace(cfg.InboundConfig.Listen); host != "" {
+		host := strings.TrimSpace(cfg.InboundConfig.Listen)
+		if host != "" {
+			// allowLan 的语义是“允许局域网连接”，即在默认 loopback 监听时改为监听全网卡。
+			// 若用户显式配置了非 loopback 地址，则保持用户配置。
+			if cfg.InboundConfig.AllowLAN && (host == "127.0.0.1" || host == "localhost") {
+				return "0.0.0.0"
+			}
+			if cfg.InboundConfig.AllowLAN && host == "::1" {
+				return "::"
+			}
 			return host
 		}
-		// allowLan 目前仅对 mihomo/clash 生效（sing-box 的入站是 per-inbound 配置）。
-		if engine == domain.EngineClash && cfg.InboundConfig.AllowLAN {
+		if cfg.InboundConfig.AllowLAN {
+			// clash 是全局配置；sing-box 是 per-inbound 配置，但这里用于端口占用检查，需匹配最终监听地址。
 			return "0.0.0.0"
 		}
 	}

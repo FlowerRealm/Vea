@@ -647,8 +647,19 @@ func (a *SingBoxAdapter) applyInboundConfig(inbound map[string]interface{}, prof
 	cfg := profile.InboundConfig
 
 	// 监听地址
-	if cfg.Listen != "" {
-		inbound["listen"] = cfg.Listen
+	host := strings.TrimSpace(cfg.Listen)
+	if host != "" {
+		// allowLan 的语义是“允许局域网连接”，即在默认 loopback 监听时改为监听全网卡。
+		// 若用户显式配置了非 loopback 地址，则保持用户配置。
+		if cfg.AllowLAN && (host == "127.0.0.1" || host == "localhost") {
+			inbound["listen"] = "0.0.0.0"
+		} else if cfg.AllowLAN && host == "::1" {
+			inbound["listen"] = "::"
+		} else {
+			inbound["listen"] = host
+		}
+	} else if cfg.AllowLAN {
+		inbound["listen"] = "0.0.0.0"
 	}
 
 	// 嗅探配置
