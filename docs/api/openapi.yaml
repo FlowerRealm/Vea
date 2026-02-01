@@ -866,7 +866,7 @@ paths:
     put:
       tags: [proxy]
       summary: 更新代理运行配置
-      description: 更新代理运行配置（单例）
+      description: 更新代理运行配置（单例）；当代理正在运行且本次更新导致 frouterId 变化时，会异步调度一次重启以应用新 FRouter
       operationId: updateProxyConfig
       requestBody:
         required: true

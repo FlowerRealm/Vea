@@ -30,6 +30,7 @@
 ### 修复
 - 修复走向图全屏窗口仍不够大的问题：全屏 Modal 改为占满应用视口（接近 100% 宽高），更适合复杂规则排障（Issue #57）。
 - 修复“允许局域网连接”开关未完整生效的问题：前端 `inbound.allowLan` 现在会联动后端 `ProxyConfig.inboundConfig.allowLan` 并在内核运行时自动重启；sing-box 入站在 allowLan 开启时会监听 `0.0.0.0`（默认 loopback 会被覆盖）。
+- 修复下拉切换 FRouter 未自动重启内核的问题：现在会触发与列表点击一致的切换流程；当通过 `PUT /proxy/config` 修改 `frouterId` 且内核运行中时，后端会自动调度异步重启以应用新 FRouter。
 - 修复 Windows 下 TUN 就绪判定误报失败导致“内核已运行但 UI 显示启动失败”：识别 `wintun` 接口名、放宽非 Linux 兜底判定，并在错误信息中包含 `kernel.log` 路径提示（Issue #41/#32）。
 - 修复 Windows 下 TUN 启动偶发超时/误判：增强就绪探测（兼容地址无 mask 的 *net.IPAddr、网卡名不可控时用 MTU+新网卡兜底），并将 Windows 下等待上限调整为 25s；超时错误附带候选网卡摘要，`/proxy/status` 返回 `tunIface` 便于排障。
 - 修复 Windows 下 TUN 能力检查误报“需要管理员/未配置”的显示问题：`/tun/check.configured` 在 Windows 表达“无需一次性配置”，并同步更新提示文案。

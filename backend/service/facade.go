@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -45,6 +46,10 @@ type Facade struct {
 
 	// Repositories 用于直接访问（settings/rules 等）
 	repos repository.Repositories
+
+	// 测试用覆写（仅用于单元测试）。
+	startProxyFn     func(domain.ProxyConfig) error
+	getProxyStatusFn func() map[string]interface{}
 }
 
 // NewFacade 创建门面服务
@@ -338,6 +343,9 @@ func (f *Facade) SyncConfigNodes(configID string) ([]domain.Node, error) {
 
 // GetProxyStatus 获取代理状态
 func (f *Facade) GetProxyStatus() map[string]interface{} {
+	if f.getProxyStatusFn != nil {
+		return f.getProxyStatusFn()
+	}
 	return f.proxy.Status(context.Background())
 }
 
@@ -349,6 +357,44 @@ func (f *Facade) MarkProxyRestartScheduled() {
 // MarkProxyRestartFailed 记录“代理重启失败”（用于前端轮询提示）。
 func (f *Facade) MarkProxyRestartFailed(err error) {
 	f.proxy.MarkRestartFailed(err)
+}
+
+func (f *Facade) restartProxyAsync(config domain.ProxyConfig, reason string) {
+	f.MarkProxyRestartScheduled()
+
+	prefix := "[Proxy]"
+	switch strings.TrimSpace(reason) {
+	case "":
+		log.Printf("%s 重启代理以应用更改", prefix)
+	default:
+		log.Printf("%s %s，重启代理以应用更改", prefix, reason)
+	}
+
+	go func(cfg domain.ProxyConfig) {
+		startFn := f.startProxyFn
+		if startFn == nil {
+			startFn = f.StartProxy
+		}
+
+		if err := startFn(cfg); err != nil {
+			f.MarkProxyRestartFailed(err)
+			log.Printf("%s 重启代理失败: %v", prefix, err)
+
+			// 如果重启失败且代理未运行，系统代理继续指向本地端口会让用户“直接断网”。
+			// 这里兜底强制关闭系统代理并持久化，避免黑洞。
+			if status := f.GetProxyStatus(); status != nil {
+				if busy, ok := status["busy"].(bool); ok && busy {
+					return
+				}
+				if running, ok := status["running"].(bool); !ok || !running {
+					if err2 := f.StopProxy(); err2 != nil {
+						log.Printf("%s 重启失败后关闭系统代理也失败: %v", prefix, err2)
+					}
+				}
+			}
+			return
+		}
+	}(config)
 }
 
 // StopProxy 停止代理
@@ -644,7 +690,19 @@ func (f *Facade) UpdateProxyConfig(updateFn func(domain.ProxyConfig) (domain.Pro
 	if err != nil {
 		return domain.ProxyConfig{}, err
 	}
-	return f.repos.Settings().UpdateProxyConfig(context.Background(), updated)
+	updated, err = f.repos.Settings().UpdateProxyConfig(context.Background(), updated)
+	if err != nil {
+		return domain.ProxyConfig{}, err
+	}
+
+	// 当代理正在运行且 frouterId 变化时，自动异步重启以应用新 FRouter。
+	if strings.TrimSpace(current.FRouterID) != strings.TrimSpace(updated.FRouterID) && strings.TrimSpace(updated.FRouterID) != "" {
+		status := f.GetProxyStatus()
+		if running, ok := status["running"].(bool); ok && running {
+			f.restartProxyAsync(updated, "FRouter 已切换")
+		}
+	}
+	return updated, nil
 }
 
 // GetFrontendSettings 获取前端设置

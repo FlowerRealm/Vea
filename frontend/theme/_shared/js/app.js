@@ -5115,8 +5115,11 @@ export function bootstrapTheme({ createAPI, utils }) {
 	      }
 
 	      if (chainRouteSelect) {
-	        chainRouteSelect.addEventListener("change", (event) => {
-	          setCurrentFRouter(event.target.value, { notify: true });
+	        chainRouteSelect.addEventListener("change", async (event) => {
+	          const id = String(event.target.value || "").trim();
+	          if (!id) return;
+	          setCurrentFRouter(id, { notify: false });
+	          await applyFRouterSelection(id, { notify: true });
         });
       }
 

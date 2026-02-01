@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"vea/backend/domain"
 	"vea/backend/persist"
@@ -179,5 +180,130 @@ func TestFacade_Snapshot_PropagatesListError(t *testing.T) {
 	_, err := facade.Snapshot()
 	if !errors.Is(err, expected) {
 		t.Fatalf("expected %v, got %v", expected, err)
+	}
+}
+
+func TestFacade_UpdateProxyConfig_FRouterSwitch_RestartsProxyAsync(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	eventBus := events.NewBus()
+	memStore := memory.NewStore(eventBus)
+
+	nodeRepo := memory.NewNodeRepo(memStore)
+	frouterRepo := memory.NewFRouterRepo(memStore)
+	componentRepo := memory.NewComponentRepo(memStore)
+	settingsRepo := memory.NewSettingsRepo(memStore)
+
+	repos := repository.NewRepositories(memStore, nodeRepo, frouterRepo, nil, nil, componentRepo, settingsRepo)
+	proxySvc := proxy.NewService(frouterRepo, nodeRepo, componentRepo, settingsRepo)
+	facade := NewFacade(nil, nil, nil, proxySvc, nil, nil, nil, repos)
+
+	fr1, err := frouterRepo.Create(ctx, domain.FRouter{Name: "fr-1"})
+	if err != nil {
+		t.Fatalf("create frouter 1: %v", err)
+	}
+	fr2, err := frouterRepo.Create(ctx, domain.FRouter{Name: "fr-2"})
+	if err != nil {
+		t.Fatalf("create frouter 2: %v", err)
+	}
+
+	cfg, err := settingsRepo.GetProxyConfig(ctx)
+	if err != nil {
+		t.Fatalf("get proxy config: %v", err)
+	}
+	cfg.FRouterID = fr1.ID
+	if _, err := settingsRepo.UpdateProxyConfig(ctx, cfg); err != nil {
+		t.Fatalf("update proxy config: %v", err)
+	}
+
+	started := make(chan domain.ProxyConfig, 1)
+	facade.startProxyFn = func(cfg domain.ProxyConfig) error {
+		started <- cfg
+		return nil
+	}
+	facade.getProxyStatusFn = func() map[string]interface{} {
+		status := facade.proxy.Status(context.Background())
+		status["running"] = true
+		status["busy"] = false
+		return status
+	}
+
+	updated, err := facade.UpdateProxyConfig(func(current domain.ProxyConfig) (domain.ProxyConfig, error) {
+		current.FRouterID = fr2.ID
+		return current, nil
+	})
+	if err != nil {
+		t.Fatalf("update proxy config: %v", err)
+	}
+	if updated.FRouterID != fr2.ID {
+		t.Fatalf("expected updated frouterId=%q, got %q", fr2.ID, updated.FRouterID)
+	}
+
+	select {
+	case startedCfg := <-started:
+		if startedCfg.FRouterID != fr2.ID {
+			t.Fatalf("expected restart cfg frouterId=%q, got %q", fr2.ID, startedCfg.FRouterID)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("expected proxy restart to be scheduled")
+	}
+
+	status := facade.proxy.Status(context.Background())
+	if _, ok := status["lastRestartAt"]; !ok {
+		t.Fatalf("expected lastRestartAt to be set")
+	}
+}
+
+func TestFacade_UpdateProxyConfig_FRouterSwitch_NoRestartWhenNotRunning(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	eventBus := events.NewBus()
+	memStore := memory.NewStore(eventBus)
+
+	nodeRepo := memory.NewNodeRepo(memStore)
+	frouterRepo := memory.NewFRouterRepo(memStore)
+	componentRepo := memory.NewComponentRepo(memStore)
+	settingsRepo := memory.NewSettingsRepo(memStore)
+
+	repos := repository.NewRepositories(memStore, nodeRepo, frouterRepo, nil, nil, componentRepo, settingsRepo)
+	proxySvc := proxy.NewService(frouterRepo, nodeRepo, componentRepo, settingsRepo)
+	facade := NewFacade(nil, nil, nil, proxySvc, nil, nil, nil, repos)
+
+	fr, err := frouterRepo.Create(ctx, domain.FRouter{Name: "fr-1"})
+	if err != nil {
+		t.Fatalf("create frouter: %v", err)
+	}
+
+	started := make(chan domain.ProxyConfig, 1)
+	facade.startProxyFn = func(cfg domain.ProxyConfig) error {
+		started <- cfg
+		return nil
+	}
+
+	updated, err := facade.UpdateProxyConfig(func(current domain.ProxyConfig) (domain.ProxyConfig, error) {
+		current.FRouterID = fr.ID
+		return current, nil
+	})
+	if err != nil {
+		t.Fatalf("update proxy config: %v", err)
+	}
+	if updated.FRouterID != fr.ID {
+		t.Fatalf("expected updated frouterId=%q, got %q", fr.ID, updated.FRouterID)
+	}
+
+	select {
+	case <-started:
+		t.Fatalf("expected no restart when proxy not running")
+	case <-time.After(200 * time.Millisecond):
+		// ok
+	}
+
+	status := facade.proxy.Status(context.Background())
+	if _, ok := status["lastRestartAt"]; ok {
+		t.Fatalf("expected lastRestartAt to be empty when not running")
 	}
 }
