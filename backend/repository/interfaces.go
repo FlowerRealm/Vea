@@ -38,6 +38,16 @@ type NodeRepository interface {
 	UpdateSpeed(ctx context.Context, id string, speedMbps float64, speedErr string) error
 }
 
+// NodeGroupRepository 节点组仓储接口（全局资源）
+type NodeGroupRepository interface {
+	// 基础 CRUD
+	Get(ctx context.Context, id string) (domain.NodeGroup, error)
+	List(ctx context.Context) ([]domain.NodeGroup, error)
+	Create(ctx context.Context, group domain.NodeGroup) (domain.NodeGroup, error)
+	Update(ctx context.Context, id string, group domain.NodeGroup) (domain.NodeGroup, error)
+	Delete(ctx context.Context, id string) error
+}
+
 // ConfigRepository 订阅配置仓储接口
 type ConfigRepository interface {
 	// 基础 CRUD
@@ -113,6 +123,7 @@ type SettingsRepository interface {
 // Repositories 聚合所有仓储的容器接口
 type Repositories interface {
 	Node() NodeRepository
+	NodeGroup() NodeGroupRepository
 	FRouter() FRouterRepository
 	Config() ConfigRepository
 	Geo() GeoRepository
@@ -125,6 +136,7 @@ type RepositoriesImpl struct {
 	store Snapshottable
 
 	nodeRepo      NodeRepository
+	nodeGroupRepo NodeGroupRepository
 	frouterRepo   FRouterRepository
 	configRepo    ConfigRepository
 	geoRepo       GeoRepository
@@ -135,6 +147,7 @@ type RepositoriesImpl struct {
 func NewRepositories(
 	store Snapshottable,
 	nodeRepo NodeRepository,
+	nodeGroupRepo NodeGroupRepository,
 	frouterRepo FRouterRepository,
 	configRepo ConfigRepository,
 	geoRepo GeoRepository,
@@ -145,6 +158,7 @@ func NewRepositories(
 		store: store,
 
 		nodeRepo:      nodeRepo,
+		nodeGroupRepo: nodeGroupRepo,
 		frouterRepo:   frouterRepo,
 		configRepo:    configRepo,
 		geoRepo:       geoRepo,
@@ -155,6 +169,7 @@ func NewRepositories(
 
 // 实现 Repositories 接口
 func (r *RepositoriesImpl) Node() NodeRepository           { return r.nodeRepo }
+func (r *RepositoriesImpl) NodeGroup() NodeGroupRepository { return r.nodeGroupRepo }
 func (r *RepositoriesImpl) FRouter() FRouterRepository     { return r.frouterRepo }
 func (r *RepositoriesImpl) Config() ConfigRepository       { return r.configRepo }
 func (r *RepositoriesImpl) Geo() GeoRepository             { return r.geoRepo }

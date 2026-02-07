@@ -39,6 +39,8 @@ tags:
     description: 应用自身能力（日志等）
   - name: nodes
     description: 节点列表与测量
+  - name: node-groups
+    description: 节点组管理（全局资源，可在 FRouter 图中引用）
   - name: frouters
     description: FRouter 管理（封装节点链路）
   - name: configs
@@ -318,6 +320,82 @@ paths:
           description: 批量测试任务已提交
         '400':
           $ref: '#/components/responses/BadRequest'
+
+  /node-groups:
+    get:
+      tags: [node-groups]
+      summary: 列出所有节点组
+      description: 获取全局节点组列表（供 FRouter 图引用）
+      operationId: listNodeGroups
+      responses:
+        '200':
+          description: 成功返回节点组列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeGroupsListResponse'
+
+    post:
+      tags: [node-groups]
+      summary: 创建节点组
+      description: 创建全局节点组（策略绑定在节点组上）
+      operationId: createNodeGroup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodeGroupUpsertRequest'
+      responses:
+        '201':
+          description: 节点组创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeGroup'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /node-groups/{id}:
+    put:
+      tags: [node-groups]
+      summary: 更新节点组
+      description: 更新节点组信息（不会修改内部 cursor）
+      operationId: updateNodeGroup
+      parameters:
+        - $ref: '#/components/parameters/NodeGroupId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodeGroupUpsertRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeGroup'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [node-groups]
+      summary: 删除节点组
+      description: 删除指定节点组
+      operationId: deleteNodeGroup
+      parameters:
+        - $ref: '#/components/parameters/NodeGroupId'
+      responses:
+        '204':
+          description: 删除成功
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /frouters:
     get:
@@ -1333,6 +1411,14 @@ components:
       schema:
         type: string
 
+    NodeGroupId:
+      name: id
+      in: path
+      required: true
+      description: 节点组 ID
+      schema:
+        type: string
+
     ConfigId:
       name: id
       in: path
@@ -1539,6 +1625,67 @@ components:
           items:
             type: string
           description: 节点标签
+
+    NodeGroupStrategy:
+      type: string
+      description: 节点组选择策略
+      enum: [lowest-latency, fastest-speed, round-robin, failover]
+
+    NodeGroup:
+      type: object
+      description: 节点组（全局资源，可在 FRouter 图中直接引用）
+      required: [id, name, nodeIds, strategy, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        nodeIds:
+          type: array
+          items:
+            type: string
+        strategy:
+          $ref: '#/components/schemas/NodeGroupStrategy'
+        tags:
+          type: array
+          items:
+            type: string
+        cursor:
+          type: integer
+          description: 轮询/失败切换游标（内部字段）
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    NodeGroupUpsertRequest:
+      type: object
+      description: 创建/更新节点组请求体
+      required: [name, nodeIds, strategy]
+      properties:
+        name:
+          type: string
+        nodeIds:
+          type: array
+          items:
+            type: string
+        strategy:
+          $ref: '#/components/schemas/NodeGroupStrategy'
+        tags:
+          type: array
+          items:
+            type: string
+
+    NodeGroupsListResponse:
+      type: object
+      required: [nodeGroups]
+      properties:
+        nodeGroups:
+          type: array
+          items:
+            $ref: '#/components/schemas/NodeGroup'
 
     NodeSecurity:
       type: object
@@ -2174,6 +2321,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Node'
+        nodeGroups:
+          type: array
+          items:
+            $ref: '#/components/schemas/NodeGroup'
         frouters:
           type: array
           items:

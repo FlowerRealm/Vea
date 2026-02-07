@@ -10,9 +10,10 @@ import (
 )
 
 // SchemaVersion 当前架构版本
-const SchemaVersion = "2.1.0"
+const SchemaVersion = "2.2.0"
 
 const legacySchemaVersion_2_0_0 = "2.0.0"
+const legacySchemaVersion_2_1_0 = "2.1.0"
 
 type legacyFRouter_2_0_0 struct {
 	ID               string                    `json:"id"`
@@ -86,18 +87,28 @@ func (m *Migrator) Migrate(data []byte) (domain.ServiceState, error) {
 			return domain.ServiceState{}, fmt.Errorf("failed to parse state: %w", err)
 		}
 		return sanitizeServiceState(state), nil
+	case legacySchemaVersion_2_1_0:
+		var state domain.ServiceState
+		if err := json.Unmarshal(data, &state); err != nil {
+			return domain.ServiceState{}, fmt.Errorf("failed to parse legacy state: %w", err)
+		}
+		state.SchemaVersion = SchemaVersion
+		if state.GeneratedAt.IsZero() {
+			state.GeneratedAt = time.Now()
+		}
+		return sanitizeServiceState(state), nil
 	case legacySchemaVersion_2_0_0:
 		var legacy legacyServiceState_2_0_0
 		if err := json.Unmarshal(data, &legacy); err != nil {
 			return domain.ServiceState{}, fmt.Errorf("failed to parse legacy state: %w", err)
 		}
-		return sanitizeServiceState(migrate_2_0_0_to_2_1_0(legacy)), nil
+		return sanitizeServiceState(migrate_2_0_0_to_2_2_0(legacy)), nil
 	default:
 		return domain.ServiceState{}, fmt.Errorf("unsupported schemaVersion %s (expected %s)", meta.SchemaVersion, SchemaVersion)
 	}
 }
 
-func migrate_2_0_0_to_2_1_0(legacy legacyServiceState_2_0_0) domain.ServiceState {
+func migrate_2_0_0_to_2_2_0(legacy legacyServiceState_2_0_0) domain.ServiceState {
 	nodesByID := make(map[string]domain.Node, 256)
 
 	for _, n := range legacy.Nodes {
@@ -151,6 +162,7 @@ func migrate_2_0_0_to_2_1_0(legacy legacyServiceState_2_0_0) domain.ServiceState
 	return domain.ServiceState{
 		SchemaVersion:    SchemaVersion,
 		Nodes:            nextNodes,
+		NodeGroups:       []domain.NodeGroup{},
 		FRouters:         nextFRouters,
 		Configs:          legacy.Configs,
 		GeoResources:     legacy.GeoResources,

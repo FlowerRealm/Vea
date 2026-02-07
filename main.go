@@ -26,6 +26,7 @@ import (
 	configsvc "vea/backend/service/config"
 	"vea/backend/service/frouter"
 	"vea/backend/service/geo"
+	"vea/backend/service/nodegroups"
 	"vea/backend/service/nodes"
 	"vea/backend/service/proxy"
 	"vea/backend/service/shared"
@@ -133,31 +134,33 @@ func run() int {
 
 	// 4. 创建仓储层
 	nodeRepo := memory.NewNodeRepo(memStore)
+	nodeGroupRepo := memory.NewNodeGroupRepo(memStore)
 	frouterRepo := memory.NewFRouterRepo(memStore)
 	configRepo := memory.NewConfigRepo(memStore)
 	geoRepo := memory.NewGeoRepo(memStore)
 	componentRepo := memory.NewComponentRepo(memStore)
 	settingsRepo := memory.NewSettingsRepo(memStore)
 
-	repos := repository.NewRepositories(memStore, nodeRepo, frouterRepo, configRepo, geoRepo, componentRepo, settingsRepo)
+	repos := repository.NewRepositories(memStore, nodeRepo, nodeGroupRepo, frouterRepo, configRepo, geoRepo, componentRepo, settingsRepo)
 
 	// 5. 创建服务层
 	nodeSvc := nodes.NewService(ctx, nodeRepo)
+	nodeGroupSvc := nodegroups.NewService(nodeGroupRepo)
 	frouterSvc := frouter.NewService(ctx, frouterRepo, nodeRepo)
 
 	// 创建速度测量器并注入到测量相关服务
-	speedMeasurer := proxy.NewSpeedMeasurer(ctx, componentRepo, geoRepo, settingsRepo)
+	speedMeasurer := proxy.NewSpeedMeasurer(ctx, componentRepo, geoRepo, settingsRepo, nodeGroupRepo)
 	nodeSvc.SetMeasurer(speedMeasurer)
 	frouterSvc.SetMeasurer(speedMeasurer)
 
 	configSvc := configsvc.NewService(ctx, configRepo, nodeSvc, frouterRepo)
-	proxySvc := proxy.NewService(frouterRepo, nodeRepo, componentRepo, settingsRepo)
+	proxySvc := proxy.NewService(frouterRepo, nodeRepo, nodeGroupRepo, componentRepo, settingsRepo)
 	componentSvc := component.NewService(ctx, componentRepo)
 	geoSvc := geo.NewService(geoRepo)
 	themeSvc := themesvc.NewService(themesvc.Options{UserDataRoot: shared.UserDataRoot()})
 
 	// 6. 创建 Facade（门面服务）
-	facade := service.NewFacade(nodeSvc, frouterSvc, configSvc, proxySvc, componentSvc, geoSvc, themeSvc, repos)
+	facade := service.NewFacade(nodeSvc, nodeGroupSvc, frouterSvc, configSvc, proxySvc, componentSvc, geoSvc, themeSvc, repos)
 	facade.SetAppLog(appLogPath, appLogStartedAt)
 
 	// 7. 设置持久化（事件驱动）

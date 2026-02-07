@@ -27,6 +27,11 @@ var (
 	ErrNodeNotFound = errors.New("node not found")
 )
 
+// NodeGroup 相关错误
+var (
+	ErrNodeGroupNotFound = errors.New("node group not found")
+)
+
 // 配置相关错误
 var (
 	ErrConfigNotFound = errors.New("config not found")

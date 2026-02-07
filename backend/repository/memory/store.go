@@ -17,6 +17,7 @@ type Store struct {
 
 	// 数据存储
 	nodes      map[string]domain.Node
+	nodeGroups map[string]domain.NodeGroup
 	frouters   map[string]domain.FRouter
 	configs    map[string]domain.Config
 	geo        map[string]domain.GeoResource
@@ -35,6 +36,7 @@ type Store struct {
 func NewStore(eventBus *events.Bus) *Store {
 	s := &Store{
 		nodes:      make(map[string]domain.Node),
+		nodeGroups: make(map[string]domain.NodeGroup),
 		frouters:   make(map[string]domain.FRouter),
 		configs:    make(map[string]domain.Config),
 		geo:        make(map[string]domain.GeoResource),
@@ -87,6 +89,9 @@ func (s *Store) PublishEventSync(event events.Event) {
 
 // Nodes 返回节点映射（需持有锁）
 func (s *Store) Nodes() map[string]domain.Node { return s.nodes }
+
+// NodeGroups 返回节点组映射（需持有锁）
+func (s *Store) NodeGroups() map[string]domain.NodeGroup { return s.nodeGroups }
 
 // FRouters 返回 FRouter 映射（需持有锁）
 func (s *Store) FRouters() map[string]domain.FRouter { return s.frouters }
@@ -150,6 +155,18 @@ func (s *Store) Snapshot() domain.ServiceState {
 		return nodes[i].Name < nodes[j].Name
 	})
 
+	// 复制 NodeGroup
+	nodeGroups := make([]domain.NodeGroup, 0, len(s.nodeGroups))
+	for _, g := range s.nodeGroups {
+		nodeGroups = append(nodeGroups, g)
+	}
+	sort.Slice(nodeGroups, func(i, j int) bool {
+		if nodeGroups[i].Name == nodeGroups[j].Name {
+			return nodeGroups[i].CreatedAt.Before(nodeGroups[j].CreatedAt)
+		}
+		return nodeGroups[i].Name < nodeGroups[j].Name
+	})
+
 	// 复制 FRouter
 	frouters := make([]domain.FRouter, 0, len(s.frouters))
 	for _, frouter := range s.frouters {
@@ -191,6 +208,7 @@ func (s *Store) Snapshot() domain.ServiceState {
 
 	return domain.ServiceState{
 		Nodes:            nodes,
+		NodeGroups:       nodeGroups,
 		FRouters:         frouters,
 		Configs:          configs,
 		GeoResources:     geoResources,
@@ -223,6 +241,24 @@ func (s *Store) LoadState(state domain.ServiceState) {
 			node.UpdatedAt = node.CreatedAt
 		}
 		s.nodes[node.ID] = node
+	}
+
+	// 加载 NodeGroup
+	s.nodeGroups = make(map[string]domain.NodeGroup)
+	for _, group := range state.NodeGroups {
+		if group.ID == "" {
+			group.ID = uuid.NewString()
+		}
+		if group.CreatedAt.IsZero() {
+			group.CreatedAt = now
+		}
+		if group.UpdatedAt.IsZero() {
+			group.UpdatedAt = group.CreatedAt
+		}
+		if group.NodeIDs == nil {
+			group.NodeIDs = []string{}
+		}
+		s.nodeGroups[group.ID] = group
 	}
 
 	// 加载 FRouter

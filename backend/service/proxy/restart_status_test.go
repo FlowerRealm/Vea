@@ -10,7 +10,7 @@ import (
 func TestService_Status_IncludesRestartFields(t *testing.T) {
 	t.Parallel()
 
-	svc := NewService(nil, nil, nil, nil)
+	svc := NewService(nil, nil, nil, nil, nil)
 	svc.MarkRestartScheduled()
 
 	status := svc.Status(context.Background())

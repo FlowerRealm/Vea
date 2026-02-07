@@ -44,6 +44,7 @@ export function bootstrapTheme({ createAPI, utils }) {
       };
 		      let froutersCache = [];
 		      let nodesCache = [];
+		      let nodeGroupsCache = [];
 		      let configsCache = [];
 		      let configsLoaded = false;
 		      let configsLoadPromise = null;
@@ -81,6 +82,8 @@ export function bootstrapTheme({ createAPI, utils }) {
 	      let appLogFilterClearBtn = null;
 	      let logsTabsInitialized = false;
 	      let nodesLoadPromise = null;
+	      let nodeGroupsLoadPromise = null;
+	      let currentNodesPanelTab = "nodes"; // nodes | node-groups
 	      let nodesGraphVersion = 0;
 	      let nodesGraphIdentityHash = "";
 			      let homeAutoTestInFlight = false;
@@ -1849,12 +1852,12 @@ export function bootstrapTheme({ createAPI, utils }) {
                   nodesGraphVersion += 1;
                 }
 
-                if (currentPanel === "panel-nodes") {
+                if (currentPanel === "panel-nodes" && currentNodesPanelTab === "nodes") {
                   renderOrUpdateNodesPanel(nodesCache);
                 }
               } catch (err) {
                 console.error("加载节点失败:", err);
-                if (currentPanel === "panel-nodes") {
+                if (currentPanel === "panel-nodes" && currentNodesPanelTab === "nodes") {
                   showStatus(`加载节点失败：${err.message}`, "error", 6000);
                 }
               } finally {
@@ -1863,6 +1866,122 @@ export function bootstrapTheme({ createAPI, utils }) {
             })();
 
             return nodesLoadPromise;
+          }
+
+          async function loadNodeGroups() {
+            if (nodeGroupsLoadPromise) {
+              return nodeGroupsLoadPromise;
+            }
+
+            nodeGroupsLoadPromise = (async () => {
+              try {
+                const payload = await api.get("/node-groups");
+                nodeGroupsCache = Array.isArray(payload.nodeGroups) ? payload.nodeGroups : [];
+
+                if (currentPanel === "panel-nodes" && currentNodesPanelTab === "node-groups") {
+                  renderNodeGroupsPanel(nodeGroupsCache);
+                }
+              } catch (err) {
+                console.error("加载节点组失败:", err);
+                if (currentPanel === "panel-nodes" && currentNodesPanelTab === "node-groups") {
+                  showStatus(`加载节点组失败：${err.message}`, "error", 6000);
+                }
+              } finally {
+                nodeGroupsLoadPromise = null;
+              }
+            })();
+
+            return nodeGroupsLoadPromise;
+          }
+
+          function ensureNodesPanelTabs() {
+            const panel = document.getElementById("panel-nodes");
+            if (!panel) return;
+            if (panel.dataset.nodesPanelTabsInitialized === "1") {
+              return;
+            }
+            panel.dataset.nodesPanelTabsInitialized = "1";
+
+            const header = panel.querySelector(".panel-header");
+            const actions = header ? header.querySelector(".panel-actions") : null;
+
+            let tabs = document.getElementById("nodes-panel-tabs");
+            if (!tabs) {
+              tabs = document.createElement("div");
+              tabs.id = "nodes-panel-tabs";
+              tabs.className = "node-tabs nodes-panel-tabs";
+              tabs.innerHTML = `
+                <div class="node-tab" data-nodes-tab="nodes">节点</div>
+                <div class="node-tab" data-nodes-tab="node-groups">节点组</div>
+              `;
+              if (header && header.parentNode) {
+                header.parentNode.insertBefore(tabs, header.nextSibling);
+              } else {
+                panel.prepend(tabs);
+              }
+            }
+
+            tabs.addEventListener("click", (event) => {
+              const tab = event.target.closest(".node-tab[data-nodes-tab]");
+              if (!tab) return;
+              const next = tab.dataset.nodesTab || "nodes";
+              if (next === currentNodesPanelTab) return;
+
+              currentNodesPanelTab = next;
+              syncNodesPanelTabUI();
+
+              if (currentPanel === "panel-nodes") {
+                if (next === "nodes") {
+                  loadNodes();
+                } else {
+                  loadNodeGroups();
+                }
+              }
+            });
+
+            if (actions) {
+              let addGroupBtn = document.getElementById("node-groups-add-button");
+              if (!addGroupBtn) {
+                addGroupBtn = document.createElement("button");
+                addGroupBtn.id = "node-groups-add-button";
+                addGroupBtn.className = "primary";
+                addGroupBtn.textContent = "添加节点组";
+                addGroupBtn.style.display = "none";
+                actions.appendChild(addGroupBtn);
+                addGroupBtn.addEventListener("click", () => openNodeGroupsModal());
+              }
+            }
+          }
+
+          function syncNodesPanelTabUI() {
+            const panel = document.getElementById("panel-nodes");
+            if (!panel) return;
+
+            const showNodes = currentNodesPanelTab === "nodes";
+
+            const tabs = document.getElementById("nodes-panel-tabs");
+            if (tabs) {
+              tabs.querySelectorAll(".node-tab").forEach((el) => {
+                const key = el.dataset.nodesTab || "nodes";
+                el.classList.toggle("active", key === currentNodesPanelTab);
+              });
+            }
+
+            const bulkPing = document.getElementById("nodes-bulk-ping");
+            const bulkSpeed = document.getElementById("nodes-bulk-speed");
+            const addNode = document.getElementById("nodes-add-button");
+            const addGroup = document.getElementById("node-groups-add-button");
+
+            if (bulkPing) bulkPing.style.display = showNodes ? "" : "none";
+            if (bulkSpeed) bulkSpeed.style.display = showNodes ? "" : "none";
+            if (addNode) addNode.style.display = showNodes ? "" : "none";
+            if (addGroup) addGroup.style.display = showNodes ? "none" : "";
+
+            if (!showNodes) {
+              renderNodeGroupsPanel(nodeGroupsCache);
+            } else {
+              renderOrUpdateNodesPanel(nodesCache);
+            }
           }
 		
 		      async function autoTestHomePanel({ notify = false } = {}) {
@@ -2176,6 +2295,119 @@ export function bootstrapTheme({ createAPI, utils }) {
 	          .join("");
 	      }
 
+	      function nodeGroupStrategyLabel(strategy) {
+	        const s = String(strategy || "").trim();
+	        if (s === "lowest-latency") return "延迟最低";
+	        if (s === "fastest-speed") return "速度最快";
+	        if (s === "round-robin") return "轮询";
+	        if (s === "failover") return "失败切换";
+	        return s || "-";
+	      }
+
+	      function renderNodeGroupsPanel(groups) {
+	        ensureNodesPanelTabs();
+
+	        // Node groups 与 nodes 共用同一张表（复用现有节点卡片样式）
+	        const tbody = document.querySelector("#nodes-table tbody");
+	        if (!tbody) return;
+
+	        const list = Array.isArray(groups) ? groups : [];
+	        if (list.length === 0) {
+	          lastRenderedNodesStructureHash = "";
+	          tbody.innerHTML = `
+	            <tr>
+	              <td colspan="6" style="text-align:center; color:var(--text-secondary); padding:24px;">暂无节点组</td>
+	            </tr>
+	          `;
+	          return;
+	        }
+
+	        const nodes = Array.isArray(nodesCache) ? nodesCache : [];
+	        const nodesById = new Map();
+	        for (const n of nodes) {
+	          const id = n && n.id ? String(n.id) : "";
+	          if (!id) continue;
+	          nodesById.set(id, n);
+	        }
+
+	        const sorted = list.slice().sort((a, b) => {
+	          const an = String((a && a.name) || "").trim();
+	          const bn = String((b && b.name) || "").trim();
+	          if (an && bn) return an.localeCompare(bn, "zh-Hans-CN");
+	          if (an) return -1;
+	          if (bn) return 1;
+	          return String((a && a.id) || "").localeCompare(String((b && b.id) || ""), "en");
+	        });
+
+	        lastRenderedNodesStructureHash = "";
+	        tbody.innerHTML = sorted
+	          .map((g) => {
+	            const id = g && g.id ? String(g.id) : "";
+	            const name = String((g && g.name) || "").trim() || id || "未命名节点组";
+	            const strategy = nodeGroupStrategyLabel(g && g.strategy);
+	            const nodeIds = Array.isArray(g && g.nodeIds)
+	              ? g.nodeIds.map((x) => String(x || "").trim()).filter(Boolean)
+	              : [];
+	            const nodeNames = nodeIds
+	              .map((nid) => {
+	                const n = nodesById.get(nid);
+	                return n && n.name ? String(n.name) : nid;
+	              })
+	              .filter(Boolean);
+	            const count = nodeIds.length;
+
+	            const previewMax = 5;
+	            const fullNodeText = nodeNames.join("、");
+	            const previewNodeText = nodeNames.slice(0, previewMax).join("、");
+	            const nodeText = nodeNames.length > previewMax
+	              ? `${previewNodeText} (+${nodeNames.length - previewMax})`
+	              : (previewNodeText || "-");
+
+	            const tags = Array.isArray(g && g.tags)
+	              ? g.tags.map((t) => String(t || "").trim()).filter(Boolean)
+	              : [];
+	            const tagsFull = tags.join(", ");
+	            const tagsPreviewMax = 3;
+	            const tagsPreview = tags.length > tagsPreviewMax
+	              ? `${tags.slice(0, tagsPreviewMax).join(", ")} (+${tags.length - tagsPreviewMax})`
+	              : (tagsFull || "-");
+
+	            return `
+	              <tr class="node-card-row" data-id="${escapeHtml(id)}" data-kind="node-group">
+	                <td colspan="6">
+	                  <div class="node-card">
+	                    <div class="node-card-top">
+	                      <div class="node-card-title">
+	                        <span class="node-card-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+	                        <span class="node-card-protocol" title="${escapeHtml(String(g && g.strategy || ''))}">${escapeHtml(strategy)}</span>
+	                      </div>
+	                      <div class="node-card-actions">
+	                        <button class="mini-btn" data-action="edit-node-group">编辑</button>
+	                        <button class="mini-btn" data-action="delete-node-group">删除</button>
+	                      </div>
+	                    </div>
+	                    <div class="node-card-meta">
+	                      <span class="node-card-addr" title="${escapeHtml(fullNodeText ? ("成员: " + fullNodeText) : "成员: -")}">成员: ${escapeHtml(nodeText)}</span>
+	                      <span class="node-card-id" title="${escapeHtml(id)}">${escapeHtml(id)}</span>
+	                    </div>
+	                    <div class="node-card-stats">
+	                      <div class="node-card-stat">
+	                        <span>节点数</span>
+	                        <span class="node-metric-value">${escapeHtml(String(count))}</span>
+	                      </div>
+	                      <div class="node-card-stat">
+	                        <span>标签</span>
+	                        <span class="node-metric-value" title="${escapeHtml(tagsFull || '-')}">${escapeHtml(tagsPreview)}</span>
+	                      </div>
+	                    </div>
+	                  </div>
+	                </td>
+	              </tr>
+	            `;
+	          })
+	          .join("");
+	      }
+
 	      function renderFRouters(frouters, currentId = "") {
 	        if (!nodeGrid) return;
 	        let filtered = frouters;
@@ -2408,6 +2640,7 @@ export function bootstrapTheme({ createAPI, utils }) {
         }
 
         await loadNodes();
+        await loadNodeGroups();
         const nodesVersion = String(nodesGraphVersion);
         if (container.dataset.flowRenderedId === frouterId &&
           container.dataset.flowRenderedUpdatedAt === updatedAt &&
@@ -2427,27 +2660,36 @@ export function bootstrapTheme({ createAPI, utils }) {
         if (!stillContainer) return;
 
         const nodes = Array.isArray(nodesCache) ? nodesCache : [];
+        const nodeGroups = Array.isArray(nodeGroupsCache) ? nodeGroupsCache : [];
 
         const edges = Array.isArray(current.chainProxy.edges) ? current.chainProxy.edges : [];
         const slots = Array.isArray(current.chainProxy.slots) ? current.chainProxy.slots : [];
 
-        const model = buildFRouterFlowModel({ edges, slots, nodes });
+        const model = buildFRouterFlowModel({ edges, slots, nodes, nodeGroups });
         renderFRouterFlowSVG(stillContainer, model);
         stillContainer.dataset.flowRenderedId = frouterId;
         stillContainer.dataset.flowRenderedUpdatedAt = updatedAt;
         stillContainer.dataset.flowRenderedNodesVersion = nodesVersion;
       }
 
-      function buildFRouterFlowModel({ edges, slots, nodes }) {
+      function buildFRouterFlowModel({ edges, slots, nodes, nodeGroups }) {
         const enabledEdges = Array.isArray(edges) ? edges.filter(e => e && e.enabled !== false) : [];
         const slotList = Array.isArray(slots) ? slots : [];
         const nodeList = Array.isArray(nodes) ? nodes : [];
+        const nodeGroupList = Array.isArray(nodeGroups) ? nodeGroups : [];
 
         const nodesById = new Map();
         for (const n of nodeList) {
           const id = n && n.id ? String(n.id) : "";
           if (!id) continue;
           nodesById.set(id, n);
+        }
+
+        const nodeGroupsById = new Map();
+        for (const g of nodeGroupList) {
+          const id = g && g.id ? String(g.id) : "";
+          if (!id) continue;
+          nodeGroupsById.set(id, g);
         }
 
         const slotsById = new Map();
@@ -2597,9 +2839,16 @@ export function bootstrapTheme({ createAPI, utils }) {
 
         const getNodeDisplayName = (id) => {
           const n = nodesById.get(id);
-          if (!n) return id || "未知";
-          const name = n && n.name ? String(n.name) : "";
-          return name || id;
+          if (n) {
+            const name = n && n.name ? String(n.name) : "";
+            return name || id;
+          }
+          const g = nodeGroupsById.get(id);
+          if (g) {
+            const name = g && g.name ? String(g.name) : "";
+            return (name || id) ? `${name || id}（组）` : (id || "未知");
+          }
+          return id || "未知";
         };
 
         const flowNodes = new Map();
@@ -2707,11 +2956,19 @@ export function bootstrapTheme({ createAPI, utils }) {
             continue;
           }
 
+          const targetGroup = nodeGroupsById.get(targetId);
+          const targetKnown = nodesById.has(targetId) || Boolean(targetGroup);
+          const targetTooltip = nodesById.has(targetId)
+            ? `${getNodeDisplayName(targetId)}\n${targetId}`
+            : targetGroup
+              ? `节点组: ${String(targetGroup.name || targetId)}\n${targetId}\n策略: ${nodeGroupStrategyLabel(targetGroup.strategy)}\n节点数: ${Array.isArray(targetGroup.nodeIds) ? targetGroup.nodeIds.length : 0}`
+              : `未知节点: ${targetId}`;
+
           addNode(targetId, {
             id: targetId,
-            kind: nodesById.has(targetId) ? "node" : "node-unknown",
+            kind: targetKnown ? "node" : "node-unknown",
             lines: [truncateText(getNodeDisplayName(targetId), 20)],
-            tooltip: nodesById.has(targetId) ? `${getNodeDisplayName(targetId)}\n${targetId}` : `未知节点: ${targetId}`
+            tooltip: targetTooltip
           });
           addEdge({ id: `e:${ruleId}:${targetId}`, from: ruleId, to: targetId, kind: "rule-target" });
           walkDetour(targetId);
@@ -2720,17 +2977,32 @@ export function bootstrapTheme({ createAPI, utils }) {
         for (const from of reachableDetour) {
           const to = detourUpstream.get(from);
           if (!to) continue;
+          const fromGroup = nodeGroupsById.get(from);
+          const fromKnown = nodesById.has(from) || Boolean(fromGroup);
+          const fromTooltip = nodesById.has(from)
+            ? `${getNodeDisplayName(from)}\n${from}`
+            : fromGroup
+              ? `节点组: ${String(fromGroup.name || from)}\n${from}\n策略: ${nodeGroupStrategyLabel(fromGroup.strategy)}\n节点数: ${Array.isArray(fromGroup.nodeIds) ? fromGroup.nodeIds.length : 0}`
+              : `未知节点: ${from}`;
           addNode(from, {
             id: from,
-            kind: nodesById.has(from) ? "node" : "node-unknown",
+            kind: fromKnown ? "node" : "node-unknown",
             lines: [truncateText(getNodeDisplayName(from), 20)],
-            tooltip: nodesById.has(from) ? `${getNodeDisplayName(from)}\n${from}` : `未知节点: ${from}`
+            tooltip: fromTooltip
           });
+
+          const toGroup = nodeGroupsById.get(to);
+          const toKnown = nodesById.has(to) || Boolean(toGroup);
+          const toTooltip = nodesById.has(to)
+            ? `${getNodeDisplayName(to)}\n${to}`
+            : toGroup
+              ? `节点组: ${String(toGroup.name || to)}\n${to}\n策略: ${nodeGroupStrategyLabel(toGroup.strategy)}\n节点数: ${Array.isArray(toGroup.nodeIds) ? toGroup.nodeIds.length : 0}`
+              : `未知节点: ${to}`;
           addNode(to, {
             id: to,
-            kind: nodesById.has(to) ? "node" : "node-unknown",
+            kind: toKnown ? "node" : "node-unknown",
             lines: [truncateText(getNodeDisplayName(to), 20)],
-            tooltip: nodesById.has(to) ? `${getNodeDisplayName(to)}\n${to}` : `未知节点: ${to}`
+            tooltip: toTooltip
           });
           addEdge({ id: `e:detour:${from}:${to}`, from, to, kind: "detour" });
         }
@@ -3089,7 +3361,8 @@ export function bootstrapTheme({ createAPI, utils }) {
         try {
           await Promise.all([
             loadFRouters({ notify: false }),
-            loadNodes()
+            loadNodes(),
+            loadNodeGroups(),
           ]);
 
           if (!dagreAvailable()) {
@@ -3111,9 +3384,10 @@ export function bootstrapTheme({ createAPI, utils }) {
           }
 
           const nodes = Array.isArray(nodesCache) ? nodesCache : [];
+          const nodeGroups = Array.isArray(nodeGroupsCache) ? nodeGroupsCache : [];
           const edges = Array.isArray(current.chainProxy.edges) ? current.chainProxy.edges : [];
           const slots = Array.isArray(current.chainProxy.slots) ? current.chainProxy.slots : [];
-          const model = buildFRouterFlowModel({ edges, slots, nodes });
+          const model = buildFRouterFlowModel({ edges, slots, nodes, nodeGroups });
           renderFRouterFlowSVG(flowGraphModalContainer, model);
         } catch (err) {
           renderFlowGraphMessage(flowGraphModalContainer, `加载失败：${err.message}`);
@@ -3295,7 +3569,7 @@ export function bootstrapTheme({ createAPI, utils }) {
 	            configsLoaded = true;
 
 	            renderConfigs(configsCache);
-	            if (currentPanel === "panel-nodes") {
+	            if (currentPanel === "panel-nodes" && currentNodesPanelTab === "nodes") {
 	              renderOrUpdateNodesPanel(nodesCache);
 	            }
 
@@ -3695,6 +3969,7 @@ export function bootstrapTheme({ createAPI, utils }) {
           this.slots = [];
           this.positions = {};
           this.nodes = [];
+          this.nodeGroups = [];
           this.dirty = false;
           this.draggedItem = null;
           this.editingEdgeId = null;
@@ -3720,9 +3995,20 @@ export function bootstrapTheme({ createAPI, utils }) {
           }
         }
 
+        async loadNodeGroups() {
+          try {
+            const payload = await this.api.get('/node-groups');
+            this.nodeGroups = Array.isArray(payload.nodeGroups) ? payload.nodeGroups : [];
+          } catch (err) {
+            console.error('加载节点组失败:', err);
+            this.nodeGroups = [];
+          }
+        }
+
         async loadGraph() {
           try {
             await this.loadNodes();
+            await this.loadNodeGroups();
             const path = this.frouterId
               ? `/frouters/${encodeURIComponent(this.frouterId)}/graph`
               : '/graph';
@@ -3797,6 +4083,13 @@ export function bootstrapTheme({ createAPI, utils }) {
             const slot = this.slots.find(s => s.id === to);
             return slot?.name || to;
           }
+          const group = Array.isArray(this.nodeGroups)
+            ? this.nodeGroups.find(g => g && g.id === to)
+            : null;
+          if (group) {
+            const name = (group && group.name) ? String(group.name) : "";
+            return name ? `${name}（节点组）` : `${to}（节点组）`;
+          }
           const node = this.nodes.find(n => n.id === to);
           return node?.name || to || '未知';
         }
@@ -3819,12 +4112,13 @@ export function bootstrapTheme({ createAPI, utils }) {
 
           const value = (currentValue && String(currentValue)) || 'direct';
           const nodes = Array.isArray(this.nodes) ? [...this.nodes] : [];
+          const nodeGroups = Array.isArray(this.nodeGroups) ? [...this.nodeGroups] : [];
           const slots = Array.isArray(this.slots) ? [...this.slots] : [];
           const seen = new Set();
           const optionHtml = (val, label) => `<option value="${escapeHtml(val)}">${escapeHtml(label)}</option>`;
           const hasValue = (v) => {
             if (v === 'direct' || v === 'block') return true;
-            return nodes.some(n => n?.id === v) || slots.some(s => s?.id === v);
+            return nodes.some(n => n?.id === v) || slots.some(s => s?.id === v) || nodeGroups.some(g => g?.id === v);
           };
 
           let html = '';
@@ -3845,6 +4139,25 @@ export function bootstrapTheme({ createAPI, utils }) {
             if (groupOptions.length > 0) {
               html += `<optgroup label="${escapeHtml(group.label)}">${groupOptions.join('')}</optgroup>`;
             }
+          }
+
+          nodeGroups.sort((a, b) => {
+            const an = String((a && a.name) || (a && a.id) || "").trim();
+            const bn = String((b && b.name) || (b && b.id) || "").trim();
+            return an.localeCompare(bn, "zh-Hans-CN");
+          });
+          const nodeGroupOptions = [];
+          for (const g of nodeGroups) {
+            const id = g && g.id ? String(g.id) : "";
+            if (!id || seen.has(id)) continue;
+            const name = String((g && g.name) || "").trim() || id;
+            const strategy = nodeGroupStrategyLabel(g && g.strategy);
+            const count = Array.isArray(g && g.nodeIds) ? g.nodeIds.length : 0;
+            nodeGroupOptions.push(optionHtml(id, `${name}（${strategy} · ${count}）`));
+            seen.add(id);
+          }
+          if (nodeGroupOptions.length > 0) {
+            html += `<optgroup label="节点组">${nodeGroupOptions.join('')}</optgroup>`;
           }
 
           slots.sort((a, b) => {
@@ -3894,11 +4207,12 @@ export function bootstrapTheme({ createAPI, utils }) {
 
           const value = (currentValue && String(currentValue)) || '';
           const nodes = Array.isArray(this.nodes) ? [...this.nodes] : [];
+          const nodeGroups = Array.isArray(this.nodeGroups) ? [...this.nodeGroups] : [];
           const slots = Array.isArray(this.slots) ? [...this.slots] : [];
           const seen = new Set();
           const optionHtml = (val, label) => `<option value="${escapeHtml(val)}">${escapeHtml(label)}</option>`;
           const hasValue = (v) => {
-            return nodes.some(n => n?.id === v) || slots.some(s => s?.id === v);
+            return nodes.some(n => n?.id === v) || slots.some(s => s?.id === v) || nodeGroups.some(g => g?.id === v);
           };
 
           let html = '';
@@ -3919,6 +4233,25 @@ export function bootstrapTheme({ createAPI, utils }) {
             if (groupOptions.length > 0) {
               html += `<optgroup label="${escapeHtml(group.label)}">${groupOptions.join('')}</optgroup>`;
             }
+          }
+
+          nodeGroups.sort((a, b) => {
+            const an = String((a && a.name) || (a && a.id) || "").trim();
+            const bn = String((b && b.name) || (b && b.id) || "").trim();
+            return an.localeCompare(bn, "zh-Hans-CN");
+          });
+          const nodeGroupOptions = [];
+          for (const g of nodeGroups) {
+            const id = g && g.id ? String(g.id) : "";
+            if (!id || seen.has(id)) continue;
+            const name = String((g && g.name) || "").trim() || id;
+            const strategy = nodeGroupStrategyLabel(g && g.strategy);
+            const count = Array.isArray(g && g.nodeIds) ? g.nodeIds.length : 0;
+            nodeGroupOptions.push(optionHtml(id, `${name}（${strategy} · ${count}）`));
+            seen.add(id);
+          }
+          if (nodeGroupOptions.length > 0) {
+            html += `<optgroup label="节点组">${nodeGroupOptions.join('')}</optgroup>`;
           }
 
           slots.sort((a, b) => {
@@ -4311,12 +4644,13 @@ export function bootstrapTheme({ createAPI, utils }) {
         buildBoundNodeSelectOptions(currentValue) {
           const selected = (currentValue && String(currentValue).trim()) || '';
           const nodes = Array.isArray(this.nodes) ? [...this.nodes] : [];
+          const nodeGroups = Array.isArray(this.nodeGroups) ? [...this.nodeGroups] : [];
           const optionHtml = (val, label, isSelected) =>
             `<option value="${escapeHtml(val)}"${isSelected ? ' selected' : ''}>${escapeHtml(label)}</option>`;
 
           let html = optionHtml('', '未绑定（穿透）', selected === '');
 
-          if (selected && !nodes.some(n => n?.id === selected)) {
+          if (selected && !nodes.some(n => n?.id === selected) && !nodeGroups.some(g => g?.id === selected)) {
             html += optionHtml(selected, `未知: ${selected}`, true);
           }
 
@@ -4331,6 +4665,24 @@ export function bootstrapTheme({ createAPI, utils }) {
             if (groupOptions.length > 0) {
               html += `<optgroup label="${escapeHtml(group.label)}">${groupOptions.join('')}</optgroup>`;
             }
+          }
+
+          nodeGroups.sort((a, b) => {
+            const an = String((a && a.name) || (a && a.id) || "").trim();
+            const bn = String((b && b.name) || (b && b.id) || "").trim();
+            return an.localeCompare(bn, "zh-Hans-CN");
+          });
+          const nodeGroupOptions = [];
+          for (const g of nodeGroups) {
+            const id = g && g.id ? String(g.id) : "";
+            if (!id) continue;
+            const name = String((g && g.name) || "").trim() || id;
+            const strategy = nodeGroupStrategyLabel(g && g.strategy);
+            const count = Array.isArray(g && g.nodeIds) ? g.nodeIds.length : 0;
+            nodeGroupOptions.push(optionHtml(id, `${name}（${strategy} · ${count}）`, id === selected));
+          }
+          if (nodeGroupOptions.length > 0) {
+            html += `<optgroup label="节点组">${nodeGroupOptions.join('')}</optgroup>`;
           }
 
           return html;
@@ -4752,7 +5104,10 @@ export function bootstrapTheme({ createAPI, utils }) {
 		        panel2: loadConfigs,
 			        "panel-nodes": () => {
 			          startNodesPolling();
+			          ensureNodesPanelTabs();
+			          syncNodesPanelTabUI();
 			          loadConfigs();
+			          loadNodeGroups();
 			          return loadNodes();
 			        },
 		        panel3: () => loadComponents(),
@@ -4851,6 +5206,28 @@ export function bootstrapTheme({ createAPI, utils }) {
 
 	          const action = button.dataset.action;
 	          try {
+	            if (action === "edit-node-group") {
+	              const group = Array.isArray(nodeGroupsCache)
+	                ? nodeGroupsCache.find((g) => g && g.id === id)
+	                : null;
+	              if (!group) {
+	                showStatus("节点组未找到", "error", 4000);
+	                return;
+	              }
+	              await openNodeGroupsModal(group);
+	              return;
+	            }
+
+	            if (action === "delete-node-group") {
+	              if (!confirm("确定要删除该节点组吗？")) {
+	                return;
+	              }
+	              await api.delete(`/node-groups/${encodeURIComponent(id)}`);
+	              showStatus("节点组已删除", "success");
+	              await loadNodeGroups();
+	              return;
+	            }
+
             if (action === "ping-node") {
               await api.post(`/nodes/${id}/ping`, {});
               showStatus("节点延迟任务已提交", "info");
@@ -4912,6 +5289,206 @@ export function bootstrapTheme({ createAPI, utils }) {
 	            showStatus(`批量测速失败：${err.message}`, "error", 6000);
 	          }
 	        });
+	      }
+
+	      // ===== Node Groups Modal (节点组) =====
+	      let nodeGroupsModalEl = null;
+	      let nodeGroupsModalTitleEl = null;
+	      let nodeGroupsFormEl = null;
+	      let nodeGroupsNodesListEl = null;
+	      let nodeGroupsSubmitBtn = null;
+	      let editingNodeGroup = null;
+
+	      function closeNodeGroupsModal() {
+	        if (!nodeGroupsModalEl) return;
+	        nodeGroupsModalEl.classList.remove("open");
+	        editingNodeGroup = null;
+	      }
+
+	      function renderNodeGroupNodesChecklist(selectedIDs) {
+	        if (!nodeGroupsNodesListEl) return;
+
+	        const selected = new Set(Array.isArray(selectedIDs) ? selectedIDs : []);
+	        const nodes = Array.isArray(nodesCache) ? nodesCache.slice() : [];
+	        nodes.sort((a, b) => {
+	          const an = String((a && a.name) || (a && a.id) || "").trim();
+	          const bn = String((b && b.name) || (b && b.id) || "").trim();
+	          return an.localeCompare(bn, "zh-Hans-CN");
+	        });
+
+	        if (nodes.length === 0) {
+	          nodeGroupsNodesListEl.innerHTML = `
+	            <div class="muted" style="grid-column:1/-1;">
+	              暂无可选节点，请先在“节点”页创建/拉取节点。
+	            </div>
+	          `;
+	          return;
+	        }
+
+	        nodeGroupsNodesListEl.innerHTML = nodes
+	          .map((n) => {
+	            const id = n && n.id ? String(n.id) : "";
+	            if (!id) return "";
+	            const name = String((n && n.name) || "").trim() || id;
+	            const checked = selected.has(id) ? "checked" : "";
+	            const title = `${name}\n${id}`;
+	            return `
+	              <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-secondary);" title="${escapeHtml(title)}">
+	                <input type="checkbox" value="${escapeHtml(id)}" ${checked}>
+	                <span class="text-truncate" style="max-width:240px; color:var(--text-primary);">${escapeHtml(name)}</span>
+	              </label>
+	            `;
+	          })
+	          .filter(Boolean)
+	          .join("");
+	      }
+
+	      function ensureNodeGroupsModal() {
+	        if (nodeGroupsModalEl) return nodeGroupsModalEl;
+
+	        const modal = document.createElement("div");
+	        modal.id = "node-groups-modal";
+	        modal.className = "modal";
+	        modal.innerHTML = `
+	          <div class="modal-backdrop"></div>
+	          <div class="modal-content" style="max-width: 760px; max-height: 90vh; overflow-y: auto; transform: scale(0.95); transform-origin: center;">
+	            <button id="node-groups-modal-close" class="modal-close"
+	              style="position:absolute; top:24px; right:24px; background:none; border:none; color:var(--text-secondary); font-size:20px; cursor:pointer;">×</button>
+	            <form id="node-groups-form" class="form-grid">
+	              <h3 id="node-groups-modal-title" style="grid-column:1/-1; margin-bottom:16px; font-size:18px; font-weight:600; color:var(--text-primary);">添加节点组</h3>
+
+	              <label style="grid-column:1/-1;"><span>节点组名称 *</span><input name="name" type="text" placeholder="例如: 香港低延迟" required></label>
+	              <label style="grid-column:1/-1;">
+	                <span>策略 *</span>
+	                <select name="strategy">
+	                  <option value="lowest-latency">延迟最低</option>
+	                  <option value="fastest-speed">速度最快</option>
+	                  <option value="round-robin">轮询</option>
+	                  <option value="failover">失败切换</option>
+	                </select>
+	              </label>
+
+	              <div style="grid-column:1/-1; font-weight:600; font-size:14px; color:var(--text-primary); margin-top:8px; padding-bottom:8px; border-bottom:1px solid var(--border-color);">
+	                节点成员（至少 1 个）
+	              </div>
+	              <div id="node-groups-nodes-list"
+	                style="grid-column:1/-1; display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:8px; padding:12px; background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:8px; max-height: 320px; overflow:auto;">
+	              </div>
+
+	              <label style="grid-column:1/-1;"><span>标签</span><input name="tags" type="text" placeholder="逗号分隔（可选）"></label>
+
+	              <div style="grid-column:1/-1; display:flex; gap:12px; justify-content:flex-end; margin-top:8px;">
+	                <button type="button" id="node-groups-modal-cancel">取消</button>
+	                <button type="submit" class="primary" id="node-groups-modal-submit">创建节点组</button>
+	              </div>
+	            </form>
+	          </div>
+	        `;
+	        document.body.appendChild(modal);
+
+	        nodeGroupsModalEl = modal;
+	        nodeGroupsModalTitleEl = modal.querySelector("#node-groups-modal-title");
+	        nodeGroupsFormEl = modal.querySelector("#node-groups-form");
+	        nodeGroupsNodesListEl = modal.querySelector("#node-groups-nodes-list");
+	        nodeGroupsSubmitBtn = modal.querySelector("#node-groups-modal-submit");
+
+	        const backdrop = modal.querySelector(".modal-backdrop");
+	        const closeBtn = modal.querySelector("#node-groups-modal-close");
+	        const cancelBtn = modal.querySelector("#node-groups-modal-cancel");
+
+	        const close = () => closeNodeGroupsModal();
+	        if (backdrop) backdrop.addEventListener("click", close);
+	        if (closeBtn) closeBtn.addEventListener("click", close);
+	        if (cancelBtn) cancelBtn.addEventListener("click", close);
+	        document.addEventListener("keydown", (event) => {
+	          if (event.key === "Escape" && nodeGroupsModalEl?.classList.contains("open")) {
+	            closeNodeGroupsModal();
+	          }
+	        });
+
+	        if (nodeGroupsFormEl) {
+	          nodeGroupsFormEl.addEventListener("submit", async (event) => {
+	            event.preventDefault();
+
+	            const name = String(nodeGroupsFormEl.name.value || "").trim();
+	            const strategy = String(nodeGroupsFormEl.strategy.value || "").trim();
+	            const tags = parseList(nodeGroupsFormEl.tags.value);
+
+	            const checked = nodeGroupsNodesListEl
+	              ? Array.from(nodeGroupsNodesListEl.querySelectorAll('input[type="checkbox"]:checked'))
+	              : [];
+	            const nodeIds = checked
+	              .map((el) => String(el.value || "").trim())
+	              .filter(Boolean);
+
+	            if (!name) {
+	              showStatus("请填写节点组名称", "error");
+	              return;
+	            }
+	            if (!strategy) {
+	              showStatus("请选择节点组策略", "error");
+	              return;
+	            }
+	            if (nodeIds.length === 0) {
+	              showStatus("请至少选择 1 个节点", "error");
+	              return;
+	            }
+
+	            try {
+	              if (editingNodeGroup && editingNodeGroup.id) {
+	                await api.put(`/node-groups/${encodeURIComponent(editingNodeGroup.id)}`, {
+	                  name,
+	                  nodeIds,
+	                  strategy,
+	                  tags,
+	                });
+	                showStatus("节点组已更新", "success");
+	              } else {
+	                await api.post("/node-groups", {
+	                  name,
+	                  nodeIds,
+	                  strategy,
+	                  tags,
+	                });
+	                showStatus("节点组已创建", "success");
+	              }
+
+	              closeNodeGroupsModal();
+	              await loadNodeGroups();
+	            } catch (err) {
+	              showStatus(`保存节点组失败：${err.message}`, "error", 6000);
+	            }
+	          });
+	        }
+
+	        return modal;
+	      }
+
+	      async function openNodeGroupsModal(group = null) {
+	        ensureNodeGroupsModal();
+	        await loadNodes();
+
+	        editingNodeGroup = group;
+	        const isEdit = Boolean(group && group.id);
+
+	        if (nodeGroupsModalTitleEl) {
+	          nodeGroupsModalTitleEl.textContent = isEdit ? "编辑节点组" : "添加节点组";
+	        }
+	        if (nodeGroupsSubmitBtn) {
+	          nodeGroupsSubmitBtn.textContent = isEdit ? "保存修改" : "创建节点组";
+	        }
+
+	        if (nodeGroupsFormEl) {
+	          nodeGroupsFormEl.name.value = isEdit ? (group.name || "") : "";
+	          nodeGroupsFormEl.strategy.value = isEdit ? (group.strategy || "lowest-latency") : "lowest-latency";
+	          nodeGroupsFormEl.tags.value = isEdit && Array.isArray(group.tags) ? group.tags.join(",") : "";
+	        }
+
+	        renderNodeGroupNodesChecklist(isEdit ? group.nodeIds : []);
+
+	        if (nodeGroupsModalEl) {
+	          nodeGroupsModalEl.classList.add("open");
+	        }
 	      }
 
       function buildUniqueFRouterCopyName(baseName) {

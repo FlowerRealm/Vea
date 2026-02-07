@@ -21,6 +21,7 @@ import (
 	configsvc "vea/backend/service/config"
 	"vea/backend/service/frouter"
 	"vea/backend/service/geo"
+	"vea/backend/service/nodegroups"
 	"vea/backend/service/nodes"
 	"vea/backend/service/proxy"
 	"vea/backend/service/shared"
@@ -33,13 +34,14 @@ const defaultProxyPort = 31346
 
 // Facade 服务门面（API 聚合层）
 type Facade struct {
-	nodes     *nodes.Service
-	frouter   *frouter.Service
-	config    *configsvc.Service
-	proxy     *proxy.Service
-	component *component.Service
-	geo       *geo.Service
-	theme     *themesvc.Service
+	nodes      *nodes.Service
+	nodegroups *nodegroups.Service
+	frouter    *frouter.Service
+	config     *configsvc.Service
+	proxy      *proxy.Service
+	component  *component.Service
+	geo        *geo.Service
+	theme      *themesvc.Service
 
 	appLogPath      string
 	appLogStartedAt time.Time
@@ -55,6 +57,7 @@ type Facade struct {
 // NewFacade 创建门面服务
 func NewFacade(
 	nodeSvc *nodes.Service,
+	nodeGroupSvc *nodegroups.Service,
 	frouterSvc *frouter.Service,
 	configSvc *configsvc.Service,
 	proxySvc *proxy.Service,
@@ -64,14 +67,15 @@ func NewFacade(
 	repos repository.Repositories,
 ) *Facade {
 	return &Facade{
-		nodes:     nodeSvc,
-		frouter:   frouterSvc,
-		config:    configSvc,
-		proxy:     proxySvc,
-		component: componentSvc,
-		geo:       geoSvc,
-		theme:     themeSvc,
-		repos:     repos,
+		nodes:      nodeSvc,
+		nodegroups: nodeGroupSvc,
+		frouter:    frouterSvc,
+		config:     configSvc,
+		proxy:      proxySvc,
+		component:  componentSvc,
+		geo:        geoSvc,
+		theme:      themeSvc,
+		repos:      repos,
 	}
 }
 
@@ -81,8 +85,9 @@ func (f *Facade) SetAppLog(path string, startedAt time.Time) {
 }
 
 // Errors 返回所有错误类型（用于 API 层错误处理）
-func (f *Facade) Errors() (nodeNotFound, frouterNotFound, configNotFound, geoNotFound, componentNotFound error) {
+func (f *Facade) Errors() (nodeNotFound, nodeGroupNotFound, frouterNotFound, configNotFound, geoNotFound, componentNotFound error) {
 	return repository.ErrNodeNotFound,
+		repository.ErrNodeGroupNotFound,
 		repository.ErrFRouterNotFound,
 		repository.ErrConfigNotFound,
 		repository.ErrGeoNotFound,
@@ -97,6 +102,15 @@ func (f *Facade) Snapshot() (domain.ServiceState, error) {
 	if err != nil {
 		return domain.ServiceState{}, err
 	}
+
+	nodeGroups := []domain.NodeGroup(nil)
+	if f.nodegroups != nil {
+		nodeGroups, err = f.nodegroups.List(ctx)
+		if err != nil {
+			return domain.ServiceState{}, err
+		}
+	}
+
 	frouters, err := f.frouter.List(ctx)
 	if err != nil {
 		return domain.ServiceState{}, err
@@ -130,6 +144,7 @@ func (f *Facade) Snapshot() (domain.ServiceState, error) {
 	return domain.ServiceState{
 		SchemaVersion:    persist.SchemaVersion,
 		Nodes:            nodes,
+		NodeGroups:       nodeGroups,
 		FRouters:         frouters,
 		Configs:          configs,
 		GeoResources:     geoResources,
@@ -271,6 +286,50 @@ func (f *Facade) MeasureNodeLatencyAsync(id string) {
 
 func (f *Facade) MeasureNodeSpeedAsync(id string) {
 	f.nodes.ProbeSpeedAsync(id)
+}
+
+// ========== NodeGroup 操作 ==========
+
+func (f *Facade) ListNodeGroups() ([]domain.NodeGroup, error) {
+	if f.nodegroups == nil {
+		return []domain.NodeGroup{}, nil
+	}
+	return f.nodegroups.List(context.Background())
+}
+
+func (f *Facade) GetNodeGroup(id string) (domain.NodeGroup, error) {
+	if f.nodegroups == nil {
+		return domain.NodeGroup{}, errors.New("nodegroups service not configured")
+	}
+	return f.nodegroups.Get(context.Background(), id)
+}
+
+func (f *Facade) CreateNodeGroup(group domain.NodeGroup) (domain.NodeGroup, error) {
+	if f.nodegroups == nil {
+		return domain.NodeGroup{}, errors.New("nodegroups service not configured")
+	}
+	return f.nodegroups.Create(context.Background(), group)
+}
+
+func (f *Facade) UpdateNodeGroup(id string, updateFn func(domain.NodeGroup) (domain.NodeGroup, error)) (domain.NodeGroup, error) {
+	if f.nodegroups == nil {
+		return domain.NodeGroup{}, errors.New("nodegroups service not configured")
+	}
+	return f.nodegroups.Update(context.Background(), id, updateFn)
+}
+
+func (f *Facade) UpdateNodeGroupCursor(id string, cursor int) error {
+	if f.nodegroups == nil {
+		return errors.New("nodegroups service not configured")
+	}
+	return f.nodegroups.UpdateCursor(context.Background(), id, cursor)
+}
+
+func (f *Facade) DeleteNodeGroup(id string) error {
+	if f.nodegroups == nil {
+		return errors.New("nodegroups service not configured")
+	}
+	return f.nodegroups.Delete(context.Background(), id)
 }
 
 // ========== Config 操作 ==========

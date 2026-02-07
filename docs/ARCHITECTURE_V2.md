@@ -417,22 +417,24 @@ if state, err := persist.LoadV2(statePath); err == nil {
 
 // 4. 创建仓储层
 nodeRepo := memory.NewNodeRepo(memStore)
+nodeGroupRepo := memory.NewNodeGroupRepo(memStore)
 frouterRepo := memory.NewFRouterRepo(memStore) // FRouter 仓储
 configRepo := memory.NewConfigRepo(memStore)
 // ...
 
-repos := repository.NewRepositories(memStore, nodeRepo, frouterRepo, configRepo, geoRepo, componentRepo, settingsRepo)
+repos := repository.NewRepositories(memStore, nodeRepo, nodeGroupRepo, frouterRepo, configRepo, geoRepo, componentRepo, settingsRepo)
 
 // 5. 创建服务层
 nodeSvc := nodes.NewService(ctx, nodeRepo)
+nodeGroupSvc := nodegroups.NewService(nodeGroupRepo)
 frouterSvc := frouter.NewService(ctx, frouterRepo, nodeRepo)
 configSvc := configsvc.NewService(ctx, configRepo, nodeSvc, frouterRepo)
-proxySvc := proxy.NewService(frouterRepo, nodeRepo, componentRepo, settingsRepo)
+proxySvc := proxy.NewService(frouterRepo, nodeRepo, nodeGroupRepo, componentRepo, settingsRepo)
 // ...
 
 // 6. 创建 Facade
 themeSvc := themesvc.NewService(themesvc.Options{UserDataRoot: shared.UserDataRoot()})
-facade := service.NewFacade(nodeSvc, frouterSvc, configSvc, proxySvc, componentSvc, geoSvc, themeSvc, repos)
+facade := service.NewFacade(nodeSvc, nodeGroupSvc, frouterSvc, configSvc, proxySvc, componentSvc, geoSvc, themeSvc, repos)
 
 // 7. 设置持久化（事件驱动）
 snapshotter := persist.NewSnapshotterV2(statePath, memStore)
@@ -455,16 +457,19 @@ router := api.NewRouter(facade)
 2. router.createFRouter()
        │
        ▼
-3. nodegroup.CompileFRouter(frouter, nodes)  // 校验图语义
+3. nodegroup.ResolveFRouterNodeGroups(frouter, nodes, nodeGroups)  // 将 NodeGroupID 解析为 NodeID（校验用副本；持久化仍保存原始图）
        │
        ▼
-4. facade.CreateFRouter(frouter)
+4. nodegroup.CompileFRouter(resolvedFRouter, nodes)  // 校验图语义
        │
        ▼
-5. frouterSvc.Create()
+5. facade.CreateFRouter(frouter)
        │
        ▼
-6. frouterRepo.Create()
+6. frouterSvc.Create()
+       │
+       ▼
+7. frouterRepo.Create()
        │
        ├──► store.Lock()
        ├──► store.frouters[id] = frouter

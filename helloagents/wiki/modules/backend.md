@@ -2,6 +2,7 @@
 
 ## 职责
 - 生成运行计划：将 `ProxyConfig + FRouter + Nodes + ChainProxySettings` 编译为可执行的 runtime plan
+- 节点组解析：支持全局 `NodeGroup`（节点组）资源；`ChainProxySettings` 可引用 `NodeGroupID`，在编译/启动/测速前通过 resolver 将其解析为具体 `NodeID`（策略：最低延迟/最快速度/轮询/失败切换；执行路径会推进 cursor）
 - 适配多内核：在 `backend/service/adapters/` 生成 sing-box / mihomo 的配置
 - 进程管理：启动/停止内核，收集日志与状态
 - 日志留存：应用日志 `app.log` 与内核日志 `kernel.log` 会轮转并保留最近 7 天，便于上传排障
@@ -17,6 +18,16 @@
 - `backend/service/`：核心业务逻辑
 - `backend/service/adapters/`：内核适配器（本次变更涉及 `clash.go`）
 - `backend/service/theme/`：主题包管理（`/themes`：list/import/export/delete；支持 `manifest.json` 主题包）
+
+## 节点组（NodeGroup）
+- **领域模型**：`backend/domain/entities.go`（`NodeGroupStrategy` / `NodeGroup`；`ServiceState.nodeGroups`）
+- **仓储**：`backend/repository/interfaces.go`（`NodeGroupRepository`）；内存实现 `backend/repository/memory/nodegroup_repo.go`
+- **业务服务**：`backend/service/nodegroups/service.go`（CRUD + `UpdateCursor`）
+- **解析器**：`backend/service/nodegroup/nodegroup_resolver.go`（`ResolveFRouterNodeGroups`）
+  - 规则：同名冲突时 `NodeID` 优先于 `NodeGroupID`
+  - failover 可用性：`lastLatencyError==""` 视为可用（“连不上都算失败”）
+  - cursor：round-robin / failover 在真实执行路径（启动/测速）会推进 cursor
+- **API**：`backend/api/router.go`（`/node-groups` CRUD）；`docs/api/openapi.yaml` 维护接口定义
 
 ## 规范
 

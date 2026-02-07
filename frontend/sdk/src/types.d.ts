@@ -62,6 +62,19 @@ export interface Node {
   updatedAt: string
 }
 
+export type NodeGroupStrategy = 'lowest-latency' | 'fastest-speed' | 'round-robin' | 'failover'
+
+export interface NodeGroup {
+  id: string
+  name: string
+  nodeIds: string[]
+  strategy: NodeGroupStrategy
+  tags?: string[]
+  cursor?: number
+  createdAt: string
+  updatedAt: string
+}
+
 export interface ChainProxySettings {
   edges: any[]
   positions?: Record<string, { x: number; y: number }>
@@ -205,6 +218,7 @@ export interface ProxyConfig {
 export interface ServiceState {
   schemaVersion?: string
   nodes: Node[]
+  nodeGroups?: NodeGroup[]
   frouters: FRouter[]
   configs: Config[]
   geoResources: GeoResource[]
@@ -273,6 +287,13 @@ export interface NodeMetaRequest {
   tags?: string[]
 }
 
+export interface NodeGroupUpsertRequest {
+  name: string
+  nodeIds: string[]
+  strategy: NodeGroupStrategy
+  tags?: string[]
+}
+
 export interface ConfigImportRequest {
   name: string
   format: ConfigFormat
@@ -313,6 +334,10 @@ export interface SystemProxyRequest {
 
 export interface NodesListResponse {
   nodes: Node[]
+}
+
+export interface NodeGroupsListResponse {
+  nodeGroups: NodeGroup[]
 }
 
 export interface FRoutersListResponse {
@@ -382,6 +407,13 @@ export interface NodesAPI {
   speedtest(id: string): Promise<null>
 }
 
+export interface NodeGroupsAPI {
+  list(): Promise<NodeGroupsListResponse>
+  create(data: NodeGroupUpsertRequest): Promise<NodeGroup>
+  update(id: string, data: NodeGroupUpsertRequest): Promise<NodeGroup>
+  delete(id: string): Promise<null>
+}
+
 export interface GeoAPI {
   list(): Promise<GeoResource[]>
   create(data: GeoResourceRequest): Promise<GeoResource>
@@ -442,6 +474,7 @@ export class VeaClient {
   isNode: boolean
 
   nodes: NodesAPI
+  nodeGroups: NodeGroupsAPI
   frouters: FRoutersAPI
   configs: ConfigsAPI
   geo: GeoAPI
@@ -505,6 +538,7 @@ export interface SimpleAPI {
   delete(path: string, options?: any): Promise<any>
 
   nodes: NodesAPI
+  nodeGroups: NodeGroupsAPI
   frouters: FRoutersAPI
   configs: ConfigsAPI
   geo: GeoAPI

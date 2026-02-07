@@ -49,6 +49,7 @@ type SpeedMeasurer struct {
 	components repository.ComponentRepository
 	settings   repository.SettingsRepository
 	geoRepo    repository.GeoRepository
+	nodeGroups repository.NodeGroupRepository
 	adapters   map[domain.CoreEngineKind]adapters.CoreAdapter
 	bgCtx      context.Context
 
@@ -68,6 +69,7 @@ func NewSpeedMeasurer(
 	components repository.ComponentRepository,
 	geoRepo repository.GeoRepository,
 	settings repository.SettingsRepository,
+	nodeGroups repository.NodeGroupRepository,
 ) *SpeedMeasurer {
 	if bgCtx == nil {
 		bgCtx = context.Background()
@@ -76,6 +78,7 @@ func NewSpeedMeasurer(
 		components: components,
 		settings:   settings,
 		geoRepo:    geoRepo,
+		nodeGroups: nodeGroups,
 		bgCtx:      bgCtx,
 		adapters: map[domain.CoreEngineKind]adapters.CoreAdapter{
 			domain.EngineSingBox: &adapters.SingBoxAdapter{},
@@ -87,7 +90,12 @@ func NewSpeedMeasurer(
 
 // MeasureSpeed 测量 FRouter 速度，返回 MB/s。
 func (m *SpeedMeasurer) MeasureSpeed(frouter domain.FRouter, nodes []domain.Node, onProgress func(speedMbps float64)) (float64, error) {
-	compiled, err := nodegroup.CompileFRouter(frouter, nodes)
+	resolved, err := m.resolveNodeGroups(frouter, nodes, true)
+	if err != nil {
+		return 0, err
+	}
+
+	compiled, err := nodegroup.CompileFRouter(resolved, nodes)
 	if err != nil {
 		return 0, err
 	}
@@ -106,7 +114,7 @@ func (m *SpeedMeasurer) MeasureSpeed(frouter domain.FRouter, nodes []domain.Node
 	}
 
 	// 启动测速代理
-	stop, port, err := m.startMeasurement(frouter, nodes)
+	stop, port, err := m.startMeasurement(resolved, nodes)
 	if err != nil {
 		return 0, fmt.Errorf("start measurement: %w", err)
 	}
@@ -130,7 +138,12 @@ func (m *SpeedMeasurer) MeasureSpeed(frouter domain.FRouter, nodes []domain.Node
 // - 延迟 = 本机直连到“默认路径节点”的连接延迟（TCP connect；若启用 TLS 且非 Reality/QUIC，则包含 TLS handshake）。
 // - 不启动代理内核，不走任何链路/分流：这就是“本地到节点”的延迟。
 func (m *SpeedMeasurer) MeasureLatency(frouter domain.FRouter, nodes []domain.Node) (int64, error) {
-	compiled, err := nodegroup.CompileFRouter(frouter, nodes)
+	resolved, err := m.resolveNodeGroups(frouter, nodes, true)
+	if err != nil {
+		return 0, err
+	}
+
+	compiled, err := nodegroup.CompileFRouter(resolved, nodes)
 	if err != nil {
 		return 0, err
 	}
@@ -198,6 +211,45 @@ func (m *SpeedMeasurer) acquireMeasureSlot() func() {
 		<-sem
 		released = true
 	}
+}
+
+func (m *SpeedMeasurer) resolveNodeGroups(frouter domain.FRouter, nodes []domain.Node, advanceCursor bool) (domain.FRouter, error) {
+	if m == nil || m.nodeGroups == nil {
+		return frouter, nil
+	}
+
+	ctx := m.context()
+	groups, err := m.nodeGroups.List(ctx)
+	if err != nil {
+		return domain.FRouter{}, err
+	}
+
+	resolved, err := nodegroup.ResolveFRouterNodeGroups(frouter, nodes, groups, nodegroup.ResolveOptions{
+		AdvanceCursor: advanceCursor,
+		UpdateCursor: func(groupID string, cursor int) error {
+			return m.updateNodeGroupCursor(ctx, groupID, cursor)
+		},
+	})
+	if err != nil {
+		return domain.FRouter{}, err
+	}
+	return resolved, nil
+}
+
+func (m *SpeedMeasurer) updateNodeGroupCursor(ctx context.Context, id string, cursor int) error {
+	if m == nil || m.nodeGroups == nil {
+		return errors.New("nodegroup repository not configured")
+	}
+	group, err := m.nodeGroups.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if group.Cursor == cursor {
+		return nil
+	}
+	group.Cursor = cursor
+	_, err = m.nodeGroups.Update(ctx, id, group)
+	return err
 }
 
 // startMeasurement 启动测速临时代理进程（支持并发：每次测量独立端口 + 独立配置目录）。

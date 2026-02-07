@@ -15,6 +15,7 @@ import (
 	configsvc "vea/backend/service/config"
 	"vea/backend/service/frouter"
 	"vea/backend/service/geo"
+	"vea/backend/service/nodegroups"
 	"vea/backend/service/nodes"
 	"vea/backend/service/proxy"
 )
@@ -26,26 +27,28 @@ func TestFacade_Snapshot_IncludesRuntimeMetrics(t *testing.T) {
 	memStore := memory.NewStore(eventBus)
 
 	nodeRepo := memory.NewNodeRepo(memStore)
+	nodeGroupRepo := memory.NewNodeGroupRepo(memStore)
 	frouterRepo := memory.NewFRouterRepo(memStore)
 	configRepo := memory.NewConfigRepo(memStore)
 	geoRepo := memory.NewGeoRepo(memStore)
 	componentRepo := memory.NewComponentRepo(memStore)
 	settingsRepo := memory.NewSettingsRepo(memStore)
 
-	repos := repository.NewRepositories(memStore, nodeRepo, frouterRepo, configRepo, geoRepo, componentRepo, settingsRepo)
+	repos := repository.NewRepositories(memStore, nodeRepo, nodeGroupRepo, frouterRepo, configRepo, geoRepo, componentRepo, settingsRepo)
 
 	nodeSvc := nodes.NewService(context.Background(), nodeRepo)
+	nodeGroupSvc := nodegroups.NewService(nodeGroupRepo)
 	frouterSvc := frouter.NewService(context.Background(), frouterRepo, nodeRepo)
-	speedMeasurer := proxy.NewSpeedMeasurer(context.Background(), componentRepo, geoRepo, settingsRepo)
+	speedMeasurer := proxy.NewSpeedMeasurer(context.Background(), componentRepo, geoRepo, settingsRepo, nodeGroupRepo)
 	nodeSvc.SetMeasurer(speedMeasurer)
 	frouterSvc.SetMeasurer(speedMeasurer)
 
 	configSvc := configsvc.NewService(context.Background(), configRepo, nodeSvc, frouterRepo)
-	proxySvc := proxy.NewService(frouterRepo, nodeRepo, componentRepo, settingsRepo)
+	proxySvc := proxy.NewService(frouterRepo, nodeRepo, nodeGroupRepo, componentRepo, settingsRepo)
 	componentSvc := component.NewService(context.Background(), componentRepo)
 	geoSvc := geo.NewService(geoRepo)
 
-	facade := NewFacade(nodeSvc, frouterSvc, configSvc, proxySvc, componentSvc, geoSvc, nil, repos)
+	facade := NewFacade(nodeSvc, nodeGroupSvc, frouterSvc, configSvc, proxySvc, componentSvc, geoSvc, nil, repos)
 
 	createdNode, err := nodeRepo.Create(context.Background(), domain.Node{
 		Name:     "node-1",
@@ -105,13 +108,14 @@ func TestFacade_DeleteFRouter_EnsuresProxyConfigFRouterIDValid(t *testing.T) {
 	memStore := memory.NewStore(eventBus)
 
 	nodeRepo := memory.NewNodeRepo(memStore)
+	nodeGroupRepo := memory.NewNodeGroupRepo(memStore)
 	frouterRepo := memory.NewFRouterRepo(memStore)
 	settingsRepo := memory.NewSettingsRepo(memStore)
 
-	repos := repository.NewRepositories(memStore, nodeRepo, frouterRepo, nil, nil, nil, settingsRepo)
+	repos := repository.NewRepositories(memStore, nodeRepo, nodeGroupRepo, frouterRepo, nil, nil, nil, settingsRepo)
 	frouterSvc := frouter.NewService(context.Background(), frouterRepo, nodeRepo)
 
-	facade := NewFacade(nil, frouterSvc, nil, nil, nil, nil, nil, repos)
+	facade := NewFacade(nil, nil, frouterSvc, nil, nil, nil, nil, nil, repos)
 
 	created, err := frouterRepo.Create(ctx, domain.FRouter{Name: "fr-1"})
 	if err != nil {
@@ -176,7 +180,7 @@ func TestFacade_Snapshot_PropagatesListError(t *testing.T) {
 	expected := errors.New("boom")
 	nodeSvc := nodes.NewService(context.Background(), &errorNodeRepo{err: expected})
 
-	facade := NewFacade(nodeSvc, nil, nil, nil, nil, nil, nil, nil)
+	facade := NewFacade(nodeSvc, nil, nil, nil, nil, nil, nil, nil, nil)
 	_, err := facade.Snapshot()
 	if !errors.Is(err, expected) {
 		t.Fatalf("expected %v, got %v", expected, err)
@@ -192,13 +196,14 @@ func TestFacade_UpdateProxyConfig_FRouterSwitch_RestartsProxyAsync(t *testing.T)
 	memStore := memory.NewStore(eventBus)
 
 	nodeRepo := memory.NewNodeRepo(memStore)
+	nodeGroupRepo := memory.NewNodeGroupRepo(memStore)
 	frouterRepo := memory.NewFRouterRepo(memStore)
 	componentRepo := memory.NewComponentRepo(memStore)
 	settingsRepo := memory.NewSettingsRepo(memStore)
 
-	repos := repository.NewRepositories(memStore, nodeRepo, frouterRepo, nil, nil, componentRepo, settingsRepo)
-	proxySvc := proxy.NewService(frouterRepo, nodeRepo, componentRepo, settingsRepo)
-	facade := NewFacade(nil, nil, nil, proxySvc, nil, nil, nil, repos)
+	repos := repository.NewRepositories(memStore, nodeRepo, nodeGroupRepo, frouterRepo, nil, nil, componentRepo, settingsRepo)
+	proxySvc := proxy.NewService(frouterRepo, nodeRepo, nodeGroupRepo, componentRepo, settingsRepo)
+	facade := NewFacade(nil, nil, nil, nil, proxySvc, nil, nil, nil, repos)
 
 	fr1, err := frouterRepo.Create(ctx, domain.FRouter{Name: "fr-1"})
 	if err != nil {
@@ -265,13 +270,14 @@ func TestFacade_UpdateProxyConfig_FRouterSwitch_NoRestartWhenNotRunning(t *testi
 	memStore := memory.NewStore(eventBus)
 
 	nodeRepo := memory.NewNodeRepo(memStore)
+	nodeGroupRepo := memory.NewNodeGroupRepo(memStore)
 	frouterRepo := memory.NewFRouterRepo(memStore)
 	componentRepo := memory.NewComponentRepo(memStore)
 	settingsRepo := memory.NewSettingsRepo(memStore)
 
-	repos := repository.NewRepositories(memStore, nodeRepo, frouterRepo, nil, nil, componentRepo, settingsRepo)
-	proxySvc := proxy.NewService(frouterRepo, nodeRepo, componentRepo, settingsRepo)
-	facade := NewFacade(nil, nil, nil, proxySvc, nil, nil, nil, repos)
+	repos := repository.NewRepositories(memStore, nodeRepo, nodeGroupRepo, frouterRepo, nil, nil, componentRepo, settingsRepo)
+	proxySvc := proxy.NewService(frouterRepo, nodeRepo, nodeGroupRepo, componentRepo, settingsRepo)
+	facade := NewFacade(nil, nil, nil, nil, proxySvc, nil, nil, nil, repos)
 
 	fr, err := frouterRepo.Create(ctx, domain.FRouter{Name: "fr-1"})
 	if err != nil {

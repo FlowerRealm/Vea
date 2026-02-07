@@ -309,6 +309,15 @@
       overflow: hidden;
     }
 
+    #panel-nodes .panel-header {
+      margin-bottom: 24px;
+    }
+
+    #panel-nodes .nodes-panel-tabs {
+      flex: 0 0 auto;
+      margin-bottom: 16px;
+    }
+
     #panel-nodes .nodes-table-card {
       padding: 0;
       flex: 1;

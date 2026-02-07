@@ -16,6 +16,11 @@ const (
 	EventNodeUpdated EventType = "node.updated"
 	EventNodeDeleted EventType = "node.deleted"
 
+	// NodeGroup 事件
+	EventNodeGroupCreated EventType = "nodegroup.created"
+	EventNodeGroupUpdated EventType = "nodegroup.updated"
+	EventNodeGroupDeleted EventType = "nodegroup.deleted"
+
 	// 配置事件
 	EventConfigCreated EventType = "config.created"
 	EventConfigUpdated EventType = "config.updated"
@@ -62,6 +67,15 @@ type NodeEvent struct {
 }
 
 func (e NodeEvent) Type() EventType { return e.EventType }
+
+// NodeGroupEvent NodeGroup 事件
+type NodeGroupEvent struct {
+	EventType   EventType
+	NodeGroupID string
+	NodeGroup   domain.NodeGroup
+}
+
+func (e NodeGroupEvent) Type() EventType { return e.EventType }
 
 // ConfigEvent 配置事件
 type ConfigEvent struct {

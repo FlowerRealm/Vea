@@ -37,6 +37,26 @@ type Node struct {
 	UpdatedAt        time.Time      `json:"updatedAt"`
 }
 
+type NodeGroupStrategy string
+
+const (
+	NodeGroupStrategyLowestLatency NodeGroupStrategy = "lowest-latency"
+	NodeGroupStrategyFastestSpeed  NodeGroupStrategy = "fastest-speed"
+	NodeGroupStrategyRoundRobin    NodeGroupStrategy = "round-robin"
+	NodeGroupStrategyFailover      NodeGroupStrategy = "failover"
+)
+
+type NodeGroup struct {
+	ID        string            `json:"id"`
+	Name      string            `json:"name"`
+	NodeIDs   []string          `json:"nodeIds"`
+	Strategy  NodeGroupStrategy `json:"strategy"`
+	Tags      []string          `json:"tags,omitempty"`
+	Cursor    int               `json:"cursor,omitempty"`
+	CreatedAt time.Time         `json:"createdAt"`
+	UpdatedAt time.Time         `json:"updatedAt"`
+}
+
 // FRouter 转发路由定义（主要对外操作单元）
 // - Node 为独立实体（食材）；FRouter 仅通过 ChainProxy 图引用 NodeID（工具使用食材，但不“包含食材”）。
 type FRouter struct {
@@ -254,6 +274,7 @@ type ServiceState struct {
 	SchemaVersion string `json:"schemaVersion,omitempty"`
 
 	Nodes            []Node                 `json:"nodes"`
+	NodeGroups       []NodeGroup            `json:"nodeGroups,omitempty"`
 	FRouters         []FRouter              `json:"frouters"`
 	Configs          []Config               `json:"configs"`
 	GeoResources     []GeoResource          `json:"geoResources"`

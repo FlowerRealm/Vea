@@ -32,6 +32,7 @@ class VeaClient {
     this.headers = options.headers || {};
 
     this.nodes = new NodesAPI(this);
+    this.nodeGroups = new NodeGroupsAPI(this);
     this.frouters = new FRoutersAPI(this);
     this.configs = new ConfigsAPI(this);
     this.geo = new GeoAPI(this);
@@ -245,6 +246,28 @@ class NodesAPI {
   }
 }
 
+class NodeGroupsAPI {
+  constructor(client) {
+    this.client = client;
+  }
+
+  async list() {
+    return this.client.get('/node-groups')
+  }
+
+  async create(data) {
+    return this.client.post('/node-groups', data)
+  }
+
+  async update(id, data) {
+    return this.client.put(`/node-groups/${id}`, data)
+  }
+
+  async delete(id) {
+    return this.client.delete(`/node-groups/${id}`)
+  }
+}
+
 class ConfigsAPI {
   constructor(client) {
     this.client = client;
@@ -397,6 +420,7 @@ function createAPI(baseURL = '') {
 
     // Expose all client APIs
     nodes: client.nodes,
+    nodeGroups: client.nodeGroups,
     frouters: client.frouters,
     configs: client.configs,
     geo: client.geo,
