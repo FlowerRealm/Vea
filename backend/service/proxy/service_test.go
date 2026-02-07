@@ -104,6 +104,7 @@ func TestService_Start_WritesConfigAndSavesProxyConfig(t *testing.T) {
 
 	store := memory.NewStore(nil)
 	frouterRepo := memory.NewFRouterRepo(store)
+	nodeGroupRepo := memory.NewNodeGroupRepo(store)
 	componentRepo := memory.NewComponentRepo(store)
 	settingsRepo := memory.NewSettingsRepo(store)
 
@@ -139,7 +140,7 @@ func TestService_Start_WritesConfigAndSavesProxyConfig(t *testing.T) {
 		kind:        domain.EngineSingBox,
 		binaryNames: []string{"sing-box"},
 	}
-	svc := NewService(frouterRepo, nil, componentRepo, settingsRepo)
+	svc := NewService(frouterRepo, nil, nodeGroupRepo, componentRepo, settingsRepo)
 	svc.adapters = map[domain.CoreEngineKind]coreadapters.CoreAdapter{
 		domain.EngineSingBox: adapter,
 	}
@@ -202,9 +203,10 @@ func TestService_Start_MissingFRouterIDIsInvalidData(t *testing.T) {
 	store := memory.NewStore(nil)
 
 	frouterRepo := memory.NewFRouterRepo(store)
+	nodeGroupRepo := memory.NewNodeGroupRepo(store)
 	componentRepo := memory.NewComponentRepo(store)
 	settingsRepo := memory.NewSettingsRepo(store)
-	svc := NewService(frouterRepo, nil, componentRepo, settingsRepo)
+	svc := NewService(frouterRepo, nil, nodeGroupRepo, componentRepo, settingsRepo)
 
 	err := svc.Start(ctx, domain.ProxyConfig{})
 	if err == nil {
@@ -234,6 +236,7 @@ func TestService_Start_InboundPortInUseReturnsInvalidData(t *testing.T) {
 
 	store := memory.NewStore(nil)
 	frouterRepo := memory.NewFRouterRepo(store)
+	nodeGroupRepo := memory.NewNodeGroupRepo(store)
 	componentRepo := memory.NewComponentRepo(store)
 	settingsRepo := memory.NewSettingsRepo(store)
 
@@ -269,7 +272,7 @@ func TestService_Start_InboundPortInUseReturnsInvalidData(t *testing.T) {
 		kind:        domain.EngineSingBox,
 		binaryNames: []string{"sing-box"},
 	}
-	svc := NewService(frouterRepo, nil, componentRepo, settingsRepo)
+	svc := NewService(frouterRepo, nil, nodeGroupRepo, componentRepo, settingsRepo)
 	svc.adapters = map[domain.CoreEngineKind]coreadapters.CoreAdapter{
 		domain.EngineSingBox: adapter,
 	}
@@ -434,6 +437,7 @@ func TestService_Start_DoesNotStopPreviousProxyOnCompileError(t *testing.T) {
 
 	store := memory.NewStore(nil)
 	frouterRepo := memory.NewFRouterRepo(store)
+	nodeGroupRepo := memory.NewNodeGroupRepo(store)
 	componentRepo := memory.NewComponentRepo(store)
 	settingsRepo := memory.NewSettingsRepo(store)
 
@@ -469,7 +473,7 @@ func TestService_Start_DoesNotStopPreviousProxyOnCompileError(t *testing.T) {
 		kind:        domain.EngineSingBox,
 		binaryNames: []string{"sing-box"},
 	}
-	svc := NewService(frouterRepo, nil, componentRepo, settingsRepo)
+	svc := NewService(frouterRepo, nil, nodeGroupRepo, componentRepo, settingsRepo)
 	svc.adapters = map[domain.CoreEngineKind]coreadapters.CoreAdapter{
 		domain.EngineSingBox: adapter,
 	}
@@ -524,6 +528,7 @@ func TestService_Start_InvalidFRouterIsCompileErrorAndInvalidData(t *testing.T) 
 	store := memory.NewStore(nil)
 
 	frouterRepo := memory.NewFRouterRepo(store)
+	nodeGroupRepo := memory.NewNodeGroupRepo(store)
 	frouter, err := frouterRepo.Create(ctx, domain.FRouter{
 		Name:       "fr-invalid",
 		ChainProxy: domain.ChainProxySettings{Edges: []domain.ProxyEdge{}},
@@ -534,7 +539,7 @@ func TestService_Start_InvalidFRouterIsCompileErrorAndInvalidData(t *testing.T) 
 
 	componentRepo := memory.NewComponentRepo(store)
 	settingsRepo := memory.NewSettingsRepo(store)
-	svc := NewService(frouterRepo, nil, componentRepo, settingsRepo)
+	svc := NewService(frouterRepo, nil, nodeGroupRepo, componentRepo, settingsRepo)
 
 	err = svc.Start(ctx, domain.ProxyConfig{
 		FRouterID:       frouter.ID,
@@ -565,6 +570,7 @@ func TestService_Start_RollbackToPreviousProxyOnStartFailure(t *testing.T) {
 
 	store := memory.NewStore(nil)
 	frouterRepo := memory.NewFRouterRepo(store)
+	nodeGroupRepo := memory.NewNodeGroupRepo(store)
 	componentRepo := memory.NewComponentRepo(store)
 	settingsRepo := memory.NewSettingsRepo(store)
 
@@ -601,7 +607,7 @@ func TestService_Start_RollbackToPreviousProxyOnStartFailure(t *testing.T) {
 		binaryNames: []string{"sing-box"},
 		startErrs:   []error{nil, errors.New("boom"), nil},
 	}
-	svc := NewService(frouterRepo, nil, componentRepo, settingsRepo)
+	svc := NewService(frouterRepo, nil, nodeGroupRepo, componentRepo, settingsRepo)
 	svc.adapters = map[domain.CoreEngineKind]coreadapters.CoreAdapter{
 		domain.EngineSingBox: adapter,
 	}
@@ -636,11 +642,112 @@ func TestService_Start_RollbackToPreviousProxyOnStartFailure(t *testing.T) {
 	}
 }
 
+func TestService_Start_FailedBeforeStartupDoesNotPersistNodeGroupCursor(t *testing.T) {
+	ctx := context.Background()
+
+	oldRoot := shared.ArtifactsRoot
+	shared.ArtifactsRoot = t.TempDir()
+	t.Cleanup(func() { shared.ArtifactsRoot = oldRoot })
+	seedSingBoxRuleSets(t)
+
+	store := memory.NewStore(nil)
+	nodeRepo := memory.NewNodeRepo(store)
+	frouterRepo := memory.NewFRouterRepo(store)
+	nodeGroupRepo := memory.NewNodeGroupRepo(store)
+	componentRepo := memory.NewComponentRepo(store)
+	settingsRepo := memory.NewSettingsRepo(store)
+
+	node1, err := nodeRepo.Create(ctx, domain.Node{
+		Name:     "n1",
+		Address:  "1.1.1.1",
+		Port:     443,
+		Protocol: domain.ProtocolVLESS,
+	})
+	if err != nil {
+		t.Fatalf("create node1: %v", err)
+	}
+	node2, err := nodeRepo.Create(ctx, domain.Node{
+		Name:     "n2",
+		Address:  "2.2.2.2",
+		Port:     443,
+		Protocol: domain.ProtocolVLESS,
+	})
+	if err != nil {
+		t.Fatalf("create node2: %v", err)
+	}
+
+	group, err := nodeGroupRepo.Create(ctx, domain.NodeGroup{
+		Name:     "g1",
+		Strategy: domain.NodeGroupStrategyRoundRobin,
+		NodeIDs:  []string{node1.ID, node2.ID},
+		Cursor:   0,
+	})
+	if err != nil {
+		t.Fatalf("create nodegroup: %v", err)
+	}
+
+	frouter, err := frouterRepo.Create(ctx, domain.FRouter{
+		Name: "fr-1",
+		ChainProxy: domain.ChainProxySettings{
+			Edges: []domain.ProxyEdge{
+				{ID: "e-default", From: domain.EdgeNodeLocal, To: group.ID, Enabled: true},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create frouter: %v", err)
+	}
+
+	comp, err := componentRepo.Create(ctx, domain.CoreComponent{Kind: domain.ComponentSingBox, Name: "sing-box"})
+	if err != nil {
+		t.Fatalf("create component: %v", err)
+	}
+	installDir := filepath.Join(t.TempDir(), "sing-box")
+	if err := os.MkdirAll(installDir, 0o755); err != nil {
+		t.Fatalf("mkdir install dir: %v", err)
+	}
+	// intentionally do not create real binary file to trigger ErrEngineNotInstalled.
+	if err := componentRepo.SetInstalled(ctx, comp.ID, installDir, "test", ""); err != nil {
+		t.Fatalf("set installed: %v", err)
+	}
+
+	adapter := &fakeCoreAdapter{
+		kind:        domain.EngineSingBox,
+		binaryNames: []string{"sing-box"},
+	}
+	svc := NewService(frouterRepo, nodeRepo, nodeGroupRepo, componentRepo, settingsRepo)
+	svc.adapters = map[domain.CoreEngineKind]coreadapters.CoreAdapter{
+		domain.EngineSingBox: adapter,
+	}
+
+	err = svc.Start(ctx, domain.ProxyConfig{
+		FRouterID:       frouter.ID,
+		InboundMode:     domain.InboundSOCKS,
+		InboundPort:     1080,
+		PreferredEngine: domain.EngineSingBox,
+	})
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !errors.Is(err, ErrEngineNotInstalled) {
+		t.Fatalf("expected errors.Is(..., ErrEngineNotInstalled)=true, got err=%v", err)
+	}
+
+	after, err := nodeGroupRepo.Get(ctx, group.ID)
+	if err != nil {
+		t.Fatalf("get nodegroup: %v", err)
+	}
+	if after.Cursor != 0 {
+		t.Fatalf("expected cursor to remain 0 on failed start, got %d", after.Cursor)
+	}
+}
+
 func TestService_Start_BinaryMissingReturnsErrEngineNotInstalled(t *testing.T) {
 	ctx := context.Background()
 	store := memory.NewStore(nil)
 
 	frouterRepo := memory.NewFRouterRepo(store)
+	nodeGroupRepo := memory.NewNodeGroupRepo(store)
 	frouter, err := frouterRepo.Create(ctx, domain.FRouter{
 		Name: "fr-1",
 		ChainProxy: domain.ChainProxySettings{
@@ -677,7 +784,7 @@ func TestService_Start_BinaryMissingReturnsErrEngineNotInstalled(t *testing.T) {
 		kind:        domain.EngineSingBox,
 		binaryNames: []string{"sing-box"},
 	}
-	svc := NewService(frouterRepo, nil, componentRepo, settingsRepo)
+	svc := NewService(frouterRepo, nil, nodeGroupRepo, componentRepo, settingsRepo)
 	svc.adapters = map[domain.CoreEngineKind]coreadapters.CoreAdapter{
 		domain.EngineSingBox: adapter,
 	}

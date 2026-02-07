@@ -64,6 +64,7 @@ func (e *EngineNotInstalledError) Unwrap() error { return ErrEngineNotInstalled 
 type Service struct {
 	frouters   repository.FRouterRepository
 	nodes      repository.NodeRepository
+	nodeGroups repository.NodeGroupRepository
 	components repository.ComponentRepository
 	settings   repository.SettingsRepository
 
@@ -90,12 +91,14 @@ type Service struct {
 func NewService(
 	frouters repository.FRouterRepository,
 	nodes repository.NodeRepository,
+	nodeGroups repository.NodeGroupRepository,
 	components repository.ComponentRepository,
 	settings repository.SettingsRepository,
 ) *Service {
 	return &Service{
 		frouters:   frouters,
 		nodes:      nodes,
+		nodeGroups: nodeGroups,
 		components: components,
 		settings:   settings,
 		adapters: map[domain.CoreEngineKind]adapters.CoreAdapter{
@@ -194,8 +197,25 @@ func (s *Service) Start(ctx context.Context, cfg domain.ProxyConfig) error {
 		nodes, _ = s.nodes.List(ctx)
 	}
 
+	nodeGroups := []domain.NodeGroup(nil)
+	if s.nodeGroups != nil {
+		nodeGroups, _ = s.nodeGroups.List(ctx)
+	}
+
+	pendingCursorUpdates := make(map[string]int)
+	resolvedFRouter, err := nodegroup.ResolveFRouterNodeGroups(frouter, nodes, nodeGroups, nodegroup.ResolveOptions{
+		AdvanceCursor: true,
+		UpdateCursor: func(groupID string, cursor int) error {
+			pendingCursorUpdates[groupID] = cursor
+			return nil
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("resolve node groups: %w", err)
+	}
+
 	// 选择引擎
-	engine, err := s.selectEngine(ctx, cfg, frouter, nodes)
+	engine, err := s.selectEngine(ctx, cfg, resolvedFRouter, nodes)
 	if err != nil {
 		return err
 	}
@@ -220,7 +240,7 @@ func (s *Service) Start(ctx context.Context, cfg domain.ProxyConfig) error {
 	// 构建配置
 	geo := s.prepareGeoFiles(engine)
 
-	plan, err := nodegroup.CompileProxyPlan(engine, cfg, frouter, nodes)
+	plan, err := nodegroup.CompileProxyPlan(engine, cfg, resolvedFRouter, nodes)
 	if err != nil {
 		return fmt.Errorf("compile frouter: %w", err)
 	}
@@ -309,6 +329,9 @@ func (s *Service) Start(ctx context.Context, cfg domain.ProxyConfig) error {
 	}
 
 	s.activeCfg = cfg
+	if err := s.persistNodeGroupCursors(ctx, pendingCursorUpdates); err != nil {
+		log.Printf("[Proxy] persist node group cursor failed: %v", err)
+	}
 	s.lastRestartError = ""
 	return nil
 }
@@ -461,6 +484,34 @@ func (s *Service) resolveFRouter(ctx context.Context, cfg domain.ProxyConfig) (d
 		return domain.FRouter{}, fmt.Errorf("%w: proxyConfig.frouterId is required", repository.ErrInvalidData)
 	}
 	return s.frouters.Get(ctx, cfg.FRouterID)
+}
+
+func (s *Service) updateNodeGroupCursor(ctx context.Context, id string, cursor int) error {
+	if s.nodeGroups == nil {
+		return errors.New("nodegroup repository not configured")
+	}
+	group, err := s.nodeGroups.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if group.Cursor == cursor {
+		return nil
+	}
+	group.Cursor = cursor
+	_, err = s.nodeGroups.Update(ctx, id, group)
+	return err
+}
+
+func (s *Service) persistNodeGroupCursors(ctx context.Context, cursors map[string]int) error {
+	if len(cursors) == 0 {
+		return nil
+	}
+	for id, cursor := range cursors {
+		if err := s.updateNodeGroupCursor(ctx, id, cursor); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Service) applyConfigDefaults(ctx context.Context, cfg domain.ProxyConfig) domain.ProxyConfig {

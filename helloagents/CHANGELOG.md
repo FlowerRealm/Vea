@@ -11,6 +11,7 @@
 
 ### 新增
 - 增加核心组件卸载能力：新增 `POST /components/:id/uninstall`，并在前端组件面板提供“卸载”按钮（代理运行中会拒绝卸载正在使用的引擎）。
+- 增加节点组（NodeGroup）：作为全局资源提供 `/node-groups` CRUD；FRouter 的 `ChainProxySettings` 与 slot 支持引用节点组；节点组内置策略（延迟最低/速度最快/轮询/失败切换），连通失败按失败处理并触发策略择优/切换。
 - 支持 Clash YAML 订阅解析：解析 `proxies` 并结合 `proxy-groups`/`rules` 自动生成订阅 FRouter（用于将订阅路由语义落到 Vea 的 `ChainProxySettings`）。
 - 订阅面板展示订阅用量（已用/总量）：订阅同步时解析响应头 `subscription-userinfo`（`upload/download/total`），并在订阅列表展示“已用/总量”。
 - 主题包（目录化 + ZIP 导入/导出）：主题以 `index.html` 为入口的目录形式存在；后端新增 `/themes`（list/import/export/delete）；Electron 启动从 userData/themes 加载并在缺失时复制内置主题；主题内提供“导入主题(.zip)”与“导出当前主题(.zip)”。
@@ -28,6 +29,8 @@
 - 默认 TUN 网卡名从 `tun0` 调整为 `vea`：Linux 默认显式使用 `vea`；Windows/macOS 默认不强制写死设备名并兼容 legacy `tun0`（仍按地址判定就绪）。
 
 ### 修复
+- 修复 failover 节点组在成员节点全部带 `lastLatencyError` 时导致图配置校验失败的问题：配置校验路径会在无健康节点时回退到游标目标，不再把临时运行时健康状态当作“配置写入门槛”。
+- 修复代理启动失败时节点组游标提前持久化的问题：`Start()` 先缓存游标推进，只有启动成功后才落库，避免“启动失败但 cursor 已前进”的状态漂移。
 - 修复走向图全屏窗口仍不够大的问题：全屏 Modal 改为占满应用视口（接近 100% 宽高），更适合复杂规则排障（Issue #57）。
 - 修复“允许局域网连接”开关未完整生效的问题：前端 `inbound.allowLan` 现在会联动后端 `ProxyConfig.inboundConfig.allowLan` 并在内核运行时自动重启；sing-box 入站在 allowLan 开启时会监听 `0.0.0.0`（默认 loopback 会被覆盖）。
 - 修复下拉切换 FRouter 未自动重启内核的问题：现在会触发与列表点击一致的切换流程；当通过 `PUT /proxy/config` 修改 `frouterId` 且内核运行中时，后端会自动调度异步重启以应用新 FRouter。
@@ -79,6 +82,7 @@
 - 修复首页“当前 IP”在代理运行时仍显示真实出口 IP（Issue #26）：`GET /ip/geo` 在代理运行且非 TUN 时通过本地入站代理探测出口 IP。
 - 修复 IP Geo 探测未贯穿请求 context 的问题：API 请求取消/超时后可及时中断外部探测请求，避免无意义等待。
 - 修复浅色主题日志面板“自动滚动”开关关闭态几乎不可见的问题：补齐 `--border-color` 变量（Issue #28）。
+- 修复节点面板新增“节点组”标签后布局异常的问题：避免 tabs 在纵向 flex 容器中被 `flex: 1` 撑高导致内容区被挤压。
 - 修复 Windows 下主题下拉/列表控件对比度异常（Issue #39）：为内置主题声明 `color-scheme`（dark/light），并补齐浅色主题缺失的 CSS 变量，避免原生控件弹出层使用系统浅色样式导致文字不可读。
 - 修复槽位功能不可用（Issue #29 / #40）：主题页在 FRouter 路由规则面板新增“槽位管理”，支持新增/重命名/绑定节点；保存图配置时保留 `positions`，避免意外清空布局数据。
 - 修复 Windows 下主题切换失败（Issue #36）：主题页入口解析兼容 Windows `file://` URL 的路径编码/分隔符差异，确保默认主题可正常切换。

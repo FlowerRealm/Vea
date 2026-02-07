@@ -27,6 +27,7 @@ const maxThemeZipBytes int64 = themesvc.DefaultMaxZipBytes
 type Router struct {
 	service              *service.Facade
 	nodeNotFoundErr      error
+	nodeGroupNotFoundErr error
 	frouterNotFoundErr   error
 	configNotFoundErr    error
 	geoNotFoundErr       error
@@ -35,7 +36,7 @@ type Router struct {
 
 func NewRouter(svc *service.Facade) *gin.Engine {
 	r := &Router{service: svc}
-	r.nodeNotFoundErr, r.frouterNotFoundErr, r.configNotFoundErr, r.geoNotFoundErr, r.componentNotFoundErr = svc.Errors()
+	r.nodeNotFoundErr, r.nodeGroupNotFoundErr, r.frouterNotFoundErr, r.configNotFoundErr, r.geoNotFoundErr, r.componentNotFoundErr = svc.Errors()
 	engine := gin.New()
 	engine.Use(gin.Recovery())
 	engine.MaxMultipartMemory = 64 << 20
@@ -92,6 +93,14 @@ func (r *Router) register(engine *gin.Engine) {
 		nodes.POST(":id/speedtest", r.speedtestNode)
 		nodes.POST("/bulk/ping", r.bulkPingNodes)
 		nodes.POST("/bulk/speedtest", r.bulkSpeedtestNodes)
+	}
+
+	nodeGroups := engine.Group("/node-groups")
+	{
+		nodeGroups.GET("", r.listNodeGroups)
+		nodeGroups.POST("", r.createNodeGroup)
+		nodeGroups.PUT(":id", r.updateNodeGroup)
+		nodeGroups.DELETE(":id", r.deleteNodeGroup)
 	}
 
 	frouters := engine.Group("/frouters")
@@ -218,6 +227,13 @@ type nodeRequest struct {
 	TLS       *domain.NodeTLS       `json:"tls,omitempty"`
 }
 
+type nodeGroupRequest struct {
+	Name     string                   `json:"name" binding:"required"`
+	NodeIDs  []string                 `json:"nodeIds" binding:"required"`
+	Strategy domain.NodeGroupStrategy `json:"strategy" binding:"required"`
+	Tags     []string                 `json:"tags,omitempty"`
+}
+
 func (r *Router) listFRouters(c *gin.Context) {
 	frouters, err := r.service.ListFRouters()
 	if err != nil {
@@ -238,6 +254,69 @@ func (r *Router) listNodes(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"nodes": nodes,
 	})
+}
+
+func (r *Router) listNodeGroups(c *gin.Context) {
+	groups, err := r.service.ListNodeGroups()
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"nodeGroups": groups,
+	})
+}
+
+func (r *Router) createNodeGroup(c *gin.Context) {
+	var req nodeGroupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	group := domain.NodeGroup{
+		Name:     req.Name,
+		NodeIDs:  req.NodeIDs,
+		Strategy: req.Strategy,
+		Tags:     req.Tags,
+	}
+	created, err := r.service.CreateNodeGroup(group)
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, created)
+}
+
+func (r *Router) updateNodeGroup(c *gin.Context) {
+	var req nodeGroupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	id := c.Param("id")
+	updated, err := r.service.UpdateNodeGroup(id, func(group domain.NodeGroup) (domain.NodeGroup, error) {
+		group.Name = req.Name
+		group.NodeIDs = req.NodeIDs
+		group.Strategy = req.Strategy
+		if req.Tags != nil {
+			group.Tags = req.Tags
+		}
+		return group, nil
+	})
+	if err != nil {
+		r.handleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, updated)
+}
+
+func (r *Router) deleteNodeGroup(c *gin.Context) {
+	id := c.Param("id")
+	if err := r.service.DeleteNodeGroup(id); err != nil {
+		r.handleError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 func (r *Router) createNode(c *gin.Context) {
@@ -504,6 +583,20 @@ func (r *Router) bulkSpeedtestNodes(c *gin.Context) {
 	c.Status(http.StatusAccepted)
 }
 
+func (r *Router) compileFRouterWithNodeGroups(frouter domain.FRouter, nodes []domain.Node) (nodegroup.CompiledFRouter, error) {
+	nodeGroups, err := r.service.ListNodeGroups()
+	if err != nil {
+		return nodegroup.CompiledFRouter{}, err
+	}
+	resolved, err := nodegroup.ResolveFRouterNodeGroups(frouter, nodes, nodeGroups, nodegroup.ResolveOptions{
+		AllowFailoverFallback: true,
+	})
+	if err != nil {
+		return nodegroup.CompiledFRouter{}, err
+	}
+	return nodegroup.CompileFRouter(resolved, nodes)
+}
+
 func (r *Router) createFRouter(c *gin.Context) {
 	var req frouterCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -539,16 +632,8 @@ func (r *Router) createFRouter(c *gin.Context) {
 		r.handleError(c, err)
 		return
 	}
-	if _, err := nodegroup.CompileFRouter(frouter, nodes); err != nil {
-		var ce *nodegroup.CompileError
-		if errors.As(err, &ce) {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error":    "invalid frouter",
-				"problems": ce.Problems,
-			})
-			return
-		}
-		badRequest(c, err)
+	if _, err := r.compileFRouterWithNodeGroups(frouter, nodes); err != nil {
+		r.handleError(c, err)
 		return
 	}
 	created, err := r.service.CreateFRouter(frouter)
@@ -576,7 +661,7 @@ func (r *Router) updateFRouter(c *gin.Context) {
 		if err != nil {
 			return domain.FRouter{}, err
 		}
-		if _, err := nodegroup.CompileFRouter(frouter, nodes); err != nil {
+		if _, err := r.compileFRouterWithNodeGroups(frouter, nodes); err != nil {
 			return domain.FRouter{}, err
 		}
 		if req.Tags != nil {
@@ -680,16 +765,8 @@ func (r *Router) copyFRouter(c *gin.Context) {
 		r.handleError(c, err)
 		return
 	}
-	if _, err := nodegroup.CompileFRouter(next, nodes); err != nil {
-		var ce *nodegroup.CompileError
-		if errors.As(err, &ce) {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error":    "invalid frouter",
-				"problems": ce.Problems,
-			})
-			return
-		}
-		badRequest(c, err)
+	if _, err := r.compileFRouterWithNodeGroups(next, nodes); err != nil {
+		r.handleError(c, err)
 		return
 	}
 
@@ -1134,6 +1211,14 @@ func (r *Router) handleError(c *gin.Context, err error) {
 		})
 		return
 	}
+	var re *nodegroup.ResolveError
+	if errors.As(err, &re) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":    "invalid frouter",
+			"problems": re.Problems,
+		})
+		return
+	}
 
 	if errors.Is(err, repository.ErrInvalidID) || errors.Is(err, repository.ErrInvalidData) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -1155,6 +1240,7 @@ func (r *Router) handleError(c *gin.Context, err error) {
 
 	if errors.Is(err, r.frouterNotFoundErr) ||
 		errors.Is(err, r.nodeNotFoundErr) ||
+		errors.Is(err, r.nodeGroupNotFoundErr) ||
 		errors.Is(err, r.configNotFoundErr) ||
 		errors.Is(err, r.geoNotFoundErr) ||
 		errors.Is(err, r.componentNotFoundErr) {
@@ -1360,16 +1446,23 @@ func (r *Router) saveFRouterGraph(c *gin.Context) {
 		r.handleError(c, err)
 		return
 	}
-	if _, err := nodegroup.CompileFRouter(draft, nodes); err != nil {
+	if _, err := r.compileFRouterWithNodeGroups(draft, nodes); err != nil {
 		var ce *nodegroup.CompileError
-		if errors.As(err, &ce) {
+		var re *nodegroup.ResolveError
+		if errors.As(err, &ce) || errors.As(err, &re) {
+			problems := []string{}
+			if ce != nil {
+				problems = ce.Problems
+			} else if re != nil {
+				problems = re.Problems
+			}
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error":    "invalid frouter graph",
-				"problems": ce.Problems,
+				"problems": problems,
 			})
 			return
 		}
-		badRequest(c, err)
+		r.handleError(c, err)
 		return
 	}
 
@@ -1529,13 +1622,22 @@ func (r *Router) validateFRouterGraph(c *gin.Context) {
 		r.handleError(c, err)
 		return
 	}
-	compiled, err := nodegroup.CompileFRouter(draft, nodes)
+	compiled, err := r.compileFRouterWithNodeGroups(draft, nodes)
 	if err != nil {
 		var ce *nodegroup.CompileError
+		var re *nodegroup.ResolveError
 		if errors.As(err, &ce) {
 			c.JSON(http.StatusOK, validateGraphResponse{
 				Valid:    false,
 				Errors:   ce.Problems,
+				Warnings: []string{},
+			})
+			return
+		}
+		if errors.As(err, &re) {
+			c.JSON(http.StatusOK, validateGraphResponse{
+				Valid:    false,
+				Errors:   re.Problems,
 				Warnings: []string{},
 			})
 			return

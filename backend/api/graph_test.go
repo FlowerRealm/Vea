@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	configsvc "vea/backend/service/config"
 	"vea/backend/service/frouter"
 	"vea/backend/service/geo"
+	"vea/backend/service/nodegroups"
 	"vea/backend/service/nodes"
 	"vea/backend/service/proxy"
 )
@@ -30,26 +32,28 @@ func newTestRouterWithRepos(t *testing.T) (*memory.NodeRepo, *memory.FRouterRepo
 	memStore := memory.NewStore(eventBus)
 
 	nodeRepo := memory.NewNodeRepo(memStore)
+	nodeGroupRepo := memory.NewNodeGroupRepo(memStore)
 	frouterRepo := memory.NewFRouterRepo(memStore)
 	configRepo := memory.NewConfigRepo(memStore)
 	geoRepo := memory.NewGeoRepo(memStore)
 	componentRepo := memory.NewComponentRepo(memStore)
 	settingsRepo := memory.NewSettingsRepo(memStore)
 
-	repos := repository.NewRepositories(memStore, nodeRepo, frouterRepo, configRepo, geoRepo, componentRepo, settingsRepo)
+	repos := repository.NewRepositories(memStore, nodeRepo, nodeGroupRepo, frouterRepo, configRepo, geoRepo, componentRepo, settingsRepo)
 
 	nodeSvc := nodes.NewService(context.Background(), nodeRepo)
+	nodeGroupSvc := nodegroups.NewService(nodeGroupRepo)
 	frouterSvc := frouter.NewService(context.Background(), frouterRepo, nodeRepo)
-	speedMeasurer := proxy.NewSpeedMeasurer(context.Background(), componentRepo, geoRepo, settingsRepo)
+	speedMeasurer := proxy.NewSpeedMeasurer(context.Background(), componentRepo, geoRepo, settingsRepo, nodeGroupRepo)
 	nodeSvc.SetMeasurer(speedMeasurer)
 	frouterSvc.SetMeasurer(speedMeasurer)
 
 	configSvc := configsvc.NewService(context.Background(), configRepo, nodeSvc, frouterRepo)
-	proxySvc := proxy.NewService(frouterRepo, nodeRepo, componentRepo, settingsRepo)
+	proxySvc := proxy.NewService(frouterRepo, nodeRepo, nodeGroupRepo, componentRepo, settingsRepo)
 	componentSvc := component.NewService(context.Background(), componentRepo)
 	geoSvc := geo.NewService(geoRepo)
 
-	facade := service.NewFacade(nodeSvc, frouterSvc, configSvc, proxySvc, componentSvc, geoSvc, nil, repos)
+	facade := service.NewFacade(nodeSvc, nodeGroupSvc, frouterSvc, configSvc, proxySvc, componentSvc, geoSvc, nil, repos)
 	router := NewRouter(facade)
 
 	// NOTE: gin.Engine already implements http.Handler; we keep the signature compatible with existing tests.
@@ -275,5 +279,81 @@ func TestPOSTFRouterGraphValidate_ReturnsValidFalseOnCompileError(t *testing.T) 
 	}
 	if !found {
 		t.Fatalf("expected errors to include missing default edge, got %+v", resp.Errors)
+	}
+}
+
+func TestPOSTFRouterGraphValidate_FailoverAllUnhealthyStillValid(t *testing.T) {
+	t.Parallel()
+
+	nodeRepo, frouterRepo, handler := newTestRouterWithRepos(t)
+
+	node1, err := nodeRepo.Create(context.Background(), domain.Node{
+		ID:               "n1",
+		Name:             "node-1",
+		Protocol:         domain.ProtocolVLESS,
+		Address:          "example.com",
+		Port:             443,
+		LastLatencyError: "dial tcp: timeout",
+	})
+	if err != nil {
+		t.Fatalf("create node1: %v", err)
+	}
+	node2, err := nodeRepo.Create(context.Background(), domain.Node{
+		ID:               "n2",
+		Name:             "node-2",
+		Protocol:         domain.ProtocolVLESS,
+		Address:          "example.org",
+		Port:             443,
+		LastLatencyError: "dial tcp: timeout",
+	})
+	if err != nil {
+		t.Fatalf("create node2: %v", err)
+	}
+
+	groupBody := fmt.Sprintf(`{
+  "name": "g1",
+  "nodeIds": ["%s", "%s"],
+  "strategy": "failover"
+}`, node1.ID, node2.ID)
+	createGroupReq := httptest.NewRequest(http.MethodPost, "/node-groups", bytes.NewReader([]byte(groupBody)))
+	createGroupReq.Header.Set("Content-Type", "application/json")
+	createGroupRec := httptest.NewRecorder()
+	handler.ServeHTTP(createGroupRec, createGroupReq)
+	if createGroupRec.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusCreated, createGroupRec.Code, createGroupRec.Body.String())
+	}
+
+	var createdGroup domain.NodeGroup
+	if err := json.Unmarshal(createGroupRec.Body.Bytes(), &createdGroup); err != nil {
+		t.Fatalf("unmarshal group response: %v; body=%q", err, createGroupRec.Body.String())
+	}
+
+	created, err := frouterRepo.Create(context.Background(), domain.FRouter{Name: "fr-1"})
+	if err != nil {
+		t.Fatalf("create frouter: %v", err)
+	}
+
+	validateBody := fmt.Sprintf(`{
+  "edges": [
+    {"id":"e-default","from":"local","to":"%s","priority":0,"enabled":true}
+  ],
+  "positions": {},
+  "slots": []
+}`, createdGroup.ID)
+	req := httptest.NewRequest(http.MethodPost, "/frouters/"+created.ID+"/graph/validate", bytes.NewReader([]byte(validateBody)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
+	}
+
+	var resp validateGraphResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v; body=%q", err, rec.Body.String())
+	}
+	if !resp.Valid {
+		t.Fatalf("expected valid=true, got errors=%+v", resp.Errors)
 	}
 }
